@@ -10,7 +10,7 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-orange.svg)](https://buymeacoffee.com/hdbreaker9s)
 </div>
 
-**Development status**: Nimhawk is currently in active development. Core functionality is working, but some features are still experimental. The implant only supports Windows x64 platforms. Contributions and feedback are highly welcomed!
+> **Development status**: Nimhawk is currently in active development. Core functionality is working, but some features are still experimental. The implant only supports Windows x64 platforms. Contributions and feedback are highly welcomed!
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -575,7 +575,7 @@ Yes, you can cross-compile Windows implants from Linux or macOS using the MinGW 
 Yes, Nimhawk supports both HTTP and HTTPS communications. For HTTPS, you'll need to configure SSL certificates in the `config.toml` file.
 
 #### How do I customize the C2 communication paths?
-You can customize all communication paths (register, task, result, reconnect) in the `config.toml` file under the `[listener]` section.
+You can customize all communication paths (register, task, result, reconnect) in the `config.toml` file under the `[implants_server]` section.
 
 #### How does the authentication system work?
 Nimhawk has a dual authentication system:
@@ -668,7 +668,7 @@ For compilation issues, check the Nim compiler output for errors. Ensure your Mi
 #### "Error: SSL certificate required for HTTPS listener"
 Configure SSL certificates in config.toml under the listener section:
 ```toml
-[listener]
+[implants_server]
 type = "HTTPS"
 sslCertPath = "/path/to/cert.pem"
 sslKeyPath = "/path/to/key.pem"
@@ -735,7 +735,7 @@ Run the server with appropriate permissions or change the ownership of the direc
 #### "Error: SSL certificate required for HTTPS listener"
 Configure SSL certificates in config.toml under the listener section:
 ```toml
-[listener]
+[implants_server]
 type = "HTTPS"
 sslCertPath = "/path/to/cert.pem"
 sslKeyPath = "/path/to/key.pem"

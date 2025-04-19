@@ -1,0 +1,66 @@
+# IMPLANT CONFIGURATION
+
+[admin_api]
+# Configure the API for the C2 server here. Recommended to keep at 127.0.0.1, change IP to 0.0.0.0 to listen on all interfaces.
+ip = "0.0.0.0"
+# Configure port for the web interface of the C2 server, including API
+port = 9669
+
+[implants_server]
+# Configure listener type (HTTP or HTTPS)
+type = "HTTP"
+# Certificate and key path used for 'HTTPS" listener type
+sslCertPath = ""
+sslKeyPath = ""
+# Configure the hostname for Implant to connect to
+# Leave as "" for IP:PORT-based connections
+hostname = ""
+
+# Configure listener port where implant "team server" will wait for connections, mandatory even if hostname is specified
+port = 80
+# Configure the URI paths used for C2 communications
+registerPath = "/register"
+taskPath = "/task"
+resultPath = "/result"
+reconnectPath = "/reconnect" 
+
+[implant]
+# Public implants_server IP:
+listener_ip = "192.168.100.57"
+# Allow risky commands such as 'execute-assembly', 'powershell', or 'shinject' - operator discretion advised
+riskyMode = true
+# Enable Ekko sleep mask instead of a regular sleep() call
+# Only available for (self-deleting) executables, not for DLL or shellcode
+sleepMask = false
+# Configure the default sleep time in seconds
+sleepTime = 10
+# Configure the default sleep jitter in %
+sleepJitter = 0
+# Configure the kill date for Implants (format: yyyy-MM-dd)
+# Implants will exit if this date has passed
+killDate = ""
+# Configure the user-agent that Implants use to connect
+# Also used by the server to verify Implant traffic
+# Choosing an inconspicuous but uncommon user-agent is therefore recommended
+userAgent = "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko"
+httpAllowCommunicationKey = "PASIOnodnoqonasond12314"
+ 
+[auth]
+# Authentication settings
+enabled = true
+# Session duration in hours (default: 24)
+session_duration = 24
+
+# User definitions
+# Default user: admin@nimhawk.com / P4ssw0rd123$
+[[auth.users]]
+email = "admin@nimhawk.com"
+password = "P4ssw0rd123$"
+admin = true
+
+# You can add more users as needed
+# [[auth.users]]
+# email = "operator@nimhawk.com"
+# password = "SecurePassword123!"
+# admin = false
+ 

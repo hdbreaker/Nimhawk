@@ -1,0 +1,13 @@
+cryptography==43.0.0
+flask_cors==4.0.1
+Flask==3.0.3
+gevent==24.2.1
+itsdangerous==2.2.0
+Jinja2==3.1.4
+prompt_toolkit==3.0.47; sys_platform=="win32"
+PyCryptoDome==3.20.0
+pyyaml==6.0.1
+requests==2.32.3
+toml==0.10.2
+werkzeug==3.0.3
+apsw==3.49.1.0

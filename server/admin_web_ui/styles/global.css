@@ -1,0 +1,108 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;700&family=Montserrat:ital,wght@0,100;0,400;0,700;1,400&family=Roboto+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+main {
+  overflow: hidden;
+}
+
+body, html {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: #F8F9FA;
+  color: var(--mantine-color-dark-8);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.mantine-AppShell-main {
+  height: 100vh !important;
+  overflow: hidden !important;
+  padding: 0 !important;
+  background-color: #F8F9FA !important;
+  border-top: none !important;
+  margin-top: 0 !important;
+}
+
+.mantine-AppShell-body {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mantine-Paper-root {
+  background-color: var(--content-bg-color);
+}
+
+:root {
+  --app-bg-color: #F8F9FA;
+  --content-bg-color: #FFFFFF;
+  --border-color: #E9ECEF;
+  --header-height: 70px;
+  --navbar-width: 220px;
+  --content-spacing: 1px;
+}
+
+.mantine-AppShell-navbar {
+  border-top: none !important;
+  margin-top: 0 !important;
+  border: none !important;
+  margin: var(--content-spacing) 0 0 0 !important;
+  box-shadow: 1px 0 3px rgba(0,0,0,0.1);
+}
+
+.mantine-AppShell-navbar:hover {
+  overflow-y: auto;
+}
+
+/* Style the scrollbar for the navbar */
+.mantine-AppShell-navbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mantine-AppShell-navbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mantine-AppShell-navbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+.mantine-AppShell-navbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.mantine-AppShell-header {
+  background-color: #FFFFFF !important;
+  border-bottom: 1px solid #E9ECEF !important;
+}
+
+/* Scrollbar styles for Chrome, Edge and Safari */
+::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--mantine-color-gray-1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--mantine-color-gray-5);
+  border-radius: 8px;
+  border: 2px solid var(--mantine-color-gray-1);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--mantine-color-gray-6);
+}
+
+/* Scrollbar styles for Firefox */
+* {
+  scrollbar-width: auto;
+  scrollbar-color: var(--mantine-color-gray-5) var(--mantine-color-gray-1);
+}

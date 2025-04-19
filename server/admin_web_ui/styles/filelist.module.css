@@ -1,0 +1,46 @@
+.fileListContainer {
+  position: relative;
+  width: 100%;
+}
+
+.skeletonContainer {
+  width: 100%;
+  padding: 0.5rem 0;
+}
+
+.skeletonItem {
+  transition: all 0.2s ease;
+}
+
+.tableHeader {
+  background-color: rgba(248, 249, 250, 0.9);
+  backdrop-filter: blur(8px);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.fileList {
+  width: 100%;
+  padding: 0.5rem 0;
+}
+
+.fileItem {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid var(--mantine-color-gray-3);
+}
+
+.fileItem:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  border-color: var(--mantine-color-gray-5);
+}
+
+.emptyContainer {
+  padding: 3rem 1rem;
+  background-color: rgba(248, 249, 250, 0.5);
+  border-radius: 8px;
+  border: 1px dashed var(--mantine-color-gray-4);
+} 

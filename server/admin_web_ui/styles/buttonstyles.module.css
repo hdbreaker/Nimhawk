@@ -1,0 +1,30 @@
+.button {
+    display: block;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+  
+  .button:hover {
+    color: white;
+    background-color: var(--mantine-color-rose-8);
+  }
+  
+  .buttonActive {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+  
+  .buttonInactive {
+    background-color: transparent;
+  }
+  
+  .buttonInactive:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+  
+  .button span {
+    color: white;
+    font-size: 0.9rem;
+    font-weight: 500;
+  }

@@ -1,0 +1,117 @@
+.group {
+    border-bottom: 1px solid var(--mantine-color-gray-1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0.5rem 0;
+}
+
+.group:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+    transform: translateY(-1px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.group:active {
+    transform: translateY(0);
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.group:last-child {
+    border-bottom: none;
+}
+
+/* Style to make the hover cover the full width */
+.fullRowHover {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    transition: all 0.2s ease;
+    border-bottom: 1px solid var(--mantine-color-gray-2);
+    cursor: pointer;
+}
+
+.fullRowHover:hover {
+    background-color: rgba(0, 0, 0, 0.04);
+    transform: translateY(-3px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    z-index: 1;
+    border-left: 3px solid var(--mantine-color-gray-5);
+}
+
+.fullRowHover:active {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+/* Style for the arrow */
+.arrowIcon {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--mantine-color-gray-5);
+    opacity: 0.7;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+/* Style for the fixed arrow */
+.fullRowHover:hover .arrowIcon {
+    opacity: 1;
+    transform: translateY(-50%) translateX(3px);
+    color: var(--mantine-color-blue-5);
+}
+
+/* Style for the action icon when it's inside the column */
+.actionIcon {
+    color: var(--mantine-color-gray-5);
+    opacity: 0.7;
+    transition: opacity 0.2s, transform 0.2s;
+}
+
+.fullRowHover:hover .actionIcon {
+    opacity: 1;
+    transform: translateX(5px) scale(1.2);
+    color: var(--mantine-color-dark-4);
+}
+
+/* Style for the table header */
+.tableHeader {
+    background-color: var(--mantine-color-gray-1);
+    border-bottom: 1px solid var(--mantine-color-gray-3);
+    height: 50px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+/* Style for the downloads table header */
+.downloadsTableHeader {
+    background-color: var(--mantine-color-gray-1);
+    border-bottom: 1px solid var(--mantine-color-gray-3);
+    height: 40px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+/* Style for full row items */
+.fullRow {
+    border-bottom: 1px solid var(--mantine-color-gray-1);
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.fullRow:hover {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.fullRow:active {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.fullRow:last-child {
+    border-bottom: none;
+}

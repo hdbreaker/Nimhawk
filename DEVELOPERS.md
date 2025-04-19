@@ -4,9 +4,9 @@
   <h1>Nimhawk Developer Guide</h1>
 
 [![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/yourgithub/nimhawk)
+[![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/hdbreaker/nimhawk)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/yourgithub/nimhawk/releases)
+[![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
 </div>
 
 This document provides detailed information about the structure of the Nimhawk project, guidelines for developers who wish to contribute or modify the code, and documentation on recent improvements implemented.
@@ -15,27 +15,49 @@ This document provides detailed information about the structure of the Nimhawk p
 
 - [Project overview](#project-overview)
 - [Quick start guide](#quick-start-guide)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Start the server](#start-the-server)
+  - [Access the web interface](#access-the-web-interface)
 - [Project architecture](#project-architecture)
   - [Project structure](#project-structure)
   - [Main components](#main-components)
+    - [Implant](#implant)
+    - [Backend Server](#backend-server)
+    - [Admin Web Interface](#admin-web-interface)
+    - [Database](#database)
   - [Communication flow](#communication-flow)
 - [Development guide](#development-guide)
   - [Development environment setup](#development-environment-setup)
+    - [Python Environment](#python-environment)
+    - [UI Development](#ui-development)
+    - [Cross-Compiling with nim.cfg](#cross-compiling-with-nim.cfg)
   - [Adding new features](#adding-new-features)
-  - [Security considerations](#security-considerations)
-  - [Pull request process](#pull-request-process)
+- [IMPORTANT: Adding New Configuration Parameters in config.toml file and how to propagate it](#important-adding-new-configuration-parameters-in-config.toml-file-and-how-to-propagate-it)
+  - [Adding a New Parameter to config.toml and read it from Implant at compile-time](#adding-a-new-parameter-to-config.toml-and-read-it-from-implant-at-compile-time)
+  - [Storing the Parameter in the Database](#storing-the-parameter-in-the-database)
+  - [Propagating the Parameter to the Frontend](#propagating-the-parameter-to-the-frontend)
+  - [Understanding getServerInfo Function](#understanding-getserverinfo-function)
+- [Security considerations](#security-considerations)
+  - [Agent Security](#agent-security)
+  - [Server Security](#server-security)
+  - [UI Security](#ui-security)
+- [Pull request process](#pull-request-process)
 - [Feature documentation](#feature-documentation)
-  - [Enhanced reconnection system](#1-enhanced-reconnection-system)
-  - [Multi-status implant support](#2-multi-status-implant-support)
-  - [Search and filtering capabilities](#3-search-and-filtering-capabilities)
-  - [User interface improvements](#4-user-interface-improvements)
-  - [Implant deletion API](#5-implant-deletion-api)
+  - [Enhanced reconnection system](#enhanced-reconnection-system)
+  - [Multi-status implant support](#multi-status-implant-support)
+  - [Search and filtering capabilities](#search-and-filtering-capabilities)
+  - [User interface improvements](#user-interface-improvements)
+  - [Implant deletion API](#implant-deletion-api)
 - [Subsystem architecture](#subsystem-architecture)
   - [Workspace system architecture](#workspace-system-architecture)
   - [File exchange system implementation](#file-exchange-system-implementation)
 - [Future plans](#future-plans)
 - [Contributing](#contributing)
+  - [Contributing Guidelines](#contributing-guidelines)
+  - [Contributing to the reconnection system](#contributing-to-the-reconnection-system)
 - [License](#license)
+- [If You've Reached This Point](#if-youve-reached-this-point)
 - [Support the project](#support-the-project)
 
 ## Project overview
@@ -48,6 +70,12 @@ Nimhawk consists of three main components:
 - **Admin UI**: Modern web interface built with React/Next.js and Mantine
 
 The framework builds upon NimPlant's core functionality while adding enhanced features such as a modular architecture, improved security measures, and a completely renovated graphical interface with modern authentication.
+
+## Support the project
+
+If you find Nimhawk useful for your work, consider supporting the project:
+
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
 
 ## Quick start guide
 
@@ -135,7 +163,7 @@ Nimhawk/
 
 #### 1. Implant
 
-The Nimhawk agent is written in Nim to provide a lightweight, evasive implant with HTTP(S) communication capabilities. It builds upon the foundation created by [Cas van Cooten](https://github.com/chvancooten) in NimPlant.
+The Nimhawk implant is written in Nim to provide a lightweight, evasive implant with HTTP(S) communication capabilities. It builds upon the foundation created by [Cas van Cooten](https://github.com/chvancooten) in NimPlant.
 
 **Key implant features:**
 - Reconnection system with exponential backoff
@@ -145,10 +173,11 @@ The Nimhawk agent is written in Nim to provide a lightweight, evasive implant wi
 - Encrypted communication with the server
 - Support for various command types (filesystem, network, execution, etc.)
 - Robust error handling for network disconnection scenarios
+- Workspaces for Improved Operation Segregation: Utilizes workspaces to segregate operations, enhancing organization and management of implants within different operational contexts.
 
 #### 2. Backend Server
 
-The Nimhawk backend is written in Python and consists of two independent servers:
+The Nimhawk backend is written in Python and consists of three independent servers ( Two are really important and the other one if a Worker that update stuff in backgroupd ):
 
 **Implants Server:**
 - Exclusively handles communication with implants
@@ -163,12 +192,15 @@ The Nimhawk backend is written in Python and consists of two independent servers
 - Interacts with the database for CRUD operations
 - Can be configured in API-only mode by setting Flask's static folders to None
 
+**Periodic Implant Checks:**
+- Provides the REST API for the web interface
+- Manages user authentication and authorization
+- Never communicates directly with implants
+- Interacts with the database for CRUD operations
+- Can be configured in API-only mode by setting Flask's static folders to None
+
 **UI Development in API-Only Mode:**
-When running the Admin server in API-only mode:
-- The server acts as a pure REST API without serving static files
-- Front-end development requires running the Next.js server separately
-- API calls from the development server must be configured with proper CORS handling
-- This separation allows for more flexible development and deployment options
+- The primary role of periodic_implant_checks is to periodically verify the status of implants to identify any that have not checked in within the expected timeframe. This helps in maintaining the operational integrity of the system by ensuring that all implants are active and communicating as expected.
 
 #### 3. Admin Web Interface
 
@@ -197,6 +229,7 @@ The project architecture implements strictly separated communication paths:
    - HTTP(S) communication with customizable paths
    - Authentication via pre-shared key (`httpAllowCommunicationKey`)
    - Custom HTTP headers for authentication (`X-Correlation-ID`)
+   - The `X-Robots-Tag` header is used to transport the workspace_uuid during communication, ensuring each implant is correctly associated with its workspace
    - Improved reconnection mechanism with registry cleanup and proper error handling
    - Status code-based response handling for better reliability
    - Automatic retry logic with exponential backoff
@@ -299,11 +332,14 @@ For building Windows payloads from Linux or macOS:
    apt-get install mingw-w64
    ```
 
-2. **Configure nim.cfg** with the correct paths to the MinGW toolchain
+2. **Install Nim**:
+   - Refer to: [https://nim-lang.org/install.html](https://nim-lang.org/install.html) (In Silicon chipset you must compile it, but it's easy)
+
+3. **Configure nim.cfg** with the correct paths to the MinGW toolchain
 
 ### Adding new features
 
-#### 1. Agent Modules
+#### 1. Implant Modules
 - Create new module in appropriate directory under `implant/modules/`
 - Implement command handler
 - Register in command parser
@@ -320,6 +356,152 @@ For building Windows payloads from Linux or macOS:
 - Add to component library
 - Implement state management
 - Add styling
+
+
+## IMPORTANT: Adding New Configuration Parameters in config.toml file and how to propagete it
+
+This section outlines the complete process for adding and propagating new configuration parameters in Nimhawk, from the config.toml file to the user interface.
+
+### Configuration Flow
+
+```
+config.toml → implant/config/configParser.nim (compilation) → db.py (storage) → admin_server_init.py (API) → nimplant.ts (frontend)
+```
+
+### 1. Adding a New Parameter to `config.toml` and read it from Implant at compile-time
+
+To add a new parameter in the implant configuration:
+
+```toml
+[implant]
+# Existing parameters...
+newParameter = "value"
+```
+
+**Compile-time processing**:
+```nim
+# In implant/config/configParser.nim
+const new_parameter {.strdefine.}: string = ""
+
+if new_parameter != "":
+    config[obf("new_parameter")] = new_parameter
+
+# For reference, this is similar to how xor_key is handled:
+const xor_key {.intdefine.}: int = 459457925 # Default value
+```
+
+**Compilation command**:
+```bash
+nim c -d:new_parameter="value" ...
+```
+
+### 2. Storing the Parameter in the Database
+
+If the new parameter needs to be stored persistently:
+
+**Schema modification**:
+```python
+# In setup_database() or similar
+cursor.execute("""
+    ALTER TABLE implants ADD COLUMN new_parameter TEXT;
+""")
+```
+
+**Access functions**:
+```python
+def db_store_implant_parameter(guid, parameter, value):
+    with get_db_connection() as con:
+        con.execute(
+            "UPDATE implants SET new_parameter = ? WHERE id = ?", 
+            (value, guid)
+        )
+```
+
+### 3. Propagating the Parameter to the Frontend
+
+To make the parameter available to the UI:
+
+**Data model**:
+```python
+# In nimplant_listener_model.py
+def asdict(self):
+    return {
+        "newParameter": self.new_parameter,
+        # other fields...
+    }
+```
+
+**API endpoint**:
+```python
+# In admin_server_init.py
+@app.route('/api/server/config', methods=['GET'])
+@require_auth
+def get_server_config():
+    config = db_get_server_config()
+    return flask.jsonify(config)
+```
+
+**Frontend consumption**:
+```typescript
+// In modules/nimplant.ts
+export function getServerInfo() {
+    const token = localStorage.getItem("token")
+    return useSWR(endpoints.server, (url) =>
+        fetch(url, {
+            headers: { Authorization: `Bearer ${token}` },
+        }).then((res) => res.json())
+    )
+}
+```
+
+**Rendering**:
+```tsx
+// In components/ServerInfo.tsx
+const { serverInfo } = getServerInfo()
+return <DataRow label="New Parameter" value={serverInfo.newParameter} />
+```
+
+### Complete Example: Adding Sleep Jitter Parameter
+
+This comprehensive example demonstrates the full flow:
+
+1. **In config.toml**:
+   ```toml
+   [implant]
+   sleepJitter = 30
+   ```
+
+2. **In configParser.nim**:
+   ```nim
+   const sleep_jitter {.intdefine.}: int = 0
+   if sleep_jitter > 0:
+       config[obf("sleep_jitter")] = $sleep_jitter
+   ```
+
+3. **In the database**:
+   ```python
+   # Schema
+   CREATE TABLE implants (
+     # other fields...
+     sleep_jitter INTEGER DEFAULT 0
+   )
+   
+   # Update
+   def update_jitter(guid, value):
+       with get_db_connection() as con:
+           con.execute("UPDATE implants SET sleep_jitter = ? WHERE id = ?", 
+                      (value, guid))
+   ```
+
+4. **In the frontend**:
+   ```tsx
+   <JitterControl 
+     value={serverInfo.sleepJitter} 
+     onChange={updateJitterSetting} 
+   />
+   ```
+
+When the frontend connects with the backend after logging in, the first action it performs is calling `getServerInfo`. This function populates the `serverInfo` object in `modules/nimplant.ts` with the backend settings. This is how configuration data flows from the backend to the frontend in Nimhawk.
 
 ### Security considerations
 
@@ -1106,8 +1288,7 @@ If you wish to further enhance the reconnection system, here are some areas to f
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-## Support the project
+## If You've Reached This Point:
 
-If you find Nimhawk useful for your work, consider supporting the project:
+We encourage you to fork the repository, contribute your code, and submit a pull request! Your contributions are invaluable in enhancing the Nimhawk project and fostering a collaborative development environment.
 
-[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)

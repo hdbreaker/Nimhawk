@@ -5,10 +5,4 @@ title: ''
 labels: ''
 assignees: ''
 
----
-
-- [ ] This issue is not about OPSEC or bypassing defensive products
-
----
-
 **Feature Description**

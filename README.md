@@ -3,14 +3,26 @@
 
   <h1>Nimhawk - a powerful, modular, lightweight and efficient command & control framework.</h1>
 
-[![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/yourgithub/nimhawk)
+[![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](DEVELOPERS.md#contributing)
+[![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/hdbreaker/nimhawk)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/yourgithub/nimhawk/releases)
+[![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-orange.svg)](https://buymeacoffee.com/hdbreaker9s)
 </div>
 
 > **Development status**: Nimhawk is currently in active development. Core functionality is working, but some features are still experimental. The implant only supports Windows x64 platforms. Contributions and feedback are highly welcomed!
+
+> Hey! If you're into Malware Dev, Hacking, Exploit writing or just a tech nerd like me - hit me up! Always looking for new hacker friends to collaborate, share ideas and maybe grab a beer. No fancy resumes needed. 
+
+## Support the Project
+
+If you find **Nimhawk** useful in your work or work / research, consider supporting its development!  
+Contributions are always welcome — whether it's through code, ideas, or simply helping spread the word.  
+
+And hey, if coding isn't your thing, feel free to send a beer, you know, every bit helps keep the project going!
+
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
+
 
 ## Table of Contents
 - [Introduction](#introduction)
@@ -21,6 +33,7 @@
 - [Compatibility](#compatibility)
 - [Development environment setup](#development-environment-setup)
 - [Configuration](#configuration)
+- [Quick start guide](#quick-start-guide)
 - [Basic usage](#basic-usage)
 - [Future development](#future-development)
 - [Notes and considerations](#notes-and-considerations)
@@ -32,7 +45,6 @@
 - [Disclaimer](#disclaimer)
 - [Architecture](#architecture)
 - [Available commands](#available-commands)
-- [Quick start guide](#quick-start-guide)
 - [C2 framework comparison](#c2-framework-comparison)
 - [Command examples](#command-examples)
 - [Docker support](#docker-support)
@@ -42,7 +54,7 @@
 
 ## Introduction
 
-Nimhawk is an advanced command and control (C2) framework that builds upon the exceptional foundation laid by [Cas van Cooten](https://github.com/chvancooten) ([@chvancooten](https://twitter.com/chvancooten)) with his [NimPlant](https://github.com/chvancooten/NimPlant) project. Cas's innovative work in developing a lightweight, cross-platform implant written in Nim has been groundbreaking for the red team community.
+Nimhawk is an advanced command and control (C2) framework that builds upon the exceptional foundation laid by [Cas van Cooten](https://github.com/chvancooten) ([@chvancooten](https://twitter.com/chvancooten)) with his [NimPlant](https://github.com/chvancooten/NimPlant) project. Cas's innovative work in developing a lightweight implant written in Nim has been groundbreaking for this project.
 
 This project would not exist without Cas's technical expertise, dedication to open source, and commitment to knowledge sharing. Nimhawk expands on NimPlant's original functionality with:
 
@@ -71,12 +83,9 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 * **UI improvements**: Enhanced implant details display with real-time metrics and more intuitive layout
 * **Bug fixes**: Resolved critical issues with dependency imports and CORS header handling
 * **Improved reconnection system**: Enhanced implant reconnection mechanism that properly handles Registry cleanup, removing previous implant ID before registering a new one to prevent orphaned entries
-* **Inactive implant management**: Added ability to safely delete inactive implants from the database, maintaining a clean operational environment
+* **Inactive implant management**: Added ability to safely delete inactive implants from the database, maintaining a clean operational environment (I have a bug to check here, I will be fixing it soon, nothing really important!)
 * **Comprehensive Web UI**: Full-featured web interface for real-time monitoring and control of implants
-* **Enhanced persistence options**: Multiple methods for maintaining access
-* **Improved evasion techniques**: More sophisticated options to avoid detection
 * **File system operations**: Expanded capabilities for file management
-* **Multilingual command support**: Execute commands in PowerShell, cmd.exe, or native shell
 
 ## Screenshots
 
@@ -102,11 +111,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 [![Successful build completion](docs/images/builder_sucess.png)](docs/images/builder_sucess.png)
 *Upon successful compilation, operators receive a summary of generated files with direct download capability for deployment.*
 
-### Multi-status implant management
-[![Implant List Overview](docs/images/implants.png)](docs/images/implants.png)
-*The implants dashboard provides a comprehensive view of all beacons with status indicators, system information, and network details. The responsive design adapts to different screen sizes.*
-
-[![Multi-Status Visual Indicators](docs/images/multi-status.png)](docs/images/multi-status.png)
+[![Multi-Status Visual Management>](docs/images/multi-status.png)](docs/images/multi-status.png)
 *Nimhawk's advanced status tracking system uses color-coding and icons to represent different implant states: Active (green), Late (orange), Disconnected (red), and Inactive (gray). This enhances situational awareness during operations.*
 
 ### Advanced search and filtering
@@ -349,7 +354,7 @@ By default, a user account is created with the credentials:
 
 It is strongly recommended to change these default credentials in your production environment.
 
-## Basic usage
+## Quick start guide
 
 ### Implant compilation
 
@@ -600,155 +605,6 @@ Nimhawk doesn't currently support in-memory updating of implants. You would need
 #### How can I contribute to Nimhawk?
 Contributions are welcome! Check the Development section and the DEVELOPERS.md file for guidelines on contributing to the project.
 
-### Troubleshooting
-
-#### My implant isn't connecting to the C2 server. What should I check?
-1. Verify network connectivity between implant and server
-2. Check firewall rules on both ends
-3. Ensure the httpAllowCommunicationKey matches in config.toml
-4. Verify the listener IP and port are correctly configured
-5. Check if your antivirus is blocking the implant
-
-#### I'm getting CORS errors when accessing the web interface. How do I fix them?
-CORS errors typically occur when accessing the admin interface from a different origin than where it's hosted. Ensure you're accessing the interface directly from the server's URL without proxy redirection.
-
-#### How do I debug compilation issues?
-For compilation issues, check the Nim compiler output for errors. Ensure your MinGW paths are correctly configured in nim.cfg if cross-compiling from Linux/macOS.
-
-## Troubleshooting
-
-### Installation Issues
-
-#### MinGW Configuration Problems
-**Problem**: Error when compiling implant with messages about missing mingw compiler.
-
-**Solution**: 
-1. Install MinGW using your package manager: `brew install mingw-w64` (macOS) or `apt install mingw-w64` (Debian/Ubuntu)
-2. Locate the installed compiler: `which x86_64-w64-mingw32-gcc`
-3. Update the paths in your nim.cfg file to match the installation location
-
-#### Python Dependencies Issues
-**Problem**: ImportError or ModuleNotFoundError when starting the server.
-
-**Solution**:
-1. Ensure you're using a virtual environment: `python -m venv venv && source venv/bin/activate`
-2. Install dependencies: `pip install -r requirements.txt`
-3. If specific packages fail, try installing them individually: `pip install flask gevent flask-cors`
-
-### Runtime Issues
-
-#### Implant Connection Problems
-**Problem**: Implant compiled successfully but doesn't connect to the C2 server.
-
-**Solution**:
-1. Check network connectivity (firewall rules, network restrictions)
-2. Verify the listener IP/port in config.toml matches your server's actual IP
-3. Ensure httpAllowCommunicationKey matches between server and implant
-4. Try running with HTTP instead of HTTPS to eliminate certificate issues
-5. Check the implant with Process Monitor to see if it's executing properly
-
-#### Web Interface Access Issues
-**Problem**: Cannot access the web interface or receive authentication errors.
-
-**Solution**:
-1. Verify the server is running (`ps aux | grep python`)
-2. Check the server's IP binding (set to 0.0.0.0 to allow external connections)
-3. Test local access first (http://127.0.0.1:PORT)
-4. Check browser console for CORS or JavaScript errors
-5. Reset your authentication by manually clearing browser cookies
-
-#### Database Issues
-**Problem**: Server starts but operations fail with database errors.
-
-**Solution**:
-1. Check if the SQLite database file exists and has proper permissions
-2. If corrupted, backup and rename/remove the database file to let the server create a new one
-3. Verify you have write permissions in the directory
-
-### Common error messages
-
-#### "Error: SSL certificate required for HTTPS listener"
-Configure SSL certificates in config.toml under the listener section:
-```toml
-[implants_server]
-type = "HTTPS"
-sslCertPath = "/path/to/cert.pem"
-sslKeyPath = "/path/to/key.pem"
-```
-
-#### "Error: No implants connected"
-This is normal if you haven't deployed any implants yet. Build and deploy an implant to see it appear in the web interface.
-
-#### "Error: Permission denied when writing to directory"
-Run the server with appropriate permissions or change the ownership of the directory.
-
-## Troubleshooting
-
-### Installation Issues
-
-#### MinGW Configuration Problems
-**Problem**: Error when compiling implant with messages about missing mingw compiler.
-
-**Solution**: 
-1. Install MinGW using your package manager: `brew install mingw-w64` (macOS) or `apt install mingw-w64` (Debian/Ubuntu)
-2. Locate the installed compiler: `which x86_64-w64-mingw32-gcc`
-3. Update the paths in your nim.cfg file to match the installation location
-
-#### Python Dependencies Issues
-**Problem**: ImportError or ModuleNotFoundError when starting the server.
-
-**Solution**:
-1. Ensure you're using a virtual environment: `python -m venv venv && source venv/bin/activate`
-2. Install dependencies: `pip install -r requirements.txt`
-3. If specific packages fail, try installing them individually: `pip install flask gevent flask-cors`
-
-### Runtime issues
-
-#### Implant Connection Problems
-**Problem**: Implant compiled successfully but doesn't connect to the C2 server.
-
-**Solution**:
-1. Check network connectivity (firewall rules, network restrictions)
-2. Verify the listener IP/port in config.toml matches your server's actual IP
-3. Ensure httpAllowCommunicationKey matches between server and implant
-4. Try running with HTTP instead of HTTPS to eliminate certificate issues
-5. Check the implant with Process Monitor to see if it's executing properly
-
-#### Web Interface Access Issues
-**Problem**: Cannot access the web interface or receive authentication errors.
-
-**Solution**:
-1. Verify the server is running (`ps aux | grep python`)
-2. Check the server's IP binding (set to 0.0.0.0 to allow external connections)
-3. Test local access first (http://127.0.0.1:PORT)
-4. Check browser console for CORS or JavaScript errors
-5. Reset your authentication by manually clearing browser cookies
-
-#### Database Issues
-**Problem**: Server starts but operations fail with database errors.
-
-**Solution**:
-1. Check if the SQLite database file exists and has proper permissions
-2. If corrupted, backup and rename/remove the database file to let the server create a new one
-3. Verify you have write permissions in the directory
-
-### Common error messages
-
-#### "Error: SSL certificate required for HTTPS listener"
-Configure SSL certificates in config.toml under the listener section:
-```toml
-[implants_server]
-type = "HTTPS"
-sslCertPath = "/path/to/cert.pem"
-sslKeyPath = "/path/to/key.pem"
-```
-
-#### "Error: No implants connected"
-This is normal if you haven't deployed any implants yet. Build and deploy an implant to see it appear in the web interface.
-
-#### "Error: Permission denied when writing to directory"
-Run the server with appropriate permissions or change the ownership of the directory.
-
 ## Architecture
 
 ```
@@ -942,13 +798,7 @@ The Nimhawk implant supports the following commands:
 - `checkin` - Force check-in with server 
 - `kill` - Terminate implant
 
-For detailed usage of each command, use the `
-
-## Support the Project
-
-If you find Nimhawk useful for your work, consider supporting the project:
-
-[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
+For detailed usage of each command, use the `help` command.
 
 # Docker Support
 
@@ -1024,3 +874,67 @@ docker run -it -p 3000:3000 -p 9669:9669 -p 80:80 -p 443:443 \
 ```
 
 This ensures your implant data, command history, and files remain available between container restarts.
+
+# Frontend Configuration for Client - Server Execution
+
+Nimhawk supports deployment configurations where frontend and backend run on different servers. This is configured through the `.env` file in the `server/admin_web_ui` directory.
+
+## The `.env` File
+
+```
+SERVER_IP=https://nimhawk-backend.example.com
+SERVER_PORT=9669
+IMPLANT_SERVER_IP=https://implant-listener.example.com
+IMPLANT_SERVER_PORT=443
+```
+
+### Configuration Options
+
+- `SERVER_IP`: URL of the Admin API server (backend)
+- `SERVER_PORT`: Port of the Admin API server (must match `admin_api.port` in `config.toml`)
+- `IMPLANT_SERVER_IP`: URL of the implant listener (typically same as SERVER_IP)
+- `IMPLANT_SERVER_PORT`: Port for implant communications (must match `implants_server.port` in `config.toml`)
+
+### Docker Deployment
+
+For Docker deployments, you can use the default configuration as the container handles proper routing between components. No changes to the `.env` file are necessary unless you're exposing the services on different ports.
+
+### Distributed Deployment
+
+When running the frontend and backend on separate servers or cloud services:
+
+1. Create or modify the `.env` file in the `server/admin_web_ui` directory
+2. Configure `SERVER_IP` to point to your backend server (e.g., `https://nimhawk-backend.example.com`)
+3. Ensure `SERVER_PORT` matches your backend's exposed port
+4. Update `IMPLANT_SERVER_IP` and `IMPLANT_SERVER_PORT` to direct implants to the correct implants listener (in general, it will be the same SERVER_IP but in other port.)
+
+### Example for Distributed Setup
+
+```
+SERVER_IP=https://nimhawk-backend.example.com
+SERVER_PORT=9669
+IMPLANT_SERVER_IP=https://nimhawk-backend.example.com
+IMPLANT_SERVER_PORT=443
+```
+
+This configuration allows you to host the UI on a separate service from the backend, which can be useful for scaling, security segregation, or cloud-based deployments.
+
+
+## Security Considerations for Production 
+
+For production deployments, please take the following into account:
+
+### Access Restrictions
+- **Firewall Rules:** Set up firewall rules and HTTP access controls to limit access to the admin panel to authorized IP addresses only.
+- **Never expose the admin interface to the public.**
+
+### HTTPS Deployment
+- Although current development uses HTTP (with application-layer encryption), **production deployments must use HTTPS**.
+- This typically involves setting up **Nginx with Gunicorn** or a similar reverse proxy and application server configuration.
+
+### HTTPS Testing Status
+- HTTPS functionality still requires additional testing.
+- Current development uses HTTP with encryption handled at the application layer, but proper **TLS implementation is strongly recommended** for production.
+
+### Certbot Integration
+- The team welcomes collaboration to implement **automated HTTPS certificate provisioning using Certbot** to streamline secure deployments.

@@ -3,7 +3,7 @@ __pycache__/
 .venv
 .xorkey
 *.bin
-*.db
+*.dbss
 *.db-*
 *.dll
 *.exe

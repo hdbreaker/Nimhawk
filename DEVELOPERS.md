@@ -11,34 +11,34 @@
 
 This document provides detailed information about the structure of the Nimhawk project, guidelines for developers who wish to contribute or modify the code, and documentation on recent improvements implemented.
 
-# Table of Contents
+# Table of contents
 
-- [Project Overview](#project-overview)
-- [Quick Start Guide](#quick-start-guide)
-- [Project Architecture](#project-architecture)
-  - [Project Structure](#project-structure)
-  - [Main Components](#main-components)
-  - [Communication Flow](#communication-flow)
-- [Development Guide](#development-guide)
-  - [Development Environment Setup](#development-environment-setup)
-  - [Adding New Features](#adding-new-features)
-  - [Security Considerations](#security-considerations)
-  - [Pull Request Process](#pull-request-process)
-- [Feature Documentation](#feature-documentation)
-  - [Enhanced Reconnection System](#1-enhanced-reconnection-system)
-  - [Multi-Status Implant Support](#2-multi-status-implant-support)
-  - [Search and Filtering Capabilities](#3-search-and-filtering-capabilities)
-  - [User Interface Improvements](#4-user-interface-improvements)
-  - [Implant Deletion API](#5-implant-deletion-api)
-- [Subsystem Architecture](#subsystem-architecture)
-  - [Workspace System Architecture](#workspace-system-architecture)
-  - [File Exchange System](#file-exchange-system-implementation)
-- [Future Development](#future-plans)
+- [Project overview](#project-overview)
+- [Quick start guide](#quick-start-guide)
+- [Project architecture](#project-architecture)
+  - [Project structure](#project-structure)
+  - [Main components](#main-components)
+  - [Communication flow](#communication-flow)
+- [Development guide](#development-guide)
+  - [Development environment setup](#development-environment-setup)
+  - [Adding new features](#adding-new-features)
+  - [Security considerations](#security-considerations)
+  - [Pull request process](#pull-request-process)
+- [Feature documentation](#feature-documentation)
+  - [Enhanced reconnection system](#1-enhanced-reconnection-system)
+  - [Multi-status implant support](#2-multi-status-implant-support)
+  - [Search and filtering capabilities](#3-search-and-filtering-capabilities)
+  - [User interface improvements](#4-user-interface-improvements)
+  - [Implant deletion API](#5-implant-deletion-api)
+- [Subsystem architecture](#subsystem-architecture)
+  - [Workspace system architecture](#workspace-system-architecture)
+  - [File exchange system implementation](#file-exchange-system-implementation)
+- [Future plans](#future-plans)
 - [Contributing](#contributing)
 - [License](#license)
-- [Support the Project](#support-the-project)
+- [Support the project](#support-the-project)
 
-## Project Overview
+## Project overview
 
 Nimhawk is a modular Command & Control (C2) framework designed with security, flexibility, and extensibility in mind. The project is heavily based on [NimPlant](https://github.com/chvancooten/NimPlant) by [Cas van Cooten](https://github.com/chvancooten) ([@chvancooten](https://twitter.com/chvancooten)), whose excellent work provided the foundation for this project.
 
@@ -49,7 +49,7 @@ Nimhawk consists of three main components:
 
 The framework builds upon NimPlant's core functionality while adding enhanced features such as a modular architecture, improved security measures, and a completely renovated graphical interface with modern authentication.
 
-## Quick Start Guide
+## Quick start guide
 
 ### Prerequisites
 - Python 3.8+
@@ -82,9 +82,9 @@ python3 nimhawk.py server
 Open `http://localhost:5000` in your browser (or the configured port)
 - Default credentials: admin@nimhawk.com / P4ssw0rd123$
 
-## Project Architecture
+## Project architecture
 
-### Project Structure
+### Project structure
 
 The project structure has been reorganized to improve modularity and facilitate collaborative development:
 
@@ -131,7 +131,7 @@ Nimhawk/
 └── DEVELOPERS.md               # This development guide
 ```
 
-### Main Components
+### Main components
 
 #### 1. Implant
 
@@ -189,7 +189,7 @@ Nimhawk uses SQLite to store all information:
 - Both servers (Implants and Admin) read from and write to this database
 - Serves as the data coordination point between components
 
-### Communication Flow
+### Communication flow
 
 The project architecture implements strictly separated communication paths:
 
@@ -211,9 +211,9 @@ The project architecture implements strictly separated communication paths:
    - No direct communication between implants and web UI
    - All data shared through the database
 
-## Development Guide
+## Development guide
 
-### Development Environment Setup
+### Development environment setup
 
 #### Python Environment
 
@@ -301,7 +301,7 @@ For building Windows payloads from Linux or macOS:
 
 2. **Configure nim.cfg** with the correct paths to the MinGW toolchain
 
-### Adding New Features
+### Adding new features
 
 #### 1. Agent Modules
 - Create new module in appropriate directory under `implant/modules/`
@@ -321,7 +321,7 @@ For building Windows payloads from Linux or macOS:
 - Implement state management
 - Add styling
 
-### Security Considerations
+### Security considerations
 
 #### 1. Agent Security
 - Use encrypted communication
@@ -340,7 +340,7 @@ For building Windows payloads from Linux or macOS:
 - Use secure protocols
 - Handle sensitive data properly
 
-### Pull Request Process
+### Pull request process
 
 1. Ensure your code works locally
 2. Run tests to verify you're not introducing regressions
@@ -348,9 +348,9 @@ For building Windows payloads from Linux or macOS:
 4. Submit a PR with a clear description of the purpose
 5. Respond to review comments
 
-## Feature Documentation
+## Feature documentation
 
-### 1. Enhanced Reconnection System
+### 1. Enhanced reconnection system
 
 The reconnection system has been significantly improved:
 
@@ -392,7 +392,7 @@ proc removeImplantIDFromRegistry() =
 
 The reconnection system now properly handles various failure scenarios, including network interruptions, server-side implant deregistration, and error conditions, ensuring a more robust and reliable operation.
 
-### 2. Multi-Status Implant Support
+### 2. Multi-status implant support
 
 A visual tracking system has been implemented that provides clear status indicators:
 
@@ -403,7 +403,7 @@ A visual tracking system has been implemented that provides clear status indicat
 
 These improvements enhance operational awareness by providing immediate visual feedback on implant status.
 
-#### Inactive Implant Management
+#### Inactive implant management
 
 A key feature addition is the ability to properly manage inactive implants:
 
@@ -528,7 +528,7 @@ The multi-status system is implemented through a combination of backend logic an
      });
      ```
 
-### 3. Search and Filtering Capabilities
+### 3. Search and filtering capabilities
 
 Advanced search and filtering capabilities have been implemented to enhance operator efficiency when managing multiple implants. These features provide powerful tools for quickly locating specific implants and focusing on relevant subsets of implants based on their status.
 
@@ -750,7 +750,7 @@ This search and filtering system significantly improves operational capabilities
 
 The search and filtering capabilities add significant value to the operational use of Nimhawk, particularly in enterprise environments where managing larger numbers of implants is common.
 
-### 4. User Interface Improvements
+### 4. User interface improvements
 
 - Implant details side panel (NimplantDrawer) completely redesigned
 - More comprehensive information about implant status
@@ -758,7 +758,7 @@ The search and filtering capabilities add significant value to the operational u
 - Better organization of information to facilitate analysis
 - Color-coded status indicators for quick visual assessment
 
-### 5. Implant Deletion API
+### 5. Implant deletion API
 
 The ability to delete inactive implants has been implemented with a comprehensive approach that ensures data integrity:
 
@@ -852,9 +852,9 @@ The implant deletion feature includes several security measures:
 6. **Error Handling**: Robust error handling with transaction rollback in case of failure
 7. **Audit Logging**: All deletion operations are logged for accountability
 
-## Subsystem Architecture
+## Subsystem architecture
 
-### Workspace System Architecture
+### Workspace system architecture
 
 Workspaces are primarily managed through the following database tables:
 
@@ -922,7 +922,7 @@ The workspace UUID is passed to implants through the X-Robots-Tag HTTP header. T
 1. **Initial Registration**: When an implant first registers, it can include the workspace UUID in the header
 2. **Reassignment**: When an implant is assigned to a different workspace, the change is stored in the database
 
-### File Exchange System Implementation
+### File exchange system implementation
 
 File transfers are tracked through these primary tables:
 
@@ -1035,7 +1035,7 @@ The system includes robust error handling for:
 4. **Storage Limits**: When disk space is insufficient
 5. **Concurrent Access**: When multiple operations target the same resource
 
-## Future Plans
+## Future plans
 
 We have made significant progress on several planned improvements, with successful implementation of the enhanced reconnection system and multi-status implant support. We continue to work on other key areas:
 
@@ -1084,7 +1084,7 @@ If you're interested in contributing to Nimhawk, we welcome your input and exper
 4. **Update documentation** to reflect changes made
 5. **Submit a pull request** with a clear description of the changes and their purpose
 
-### Contributing to the Reconnection System
+### Contributing to the reconnection system
 
 If you wish to further enhance the reconnection system, here are some areas to focus on:
 
@@ -1106,7 +1106,7 @@ If you wish to further enhance the reconnection system, here are some areas to f
 
 This project is licensed under the MIT License. See the LICENSE file for details.
 
-## Support the Project
+## Support the project
 
 If you find Nimhawk useful for your work, consider supporting the project:
 

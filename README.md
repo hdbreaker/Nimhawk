@@ -1,7 +1,7 @@
 <div align="center">
   <img src="docs/images/nimhawk.png" height="150">
 
-  <h1>Nimhawk - A powerful, modular, lightweight and efficient command & control framework.</h1>
+  <h1>Nimhawk - a powerful, modular, lightweight and efficient command & control framework.</h1>
 
 [![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
 [![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/yourgithub/nimhawk)
@@ -14,29 +14,31 @@
 
 ## Table of Contents
 - [Introduction](#introduction)
-- [Key Features](#key-features)
-- [Recent Improvements](#recent-improvements)
+- [Key features](#key-features)
+- [Recent improvements](#recent-improvements)
 - [Screenshots](#screenshots)
-- [System Requirements](#system-requirements)
+- [System requirements](#system-requirements)
 - [Compatibility](#compatibility)
-- [Development Environment Setup](#development-environment-setup)
+- [Development environment setup](#development-environment-setup)
 - [Configuration](#configuration)
-- [Basic Usage](#basic-usage)
-- [Future Development](#future-development)
-- [Notes and Considerations](#notes-and-considerations)
+- [Basic usage](#basic-usage)
+- [Future development](#future-development)
+- [Notes and considerations](#notes-and-considerations)
 - [FAQ](#faq)
-- [Research and Inspiration](#research-and-inspiration)
+- [Research and inspiration](#research-and-inspiration)
 - [Development](#development)
 - [Acknowledgments](#acknowledgments)
+- [Community quote](#community-quote)
 - [Disclaimer](#disclaimer)
 - [Architecture](#architecture)
-- [Available Commands](#available-commands)
-- [Quick Start Guide](#quick-start-guide)
-- [C2 Framework Comparison](#c2-framework-comparison)
-- [Command Examples](#command-examples)
-- [Docker Support](#docker-support)
-- [Workspace Management System](#workspace-management-system)
-- [File Exchange System](#file-exchange-system)
+- [Available commands](#available-commands)
+- [Quick start guide](#quick-start-guide)
+- [C2 framework comparison](#c2-framework-comparison)
+- [Command examples](#command-examples)
+- [Docker support](#docker-support)
+- [Workspace management system](#workspace-management-system)
+- [File exchange system](#file-exchange-system)
+- [Support the project](#support-the-project)
 
 ## Introduction
 
@@ -51,7 +53,7 @@ This project would not exist without Cas's technical expertise, dedication to op
 
 We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing NimPlant, his ongoing contributions to the security community, and his pioneering work in leveraging the Nim language for security tools. We also extend our thanks to all NimPlant contributors who have helped shape the codebase that serves as our foundation.
 
-## Key Features
+## Key features
 
 - **Modular architecture**: Designed to facilitate collaborative development and expansion.
 - **Enhanced implant**: Modifications to reduce detection by security solutions.
@@ -62,7 +64,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 - **Improved debugging**: Enhanced logging and error handling for easier troubleshooting.
 - **Multi-status implant support**: Visual tracking system with color-coded statuses (active, late, disconnected, inactive) for better operational awareness.
 
-## Recent Improvements
+## Recent improvements
 
 * **Enhanced check-in system**: Implemented optimized tracking for implant check-ins, separating them from command history for cleaner console output
 * **Refined data transfer calculation**: More accurate measurement of data transferred between server and implants
@@ -160,7 +162,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 
 ## Compatibility
 
-### Server Component
+### Server component
 | OS | Support Status | Notes |
 |----|---------------|-------|
 | Ubuntu 20.04+ | ✅ Fully Supported | Recommended for production |
@@ -169,7 +171,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 | macOS 11+ | ✅ Fully Supported | Both Intel and Apple Silicon |
 | Windows 10+ | ⚠️ Limited Support | May require additional configuration |
 
-### Implant Component
+### Implant component
 | OS | Architecture | Support Status | Notes |
 |----|-------------|----------------|-------|
 | Windows 7 SP1 | x64 | ✅ Working | Legacy OS support |
@@ -222,7 +224,7 @@ Nimhawk's server component uses Python virtual environments to manage dependenci
    - The environment isolates dependencies to avoid conflicts with system packages
    - If you add new dependencies, update requirements.txt with `pip freeze > requirements.txt`
 
-### Cross-Compiling with nim.cfg
+### Cross-compiling with nim.cfg
 
 For building Windows payloads from Linux or macOS, Nimhawk uses cross-compilation configured through `nim.cfg`:
 
@@ -264,7 +266,7 @@ For building Windows payloads from Linux or macOS, Nimhawk uses cross-compilatio
 
 The cross-compilation setup allows you to develop and build Windows implants from non-Windows systems, which is particularly useful for red team operations conducted from Linux or macOS environments.
 
-## New Structure and Improvements
+## New structure and improvements
 
 Nimhawk introduces important structural changes compared to NimPlant:
 
@@ -347,7 +349,7 @@ By default, a user account is created with the credentials:
 
 It is strongly recommended to change these default credentials in your production environment.
 
-## Basic Usage
+## Basic usage
 
 ### Implant compilation
 
@@ -364,7 +366,7 @@ Alternatively, you can use the `nimhawk.py` script:
 python3 nimhawk.py compile [exe|dll|raw|all] nim-debug
 ```
 
-### Starting the Server
+### Starting the server
 
 To start the Nimhawk server:
 
@@ -385,7 +387,7 @@ The Nimhawk team is actively working on:
 
 IMPORTANT: Non of them are in place right now so all helps in any of this topics will be great!
 
-## Development Roadmap
+## Development roadmap
 
 <div align="center">
 
@@ -463,7 +465,7 @@ IMPORTANT: Non of them are in place right now so all helps in any of this topics
    - Anti-analysis countermeasures
    - Stack spoofing for hiding call stacks
 
-## Research and Inspiration
+## Research and inspiration
 
 Nimhawk draws inspiration from various offensive security projects and research:
 
@@ -476,7 +478,7 @@ Nimhawk draws inspiration from various offensive security projects and research:
 
 The project aims to incorporate best practices from these sources while contributing new techniques and approaches to the field.
 
-## Notes and Considerations
+## Notes and considerations
 
 - Nimhawk implants use custom headers for authentication:
   - `X-Request-ID`: Carries the implant's UUID
@@ -513,7 +515,7 @@ We would also like to express our gratitude to:
 
 Their work has been foundational to many of the concepts and techniques implemented in this project.
 
-## Community Quote
+## Community quote
  
 What impresses me most about Nimhawk is how it balances:
 
@@ -536,7 +538,7 @@ Nimhawk is designed for and intended to be used by:
 
 The primary purpose of this framework is to facilitate technical research into malware development and operations, enabling the improvement of defensive strategies and detection mechanisms.
 
-### Legal Notice
+### Legal notice
 
 This tool should only be used in strictly controlled environments with proper authorization. The authors and contributors of Nimhawk assume no liability and are not responsible for any misuse or damage caused by this program. Users are responsible for ensuring compliance with local, state, and federal laws and regulations.
 
@@ -663,7 +665,7 @@ For compilation issues, check the Nim compiler output for errors. Ensure your Mi
 2. If corrupted, backup and rename/remove the database file to let the server create a new one
 3. Verify you have write permissions in the directory
 
-### Common Error Messages
+### Common error messages
 
 #### "Error: SSL certificate required for HTTPS listener"
 Configure SSL certificates in config.toml under the listener section:
@@ -700,7 +702,7 @@ Run the server with appropriate permissions or change the ownership of the direc
 2. Install dependencies: `pip install -r requirements.txt`
 3. If specific packages fail, try installing them individually: `pip install flask gevent flask-cors`
 
-### Runtime Issues
+### Runtime issues
 
 #### Implant Connection Problems
 **Problem**: Implant compiled successfully but doesn't connect to the C2 server.
@@ -730,7 +732,7 @@ Run the server with appropriate permissions or change the ownership of the direc
 2. If corrupted, backup and rename/remove the database file to let the server create a new one
 3. Verify you have write permissions in the directory
 
-### Common Error Messages
+### Common error messages
 
 #### "Error: SSL certificate required for HTTPS listener"
 Configure SSL certificates in config.toml under the listener section:
@@ -799,7 +801,7 @@ Authentication is implemented at two independent levels:
 - **Web UI/API Authentication**: Based on usernames and passwords, with session management for access to the administration interface.
 - **Implant/Server Authentication**: Using a pre-shared key (`httpAllowCommunicationKey`) and custom HTTP headers (`X-Correlation-ID`).
 
-## Real-World Use Case Scenario
+## Real-World use case scenario
 
 Below is a walkthrough of a typical penetration testing scenario using Nimhawk:
 

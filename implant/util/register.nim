@@ -143,7 +143,7 @@ proc setDwordValue*(path, name: string, value: DWORD): bool =
     name,
     0,
     REG_DWORD,
-    cast[LPBYTE](addr value),
+    cast[LPBYTE](unsafeAddr value),
     DWORD(sizeof(DWORD))
   )
   
@@ -178,7 +178,7 @@ proc setQwordValue*(path, name: string, value: uint64): bool =
     name,
     0,
     REG_QWORD,
-    cast[LPBYTE](addr value),
+    cast[LPBYTE](unsafeAddr value),
     DWORD(sizeof(uint64))
   )
   

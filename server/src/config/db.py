@@ -65,7 +65,7 @@ def initialize_database():
         (guid TEXT PRIMARY KEY, name TEXT, dateCreated DATETIME,
         xorKey INTEGER, managementIp TEXT, managementPort INTEGER, 
         listenerType TEXT, serverIp TEXT, listenerHost TEXT, listenerPort INTEGER, 
-        registerPath TEXT, taskPath TEXT, resultPath TEXT, reconnectPath TEXT, riskyMode BOOLEAN,
+        registerPath TEXT, taskPath TEXT, resultPath TEXT, reconnectPath TEXT, implantCallbackIp TEXT, riskyMode BOOLEAN,
         sleepTime INTEGER, sleepJitter INTEGER, killDate TEXT,
         userAgent TEXT, httpAllowCommunicationKey TEXT, killed BOOLEAN)
         """
@@ -571,7 +571,7 @@ def db_initialize_server(np_server: Server):
             """INSERT INTO server
                        VALUES (:guid, :name, CURRENT_TIMESTAMP, :xorKey, :managementIp, :managementPort,
                        :listenerType, :serverIp, :listenerHost, :listenerPort, :registerPath,
-                       :taskPath, :resultPath, :reconnectPath, :riskyMode, :sleepTime, :sleepJitter,
+                       :taskPath, :resultPath, :reconnectPath, :implantCallbackIp, :riskyMode, :sleepTime, :sleepJitter,
                        :killDate, :userAgent, :httpAllowCommunicationKey, :killed)""",
             np_server.asdict(),
         )
@@ -1028,6 +1028,7 @@ def db_get_server_info(server_guid):
                 "managementPort": res["managementPort"],
                 "listenerType": res["listenerType"],
                 "listenerIp": res["serverIp"],
+                "implantCallbackIp": res["implantCallbackIp"],
                 "listenerHost": res["listenerHost"],
                 "listenerPort": res["listenerPort"],
                 "registerPath": res["registerPath"],

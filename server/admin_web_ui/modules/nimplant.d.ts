@@ -53,6 +53,7 @@ declare module Types {
         listenerIp: string;
         listenerPort: number;
         listenerType: string;
+        implantCallbackIp: string;
         managementIp: string;
         managementPort: number;
         registerPath: string;

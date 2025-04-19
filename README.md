@@ -319,7 +319,7 @@ Before using Nimhawk, you must configure the `config.toml` file. It is recommend
 | implants_server  | taskPath          | URI path for implant task retrieval                                                 |
 | implants_server  | resultPath        | URI path for implant result posting                                                 |
 | implants_server  | reconnectPath     | URI path for implant reconnection                                                  |
-| implant   | listener_ip        | Public IP address for implants to connect back to                                      |
+| implant   | listenerIp        | Public IP address for implants to connect back to                                      |
 | implant   | riskyMode         | Compile with advanced but potentially detectable commands                                |
 | implant   | sleepMask         | Use sleep masking techniques (only for exe, not DLL or shellcode)                       |
 | implant   | sleepTime         | Default sleep time in seconds between check-ins                                          |
@@ -949,3 +949,78 @@ For detailed usage of each command, use the `
 If you find Nimhawk useful for your work, consider supporting the project:
 
 [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
+
+# Docker Support
+
+Nimhawk provides official Docker support for easy deployment and consistent environment across different systems.
+
+## Building the Docker Image
+
+Build the Nimhawk Docker image with:
+
+```bash
+docker build -t nimhawk .
+```
+
+## Running Nimhawk in Docker
+
+The container supports multiple operation modes:
+
+```bash
+docker run -it -p 3000:3000 -p 9669:9669 -p 80:80 -p 443:443 \
+  -v nimhawk-data:/nimhawk/server \
+  nimhawk full
+```
+
+### Available Commands
+
+```
+server    - Start the Nimhawk server via nimhawk.py (generates .xorkey file)
+compile   - Compile implants (e.g., docker run nimhawk compile exe nim-debug)
+frontend  - Start only the frontend dev server
+full      - Start both backend and frontend servers
+shell     - Start an interactive shell
+help      - Show this help message
+```
+
+### Port Mapping
+
+The exposed ports must match those configured in your `config.toml` file:
+- `3000`: Frontend React application
+- `9669`: Admin API server (as configured in `admin_api.port`)
+- `80`: Default HTTP listener for implants (as configured in `implants_server.port`)
+- `443`: HTTPS listener (only needed if using HTTPS in `implants_server.type`)
+
+### Important Notes
+
+- The `-it` flags are **required** for proper console interaction with the Nimhawk server, as it relies on interactive terminal input.
+- Using the `server` command will generate a new XOR key file for encryption.
+- The `full` command is recommended for most users as it starts both backend and frontend.
+
+### Examples
+
+```bash
+# Start full Nimhawk (backend + frontend)
+docker run -it -p 3000:3000 -p 9669:9669 -p 80:80 -p 443:443 nimhawk full
+
+# Compile implants only
+docker run -it nimhawk compile all
+
+# Compile implants in debug mode
+docker run -it nimhawk compile all nim-debug
+
+# Launch an interactive shell in the container
+docker run -it nimhawk bash
+```
+
+### Persistent Storage
+
+For persistent data storage, mount a volume to preserve the database:
+
+```bash
+docker run -it -p 3000:3000 -p 9669:9669 -p 80:80 -p 443:443 \
+  -v nimhawk-data:/nimhawk/server \
+  nimhawk full
+```
+
+This ensures your implant data, command history, and files remain available between container restarts.

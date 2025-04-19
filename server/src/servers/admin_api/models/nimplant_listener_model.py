@@ -47,6 +47,7 @@ class NimplantServer(Server):
         self.reconnect_path = config["implants_server"]["reconnectPath"]
         self.task_path = config["implants_server"]["taskPath"]
         self.result_path = config["implants_server"]["resultPath"]
+        self.implant_callback_ip = config["implant"]["implantCallbackIp"]
         self.risky_mode = config["implant"]["riskyMode"]
         self.sleep_time = config["implant"]["sleepTime"]
         self.sleep_jitter = config["implant"]["sleepJitter"]
@@ -68,6 +69,7 @@ class NimplantServer(Server):
             "listenerPort": self.listener_port,
             "registerPath": self.register_path,
             "reconnectPath": self.reconnect_path,
+            "implantCallbackIp": self.implant_callback_ip,
             "taskPath": self.task_path,
             "resultPath": self.result_path,
             "riskyMode": self.risky_mode,

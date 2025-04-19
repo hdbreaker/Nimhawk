@@ -517,7 +517,7 @@ const ServerInfo: NextPage = () => {
     const config = serverInfo.config;
     const adminApiEndpoint = `http://${config.server?.ip || config.managementIp}:${config.server?.port || config.managementPort}`;
     
-    // Fix the construction of implantApiEndpoint to properly use the correct listenerIp property
+    // Fix the construction of implantApiEndpoint to properly use the correct implantCallbackIp property
     const implantApiEndpoint = `${config.implants_server?.type === "HTTPS" || config.listenerType === "HTTPS" ? "https://" : "http://"}${config.implants_server?.ip || config.listenerIp}${
       (config.implants_server?.port || config.listenerPort) && 
       (config.implants_server?.port || config.listenerPort) !== 80 ? 
@@ -791,6 +791,11 @@ const ServerInfo: NextPage = () => {
                   >
                     <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                       <tbody>
+                      <DataRow 
+                          label="Implant Callback URL" 
+                          value={`${serverInfo?.config?.listenerType === "HTTPS" ? "https://" : "http://"}${serverInfo?.config?.implantCallbackIp || 'Loading...'}`} 
+                          isCode={true} 
+                        />
                         <DataRow 
                           label="Register path" 
                           value={serverInfo?.config?.implants_server?.registerPath || serverInfo?.config?.registerPath || 'Loading...'} 

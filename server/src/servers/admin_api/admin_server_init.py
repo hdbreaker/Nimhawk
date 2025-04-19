@@ -93,31 +93,31 @@ def admin_server():
                flask.request.path == '/alive':
                 return f(*args, **kwargs)
                 
-            # Get auth token from cookie or header
-            token = flask.request.cookies.get('auth_token')
+            # Get auth token from cookie, header, or URL parameter (search in all places)
+            token = None
             
-            # Debug the full headers for clarity
-            headers_dict = dict(flask.request.headers)
-            utils.nimplant_print(f"DEBUG: Request headers: {headers_dict}")
+            # 1. Check URL query parameters first (highest priority for download links)
+            token_from_query = flask.request.args.get('token')
+            if token_from_query:
+                utils.nimplant_print(f"DEBUG: Found token in query parameters: {token_from_query[:10]}...")
+                token = token_from_query
             
-            # Check for token in Authorization header
+            # 2. If no token in URL, check cookie
+            if not token:
+                token = flask.request.cookies.get('auth_token')
+                
+            # 3. If still no token, check Authorization header
             if not token:
                 auth_header = flask.request.headers.get('Authorization')
-                utils.nimplant_print(f"DEBUG: Authorization header - {auth_header}")
-                
                 if auth_header and auth_header.startswith('Bearer '):
                     token = auth_header.split(' ')[1]
-                    utils.nimplant_print(f"DEBUG: Token extracted from header - Length: {len(token)} chars, First 10: {token[:10]}...")
-                else:
-                    utils.nimplant_print(f"DEBUG: No Bearer token found in Authorization header")
-                    
+            
             utils.nimplant_print(f"DEBUG: Final token used - {token[:10] if token else 'None'}")
             
             if not token:
-                utils.nimplant_print(f"DEBUG: No token found in cookies or headers - Path: {flask.request.path}")
+                utils.nimplant_print(f"DEBUG: No token found in any source - Path: {flask.request.path}")
                 # For API requests, return JSON error
                 if flask.request.path.startswith('/api/'):
-                    utils.nimplant_print(f"DEBUG: Returning 401 for API request without token")
                     return flask.jsonify({
                         'error': 'Authentication required',
                         'message': 'You must be logged in to access this resource'
@@ -131,7 +131,6 @@ def admin_server():
                 utils.nimplant_print(f"DEBUG: Token verification failed - Path: {flask.request.path}")
                 # For API requests, return JSON error
                 if flask.request.path.startswith('/api/'):
-                    utils.nimplant_print(f"DEBUG: Returning 401 for API request with invalid token")
                     return flask.jsonify({
                         'error': 'Invalid or expired session',
                         'message': 'Please log in again'

@@ -230,7 +230,13 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
 
     const handleDownload = () => {
         if (buildResult && buildResult.download_url) {
-            window.open(`${endpoints.server.replace('/api/server', '')}${buildResult.download_url}`, '_blank');
+            // Obtener el token de autenticación del localStorage
+            const token = localStorage.getItem('auth_token');
+            
+            // Incluir el token como parámetro de URL para autenticación
+            const downloadUrl = `${endpoints.server.replace('/api/server', '')}${buildResult.download_url}?token=${token}`;
+            
+            window.open(downloadUrl, '_blank');
         }
     };
 

@@ -332,6 +332,9 @@ def main():
         xor_key = get_xor_key()
         print(f"Using XOR key: {xor_key} for server encryption")
         
+        # Wait for 5 seconds before starting the server to avoid race condition
+        time.sleep(5)
+
         name = "Nimhawk"
         os.chdir("server")
         run(["python3", "main.py", name])

@@ -4,6 +4,7 @@ __pycache__/
 .xorkey
 *.bin
 *.dbss
+*.db
 *.db-*
 *.dll
 *.exe

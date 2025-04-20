@@ -153,36 +153,39 @@ const NimplantList: NextPage = () => {
             gap: '0',
             margin: '0', 
             alignItems: 'center',
-            width: '100%'
+            width: '100%',
+            background: '#f6f8fa',
+            borderBottom: '1px solid #e1e4e8',
+            boxShadow: 'none'
           }}>
             {/* Column for Ping */}
             <Box style={{ width: '10%', textAlign: 'center' }}>
-              <Text size="lg" fw={600}>Ping</Text>
+              <Text size="lg" fw={600} c="#24292e">Ping</Text>
             </Box>
             
             {/* Column for ID */}
             <Box style={{ width: '20%', paddingLeft: '0' }}>
-              <Text size="lg" fw={600}>Implant ID</Text>
+              <Text size="lg" fw={600} c="#24292e">Implant ID</Text>
             </Box>
             
             {/* Column for System */}
             <Box style={{ width: '23%', paddingLeft: '0' }}>
-              <Text size="lg" fw={600}>Operating System</Text>
+              <Text size="lg" fw={600} c="#24292e">Operating System</Text>
             </Box>
             
             {/* Column for Network */}
             <Box style={{ width: '22%', paddingLeft: '0' }}>
-              <Text size="lg" fw={600}>Network</Text>
+              <Text size="lg" fw={600} c="#24292e">Network</Text>
             </Box>
             
             {/* Column for Workspace */}
             <Box style={{ width: '15%', paddingLeft: '0' }}>
-              <Text size="lg" fw={600}>Workspace</Text>
+              <Text size="lg" fw={600} c="#24292e">Workspace</Text>
             </Box>
             
             {/* Column for Actions */}
             <Box style={{ width: '10%', display: 'flex', justifyContent: 'center' }}>
-              <Text size="lg" fw={600}>Action</Text>
+              <Text size="lg" fw={600} c="#24292e">Action</Text>
             </Box>
           </Box>
           

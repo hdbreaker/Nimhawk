@@ -854,7 +854,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                 <Paper shadow="xs" radius="md" p="md" style={{ border: '1px solid #E9ECEF' }}>
                   <Text fw={600} size="sm" mb="md">Activity statistics</Text>
                   <Grid>
-                    <Grid.Col span={3}>
+                    <Grid.Col span={4}>
                       <Card padding="md" radius="md" style={{ backgroundColor: '#f8f9fa' }}>
                         <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Command Count</Text>
                         <Text fw={700} size="xl" c="blue">
@@ -862,15 +862,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                         </Text>
                       </Card>
                     </Grid.Col>
-                    <Grid.Col span={3}>
-                      <Card padding="md" radius="md" style={{ backgroundColor: '#f8f9fa' }}>
-                        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>First Seen</Text>
-                        <Text fw={500}>
-                          {infoResult.isLoading ? <Loader size="xs" /> : (timeSince(nimplantInfo?.firstCheckin) || 'Unknown')}
-                        </Text>
-                      </Card>
-                    </Grid.Col>
-                    <Grid.Col span={3}>
+                    <Grid.Col span={4}>
                       <Card padding="md" radius="md" style={{ backgroundColor: '#f8f9fa' }}>
                         <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Check-in Count</Text>
                         <Text fw={700} size="xl" c="teal">
@@ -879,10 +871,10 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                         </Text>
                       </Card>
                     </Grid.Col>
-                    <Grid.Col span={3}>
+                    <Grid.Col span={4}>
                       <Card padding="md" radius="md" style={{ backgroundColor: '#f8f9fa' }}>
                         <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Data Transferred</Text>
-                        <Text fw={500}>
+                        <Text fw={700} c="dimmed"  size="xl">
                           {infoResult.isLoading ? <Loader size="xs" /> : (formatBytes(stats.dataTransferred || 0))}
                         </Text>
                       </Card>
@@ -892,7 +884,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
 
                 {/* Section of dynamic log file history */}
                 <Paper shadow="xs" radius="md" p="md" mt="lg" style={{ border: '1px solid #E9ECEF' }}>
-                  <Text fw={600} size="sm" mb="md">Activity Log</Text>
+                  <Text fw={700} size="sm" mb="md">Activity Log</Text>
                   
                   <FileTransferLog guid={guid} />
                 </Paper>

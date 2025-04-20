@@ -111,7 +111,8 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 [![Successful build completion](docs/images/builder_sucess.png)](docs/images/builder_sucess.png)
 *Upon successful compilation, operators receive a summary of generated files with direct download capability for deployment.*
 
-[![Multi-Status Visual Management>](docs/images/multi-status.png)](docs/images/multi-status.png)
+### Multi-status visual management
+[![Multi-Status Visual Management](docs/images/multi-status.png)](docs/images/multi-status.png)
 *Nimhawk's advanced status tracking system uses color-coding and icons to represent different implant states: Active (green), Late (orange), Disconnected (red), and Inactive (gray). This enhances situational awareness during operations.*
 
 ### Advanced search and filtering

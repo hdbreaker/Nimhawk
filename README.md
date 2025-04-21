@@ -1155,3 +1155,10 @@ watch -n 1 "netstat -an | grep :80"
 # View redirector logs
 tail -f /var/log/redirector.log
 ```
+
+## TODO
+I break some stuff in Implant:
+  - inlineExecute.nim
+  - executeAssembly.nim
+
+  When I changed the behaviour of file upload in Admin Server and the process of upload.nim, so I need to check this again and fix it.

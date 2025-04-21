@@ -1,0 +1,8 @@
+is_global = true
+build_property.RootNamespace = nimhawk
+build_property.ProjectDir = /Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/
+build_property.EnableComHosting = 
+build_property.EnableGeneratedComInterfaceComImportInterop = 
+build_property.CsWinRTUseWindowsUIXamlProjections = false
+build_property.EffectiveAnalysisLevelStyle = 
+build_property.EnableCodeStyleSeverity = 

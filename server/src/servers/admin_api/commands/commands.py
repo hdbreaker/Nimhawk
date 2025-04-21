@@ -55,56 +55,61 @@ def get_command_help(command):
 
 
 # Handle pre-processing for the 'execute-assembly' command
-def execute_assembly(np: NimPlant, args, raw_command):
-    # TODO: Make AMSI/ETW arg parsing more user-friendly
-    amsi = "1"
-    etw = "1"
-
-    k = 0
-    for i in range(len(args)):
-        if args[i].startswith("BYPASSAMSI"):
-            amsi = args[i].split("=")[-1]
-            k += 1
-        if args[i].startswith("BLOCKETW"):
-            etw = args[i].split("=")[-1]
-            k += 1
-
-    try:
-        file = args[k]
-    except IndexError:
+def execute_assembly(np, args, raw_command):
+    # Debugging: Print received arguments in detail
+    print(f"EXECUTE-ASSEMBLY DEBUG: Raw command: '{raw_command}'")
+    print(f"EXECUTE-ASSEMBLY DEBUG: Args length: {len(args)}")
+    print(f"EXECUTE-ASSEMBLY DEBUG: Args content: {args}")
+    
+    # Verify arguments
+    if len(args) < 3:
         utils.nimplant_print(
-            "Invalid number of arguments received. Usage: 'execute-assembly <BYPASSAMSI=0> <BLOCKETW=0> [localfilepath] <arguments>'.",
+            "Invalid number of arguments received. Usage: 'execute-assembly BYPASSAMSI=0|1 BLOCKETW=0|1 <hash_del_archivo> [argumentos]'.",
             np.guid,
             raw_command,
         )
         return
-
-    # Check if assembly is provided as file path (normal use), GUI use is handled via API
-    assembly = None
+    
     try:
-        if os.path.isfile(file):
-            with open(file, "rb") as f:
-                assembly = f.read()
-        else:
-            raise FileNotFoundError
-    except:
+        # Parse AMSI flag
+        if not args[0].startswith("BYPASSAMSI="):
+            utils.nimplant_print(
+                "First argument must be BYPASSAMSI=0|1",
+                np.guid,
+                raw_command,
+            )
+            return
+        amsi_flag = args[0].split('=')[1]
+        
+        # Parse ETW flag
+        if not args[1].startswith("BLOCKETW="):
+            utils.nimplant_print(
+                "Second argument must be BLOCKETW=0|1",
+                np.guid,
+                raw_command,
+            )
+            return
+        etw_flag = args[1].split('=')[1]
+        
+        # Get the assembly hash (third argument)
+        assembly_hash = args[2]
+        
+        # The rest are additional arguments for the assembly
+        assembly_args = args[3:] if len(args) > 3 else []
+        
+        # Construct the command to send to the implant
+        command = ["execute-assembly", amsi_flag, etw_flag, assembly_hash] + assembly_args
+        
+        # Send the command
+        guid = np.add_task(command, task_friendly=raw_command)
+        utils.nimplant_print("Staged execute-assembly command for Implant.", np.guid, task_guid=guid)
+        
+    except Exception as e:
         utils.nimplant_print(
-            "Invalid assembly file specified.",
+            f"Error processing execute-assembly command: {str(e)}",
             np.guid,
             raw_command,
         )
-        return
-
-    assembly = compress(assembly, level=9)
-    assembly = encrypt_data(assembly, np.encryption_key)
-    assembly_arguments = " ".join(args[k + 1 :])
-
-    command = list(["execute-assembly", amsi, etw, assembly, assembly_arguments])
-
-    guid = np.add_task(command, task_friendly=raw_command)
-    utils.nimplant_print(
-        "Staged execute-assembly command for Implant.", np.guid, task_guid=guid
-    )
 
 
 # Handle pre-processing for the 'inline-execute' command

@@ -1,0 +1,3 @@
+/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/bin/Release/net48/win-x64/publish/nimhawk.exe
+/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/bin/Release/net48/win-x64/publish/nimhawk.exe.config
+/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/bin/Release/net48/win-x64/publish/nimhawk.pdb

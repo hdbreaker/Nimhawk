@@ -1,8 +1,9 @@
 import { Button, Chip, FileButton, Flex, Input, Modal, SimpleGrid, Space, Text } from "@mantine/core"
 import { Dispatch, SetStateAction, useState } from "react";
 import { FaTerminal } from "react-icons/fa"
-import { submitCommand, uploadFile } from "../../modules/nimplant";
-
+import { submitCommand, endpoints } from "../../modules/nimplant";
+import { api } from "../../modules/api";
+import { notifications } from "@mantine/notifications";
 
 interface IProps {
     modalOpen: boolean;
@@ -17,44 +18,96 @@ function ExecuteAssemblyModal({ modalOpen, setModalOpen, npGuid }: IProps) {
     const [patchEtw, setPatchEtw] = useState(true);
     const [submitLoading, setSubmitLoading] = useState(false);
 
+    console.log(`[ExecuteAssemblyModal] Component rendered. npGuid: ${npGuid}`);
+
     const submit = async () => {
-        // Check if a file is selected
-        if (!assemblyFile || assemblyFile === null) {
+        console.log("[ExecuteAssemblyModal] SUBMIT FUNCTION CALLED.");
+        
+        console.log(`[ExecuteAssemblyModal] Checking state: assemblyFile=${assemblyFile?.name}, npGuid=${npGuid}`);
+        
+        if (!assemblyFile) {
+            console.log("[ExecuteAssemblyModal] ABORT: No assembly file selected.");
+            notifications.show({ 
+                title: 'Input Required',
+                message: 'Please select a .NET binary file first.',
+                color: 'orange',
+            });
             return;
         }
-        
+
+        if (!npGuid) {
+            console.error("[ExecuteAssemblyModal] ABORT: npGuid is undefined.");
+            notifications.show({
+                title: 'Error',
+                message: 'No active Nimplant selected.',
+                color: 'red',
+            });
+            return; 
+        }
+
+        console.log("[ExecuteAssemblyModal] Checking required objects/vars:");
+        console.log("[ExecuteAssemblyModal] typeof api.upload:", typeof api?.upload);
+        console.log("[ExecuteAssemblyModal] typeof endpoints.upload:", typeof endpoints?.upload);
+        if (typeof api?.upload !== 'function' || typeof endpoints?.upload !== 'string') {
+            const errorMsg = "Code Error: api.upload or endpoints.upload is not configured correctly.";
+            console.error(`[ExecuteAssemblyModal] ABORT: ${errorMsg}`);
+             notifications.show({ title: 'Code Error', message: errorMsg, color: 'red' });
+             return;
+        }
+
         try {
+            console.log("[ExecuteAssemblyModal] Entering TRY block. Setting loading=true.");
             setSubmitLoading(true);
+
+            console.log("[ExecuteAssemblyModal] FormData created.");
+
             const formData = new FormData();
             formData.append('file', assemblyFile);
             formData.append('filename', assemblyFile.name);
-            let uploadUrl = endpoints.upload;
-            if (npGuid) {
-                uploadUrl = `${endpoints.upload}?nimplant_guid=${npGuid}`;
+            console.log("[ExecuteAssemblyModal] FormData created.");
+
+            let uploadUrl = `${endpoints.upload}?nimplant_guid=${npGuid}`;
+            console.log(`[ExecuteAssemblyModal] Final Upload URL: ${uploadUrl}`);
+
+            console.log("[ExecuteAssemblyModal] >>> Calling api.upload NOW...");
+            const uploadResult = await api.upload(uploadUrl, formData); 
+            console.log("[ExecuteAssemblyModal] <<< api.upload finished. Result:", uploadResult);
+
+            if (!uploadResult || !uploadResult.hash) {
+                 const errorMsg = "File upload failed or did not return a valid hash.";
+                 console.error(`[ExecuteAssemblyModal] ${errorMsg}`);
+                 throw new Error(errorMsg);
             }
+             notifications.show({ 
+                title: 'Upload Success',
+                message: `File uploaded. Hash: ${uploadResult.hash}`,
+                color: 'green',
+            });
 
-            // 1. Sube el archivo
-            const uploadResult = await api.upload(uploadUrl, formData); // Llama a /api/upload
-
-            // 2. Prepara los argumentos
             const amsi = patchAmsi ? 1 : 0;
             const etw = patchEtw ? 1 : 0;
-            const executeCommand = `execute-assembly BYPASSAMSI=${amsi} BLOCKETW=${etw} "${uploadResult.hash}" ${assemblyArguments}`;
+            const argsString = assemblyArguments.trim() ? ` ${assemblyArguments.trim()}` : ""; 
+            const executeCommand = `execute-assembly BYPASSAMSI=${amsi} BLOCKETW=${etw} "${uploadResult.hash}"${argsString}`;
+            console.log(`[ExecuteAssemblyModal] Final Command: ${executeCommand}`); 
 
-            console.log(`Sending execute-assembly command: ${executeCommand}`); // Verifica el comando aquí
-
-            // 3. Envía el comando correcto al backend
-            if (npGuid) {
-                submitCommand(npGuid, executeCommand, callbackClose);
-            }
+            console.log(`[ExecuteAssemblyModal] >>> Calling submitCommand for npGuid: ${npGuid}`);
+            submitCommand(npGuid, executeCommand, callbackClose); 
+            console.log("[ExecuteAssemblyModal] <<< submitCommand called.");
 
         } catch (error) {
-            // ... (manejo de error) ...
+            console.error("[ExecuteAssemblyModal] CATCH block executed. Error:", error);
+            notifications.show({
+                title: 'Operation Error',
+                message: `Process failed: ${error instanceof Error ? error.message : String(error)}`,
+                color: 'red',
+            });
+            console.log("[ExecuteAssemblyModal] Setting loading=false in CATCH block.");
+            setSubmitLoading(false);
         }
     };
 
     const callbackClose = () => {
-        // Reset state
+        console.log("[ExecuteAssemblyModal] CALLBACK_CLOSE called. Resetting state."); 
         setModalOpen(false);
         setAssemblyFile(null);
         setAssemblyArguments("");
@@ -78,15 +131,21 @@ function ExecuteAssemblyModal({ modalOpen, setModalOpen, npGuid }: IProps) {
 
             <SimpleGrid cols={1}>
             {/* File selector */}
-            <FileButton onChange={setAssemblyFile}>
+            <FileButton 
+                onChange={(file) => {
+                    console.log("[ExecuteAssemblyModal] File selected:", file);
+                    setAssemblyFile(file);
+                }}
+                accept=".exe,.dll"
+            >
                 {(props) => <Button color={"gray"} {...props}>
-                    {assemblyFile ? "File: " + assemblyFile.name  : "Select .NET binary"}
+                    {assemblyFile ? "File: " + assemblyFile.name  : "Select .NET binary (.exe/.dll)"}
                 </Button>}
             </FileButton>
             
             {/* Arguments and options */}
             <Input 
-                placeholder="Arguments"
+                placeholder="Arguments (optional)"
                 value={assemblyArguments}
                 onChange={(event) => setAssemblyArguments(event.currentTarget.value)}
             />
@@ -96,8 +155,8 @@ function ExecuteAssemblyModal({ modalOpen, setModalOpen, npGuid }: IProps) {
                 justify="center"
                 align="center"
                 >
-                <Chip checked={patchAmsi} onChange={setPatchAmsi} variant="outline">Patch AMSI</Chip>
-                <Chip checked={patchEtw} onChange={setPatchEtw} variant="outline">Block ETW</Chip>
+                <Chip checked={patchAmsi} onChange={(checked) => setPatchAmsi(checked)} variant="outline">Patch AMSI</Chip>
+                <Chip checked={patchEtw} onChange={(checked) => setPatchEtw(checked)} variant="outline">Block ETW</Chip>
             </Flex>
 
             </SimpleGrid>
@@ -110,6 +169,7 @@ function ExecuteAssemblyModal({ modalOpen, setModalOpen, npGuid }: IProps) {
                 leftSection={<FaTerminal />}
                 style={{width: '100%'}}
                 loading={submitLoading}
+                disabled={!assemblyFile || submitLoading}
             >
                 Execute
             </Button>

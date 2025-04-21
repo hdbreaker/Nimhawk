@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "vHxY5prn/u0=",
+  "success": true,
+  "projectFilePath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj",
+  "expectedPackageFiles": [
+    "/Users/hdbreaker/.nuget/packages/microsoft.netframework.referenceassemblies/1.0.3/microsoft.netframework.referenceassemblies.1.0.3.nupkg.sha512",
+    "/Users/hdbreaker/.nuget/packages/microsoft.netframework.referenceassemblies.net48/1.0.3/microsoft.netframework.referenceassemblies.net48.1.0.3.nupkg.sha512"
+  ],
+  "logs": []
+}

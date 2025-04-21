@@ -74,7 +74,7 @@ function InlineExecuteModal({ modalOpen, setModalOpen, npGuid }: IProps) {
 
             const executeCommand = `inline-execute "${uploadResult.hash}" "${bofEntryPoint}"${finalArgString}`;
 
-            console.log(`Sending inline-execute command: ${executeCommand}`);
+            console.log(`Sending execute-assembly command: ${executeCommand}`);
 
             if (npGuid) {
                 submitCommand(npGuid, executeCommand, callbackClose);

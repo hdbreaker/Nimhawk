@@ -1158,7 +1158,6 @@ tail -f /var/log/redirector.log
 
 ## TODO
 I break some stuff in Implant:
-  - inlineExecute.nim
   - executeAssembly.nim
   - I aso need to find where server/server/logs/admin_api_nimhawk.log is created (when /logs folder exist in root)
 

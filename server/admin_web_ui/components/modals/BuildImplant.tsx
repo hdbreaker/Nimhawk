@@ -230,10 +230,10 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
 
     const handleDownload = () => {
         if (buildResult && buildResult.download_url) {
-            // Obtener el token de autenticación del localStorage
+            // Get the authentication token from localStorage
             const token = localStorage.getItem('auth_token');
             
-            // Incluir el token como parámetro de URL para autenticación
+            // Include the token as a URL parameter for authentication
             const downloadUrl = `${endpoints.server.replace('/api/server', '')}${buildResult.download_url}?token=${token}`;
             
             window.open(downloadUrl, '_blank');

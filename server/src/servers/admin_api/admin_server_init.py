@@ -222,19 +222,19 @@ def admin_server():
             # Ensure the release directory exists
             os.makedirs(release_dir, exist_ok=True)
 
-            # NUEVO CÓDIGO: Vaciar la carpeta release antes de compilar
-            app.build_status[build_id]['progress'] = 'Limpiando carpeta release...'
+            # NEW CODE: Empty the release folder before compiling
+            app.build_status[build_id]['progress'] = 'Cleaning release directory...'
             utils.nimplant_print(f"Cleaning release directory: {release_dir}")
             try:
-                # Listar todos los archivos en la carpeta release
+                # List all files in the release folder
                 for filename in os.listdir(release_dir):
                     file_path = os.path.join(release_dir, filename)
-                    # Verificar si es un archivo regular (no directorio)
+                    # Check if it's a regular file (not a directory)
                     if os.path.isfile(file_path):
-                        # Borrar el archivo
+                        # Delete the file
                         os.unlink(file_path)
                         utils.nimplant_print(f"Deleted file: {file_path}")
-                    # Si hay subdirectorios, también los podemos borrar
+                    # If there are subdirectories, we can also delete them
                     elif os.path.isdir(file_path):
                         import shutil
                         shutil.rmtree(file_path)
@@ -243,7 +243,7 @@ def admin_server():
             except Exception as clean_error:
                 error_msg = f"Error cleaning release directory: {str(clean_error)}"
                 utils.nimplant_print(error_msg)
-                # Continuar con la compilación a pesar del error de limpieza
+                # Continue with the compilation despite the cleaning error
             
             # Build the command to execute
             if debug:
@@ -1012,24 +1012,24 @@ def admin_server():
             return flask.jsonify({"error": "No file selected"}), 400
 
         if file:
-            # CRÍTICO: Obtener targetPath si fue enviado
+            # CRITICAL: Get targetPath if it was sent
             target_path = flask.request.form.get('targetPath', '')
             utils.nimplant_print(f"DEBUG: Received targetPath: '{target_path}'")
             
-            # Guardar el archivo físicamente con su nombre original
+            # Save the file physically with its original name
             os.makedirs(upload_path, exist_ok=True)
             filename = secure_filename(file.filename)
             full_path = os.path.join(upload_path, filename)
             file.save(full_path)
             
-            # Calcular hash del archivo
+            # Calculate hash of the file
             file_hash = hashlib.md5(full_path.encode("UTF-8")).hexdigest()
             
-            # CRÍTICO: Si hay targetPath, usarlo como nombre almacenado en vez del original
+            # CRITICAL: If there is targetPath, use it as the stored name instead of the original
             original_filename = target_path.strip() if target_path.strip() else filename
             utils.nimplant_print(f"DEBUG: Using filename for DB: '{original_filename}'")
             
-            # Almacenar en la base de datos con el nombre correcto
+            # Store in the database with the correct name
             db_store_file_hash_mapping(file_hash, original_filename, full_path)
             
             # Register the file in the NimPlant object for hosting

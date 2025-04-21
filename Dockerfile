@@ -4,11 +4,11 @@ LABEL maintainer="Alejandro Parodi (@SecSignal)"
 
 WORKDIR /nimhawk
 
-# Configurar variables para instalación no interactiva
+# Configure variables for non-interactive installation
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-# Instalar dependencias del sistema y Python
+# Install system and Python dependencies
 RUN apt-get update && apt-get install --no-install-recommends -y \
     build-essential \
     curl \
@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Python 3.11 sin interacción
+# Install Python 3.11 without interaction
 RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y \
     && apt-get update \
     && apt-get install -y python3.11 python3.11-venv python3.11-dev \
@@ -54,7 +54,7 @@ RUN sed -i 's|amd64.windows.gcc.path = "/opt/homebrew/Cellar/mingw-w64/12.0.0_2/
     && echo "# Docker environment MinGW configuration" >> /nimhawk/implant/nim.cfg \
     && echo "amd64.windows.gcc.path = \"/usr/bin\"" >> /nimhawk/implant/nim.cfg
 
-# Verificar instalación de MinGW
+# Verify MinGW installation
 RUN which x86_64-w64-mingw32-gcc || echo "MinGW no encontrado"
 
 # Instalar requerimientos de Python (usando python3.11 directamente)

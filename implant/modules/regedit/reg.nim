@@ -3,7 +3,7 @@ from strutils import join, split, startsWith, replace, toUpperAscii
 
 # Query or modify the Windows registry
 proc reg*(args : varargs[string]) : string =
-    # Variables locales con tipos explícitos
+    # Local variables with explicit types
     var
         command: string
         path: string

@@ -180,24 +180,24 @@ def handle_command(raw_command, np: NimPlant = None):
 
 def handle_local_command(np: NimPlant, raw_command: str, result: str):
     """
-    Función auxiliar para manejar comandos locales que no requieren comunicación con el implante.
+    Helper function to handle local commands that don't require communication with the implant.
     
     Args:
-        np: Objeto NimPlant asociado con el comando
-        raw_command: El comando completo tal como fue ingresado
-        result: El resultado del comando para mostrar y registrar
+        np: NimPlant object associated with the command
+        raw_command: The complete command as entered
+        result: The command result to display and log
         
     Returns:
         None
     """
-    # Generar un GUID único para este comando local
+    # Generate a unique GUID for this local command
     task_guid = f"local-{np.guid}-{utils_time.timestamp().replace(' ','-').replace('/','')}"
     
-    # Registrar el comando como tarea en la base de datos
+    # Log the command as a task in the database
     db.db_nimplant_log(np, task_guid=task_guid, task=raw_command, task_friendly=raw_command)
     
-    # Registrar el resultado en la base de datos
+    # Log the result in the database
     db.db_nimplant_log(np, task_guid=task_guid, result=result)
     
-    # Mostrar el resultado en la consola
+    # Display the result in the console
     utils.nimplant_print(result, np.guid, task_guid=task_guid)

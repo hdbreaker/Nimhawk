@@ -44,7 +44,7 @@ killDate = ""
 # Choosing an inconspicuous but uncommon user-agent is therefore recommended
 userAgent = "Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko"
 httpAllowCommunicationKey = "PASIOnodnoqonasond12314"
-# Número máximo de intentos de reconexión antes de reintentar registro completo
+# Maximum number of reconnection attempts before retrying full registration
 maxReconnectionAttemps = 3
 
 [auth]

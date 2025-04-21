@@ -681,7 +681,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                         padding: '0 8px',
                         textTransform: 'uppercase'
                       }}
-                      title={`UUID completo: ${nimplantInfo.workspace_uuid}`}
+                      title={`Complete UUID: ${nimplantInfo.workspace_uuid}`}
                     >
                       Workspace: {nimplantInfo.workspace_uuid.substring(0, 8)}...
                     </Badge>

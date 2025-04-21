@@ -7,10 +7,8 @@ import src.servers.admin_api.commands.commands as commands
 import src.servers.admin_api.models.nimplant_listener_model as listener
 from src.servers.admin_api.models.nimplant_client_model import NimPlant
 import src.config.db as db
-
-
 import src.util.utils as utils
-
+import src.util.time as utils_time
 
 def get_commands():
     with open("src/servers/admin_api/commands/commands.yaml", "r", encoding="UTF-8") as f:
@@ -54,12 +52,6 @@ def handle_command(raw_command, np: NimPlant = None):
             msg = np_server.get_nimplant_info(include_all=True)
             utils.nimplant_print(msg)
             return
-        elif cmd == "select":
-            if len(args) == 1:
-                np_server.select_nimplant(args[0])
-            else:
-                utils.nimplant_print("Invalid argument length. Usage: 'select [Implant ID]'.")
-            return
         elif cmd == "exit":
             commands.exit_server_console()
             return
@@ -97,16 +89,14 @@ def handle_command(raw_command, np: NimPlant = None):
 
         elif cmd == "getpid":
             msg = f"Implant PID is {np.pid}"
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "getprocname":
             msg = f"Implant is running inside of {np.pname}"
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "help":
             try:
-                utils.nimplant_print(f"DEBUG: Processing help command with {len(args)} arguments", np.guid)
-                
                 if len(args) >= 1:
                     msg = commands.get_command_help(args[0])
                 else:
@@ -116,32 +106,7 @@ def handle_command(raw_command, np: NimPlant = None):
                 if msg is None:
                     msg = "No help content available."
                 
-                utils.nimplant_print(f"DEBUG: Help message length: {len(str(msg))}", np.guid)
-                
-                # Register the help message in the history using the standard function
-                utils.nimplant_print(msg, np.guid, raw_command)
-                
-                # Insert directly into the history collection (alternative method)
-                # This ensures the help command and its response are saved correctly
-                try:
-                    # Format for the history entry
-                    entry = {
-                        "nimplantGuid": np.guid,
-                        "task": raw_command,
-                        "taskFriendly": raw_command,
-                        "taskTime": time.timestamp(),
-                        "result": msg,
-                        "resultTime": time.timestamp()
-                    }
-                    
-                    # Insert into the database
-                    db.db_nimplant_log(np, task_guid=None, task=raw_command, task_friendly=raw_command, result=msg)
-                    utils.nimplant_print(f"DEBUG: Explicit insertion into history completed", np.guid)
-                except Exception as db_error:
-                    utils.nimplant_print(f"ERROR in direct DB insertion: {str(db_error)}", np.guid)
-                
-                # Verify that it has been registered correctly
-                utils.nimplant_print(f"DEBUG: Help message registered for nimplant {np.guid}", np.guid)
+                handle_local_command(np, raw_command, msg)
             except Exception as e:
                 utils.nimplant_print(f"ERROR in help command: {str(e)}", np.guid, raw_command)
                 import traceback
@@ -149,38 +114,28 @@ def handle_command(raw_command, np: NimPlant = None):
                 
         elif cmd == "hostname":
             msg = f"Implant hostname is: {np.hostname}"
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "ipconfig":
             msg = f"Implant external IP address is: {np.ip_external}\n"
             msg += f"Implant internal IP address is: {np.ip_internal}"
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "list":
             msg = np_server.get_nimplant_info()
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "listall":
             msg = np_server.get_nimplant_info(include_all=True)
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "nimplant":
             msg = np.get_info_pretty()
-            utils.nimplant_print(msg, np.guid, raw_command)
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "osbuild":
             msg = f"Implant OS build is: {np.os_build}"
-            utils.nimplant_print(msg, np.guid, raw_command)
-
-        elif cmd == "select":
-            if len(args) == 1:
-                np_server.select_nimplant(args[0])
-            else:
-                utils.nimplant_print(
-                    "Invalid argument length. Usage: 'select [Implant ID]'.",
-                    np.guid,
-                    raw_command,
-                )
+            handle_local_command(np, raw_command, msg)
 
         elif cmd == "exit":
             commands.exit_server_console()
@@ -222,3 +177,27 @@ def handle_command(raw_command, np: NimPlant = None):
             np.guid,
             raw_command,
         )
+
+def handle_local_command(np: NimPlant, raw_command: str, result: str):
+    """
+    Función auxiliar para manejar comandos locales que no requieren comunicación con el implante.
+    
+    Args:
+        np: Objeto NimPlant asociado con el comando
+        raw_command: El comando completo tal como fue ingresado
+        result: El resultado del comando para mostrar y registrar
+        
+    Returns:
+        None
+    """
+    # Generar un GUID único para este comando local
+    task_guid = f"local-{np.guid}-{utils_time.timestamp().replace(' ','-').replace('/','')}"
+    
+    # Registrar el comando como tarea en la base de datos
+    db.db_nimplant_log(np, task_guid=task_guid, task=raw_command, task_friendly=raw_command)
+    
+    # Registrar el resultado en la base de datos
+    db.db_nimplant_log(np, task_guid=task_guid, result=result)
+    
+    # Mostrar el resultado en la consola
+    utils.nimplant_print(result, np.guid, task_guid=task_guid)

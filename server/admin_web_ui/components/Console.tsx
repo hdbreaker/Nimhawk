@@ -17,6 +17,7 @@ type ConsoleType = {
   inputFunction?: (guid: string, command: string) => void
   historyLimit?: number
   onUpdateHistoryLimit?: (newLimit: number, disableAutoRefresh?: boolean) => void
+  onImplantSelect?: (implantId: string) => void
 }
 
 // Define the console data structure for typing
@@ -36,7 +37,8 @@ function Console({
   guid, 
   inputFunction,
   historyLimit = 25, // Default value reduced to 25 entries
-  onUpdateHistoryLimit 
+  onUpdateHistoryLimit,
+  onImplantSelect
 }: ConsoleType) {
   const largeScreen = useMediaQuery('(min-width: 800px)');
 
@@ -77,7 +79,26 @@ function Console({
     if (enteredCommand.trim() === '' || (dropdownOpened && autocompleteOptions.length > 0)) {
       return;
     }
-    
+
+    // IMPORTANT: Early interception of select command - MUST come first
+    if (enteredCommand.toLowerCase().trim().startsWith('select')) {
+      const parts = enteredCommand.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const targetImplantId = parts[1].trim();
+        console.log("Intercepted SELECT command in console, handling locally only");
+        
+        // Only handle locally - DO NOT send to backend
+        setHistoryPosition(0);
+        setEnteredCommand('');
+        
+        if (onImplantSelect) {
+          onImplantSelect(targetImplantId);
+        }
+        
+        return;
+      }
+    }
+
     // Validation to ensure we have what's needed to execute commands
     if (inputFunction === undefined || guid === undefined) {
       return;

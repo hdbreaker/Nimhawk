@@ -175,7 +175,7 @@ class NimPlant:
         self.add_task(["kill"])
 
     def get_info_pretty(self):
-        return time.pretty_print(vars(self))
+        return utils.pretty_print(vars(self))
 
     def get_next_task(self):
         if not self.pending_tasks or len(self.pending_tasks) == 0:

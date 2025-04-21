@@ -13,6 +13,7 @@ import ImplantFileTransfersList from './ImplantFileTransfersList';
 import classes from '../styles/liststyles.module.css';
 import { useRouter } from 'next/router';
 import type Types from '../modules/nimplant.d'
+import { notifications } from '@mantine/notifications';
 
 // Interface for file transfers
 interface FileTransfer {
@@ -82,8 +83,9 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   const [lastSeenText, setLastSeenText] = useState<string>('');
   
   // SWR hooks - Only fetch if drawer is open
+  const [currentGuid, setCurrentGuid] = useState(guid);
   const infoResult = useSWR<NimplantInfo>(
-    opened ? endpoints.nimplantInfo(guid) : null,
+    opened ? endpoints.nimplantInfo(currentGuid) : null,
     swrFetcher,
     { 
       refreshInterval: opened ? 5000 : 0,
@@ -91,11 +93,11 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
       revalidateOnMount: true,
       dedupingInterval: 1000, // Reduced to allow more frequent updates
       onSuccess: (data) => {
-        console.log(`SWR Success - Implant #${guid} data:`, data);
+        console.log(`SWR Success - Implant #${currentGuid} data:`, data);
         // Don't update lastSeenText here, it will be handled by the useEffect
       },
       onError: (error) => {
-        console.error(`SWR Error - Failed to fetch implant #${guid} data:`, error);
+        console.error(`SWR Error - Failed to fetch implant #${currentGuid} data:`, error);
       }
     }
   );
@@ -110,7 +112,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   
   const consoleResult = useSWR(
-    opened ? endpoints.nimplantConsole(guid, historyLimit) : null,
+    opened ? endpoints.nimplantConsole(currentGuid, historyLimit) : null,
     swrFetcher,
     { 
       refreshInterval: opened && autoRefresh ? 1000 : 0,
@@ -136,12 +138,12 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   // Debugging to see implant data
   useEffect(() => {
     if (infoResult.data) {
-      console.log(`Implant #${guid} data:`, infoResult.data);
+      console.log(`Implant #${currentGuid} data:`, infoResult.data);
       console.log(`Active: ${infoResult.data.active}`, 
                  `Late: ${infoResult.data.late}`, 
                  `Disconnected: ${infoResult.data.disconnected}`);
     }
-  }, [infoResult.data, guid]);
+  }, [infoResult.data, currentGuid]);
   
   // Replace the current useEffect for time updates with this one
   useEffect(() => {
@@ -149,11 +151,11 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     if (!opened || !nimplantInfo) return;
     
     // Debug info to check raw value
-    console.log(`[${guid}] Raw lastCheckin value:`, nimplantInfo.lastCheckin);
+    console.log(`[${currentGuid}] Raw lastCheckin value:`, nimplantInfo.lastCheckin);
     
     // If the date is undefined or null, use status-based values
     if (!nimplantInfo.lastCheckin) {
-      console.log(`[${guid}] No lastCheckin value available`);
+      console.log(`[${currentGuid}] No lastCheckin value available`);
       
       if (nimplantInfo.active) {
         if (nimplantInfo.disconnected) {
@@ -173,7 +175,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     let dateToProcess = nimplantInfo.lastCheckin;
     if (dateToProcess.includes('|')) {
       dateToProcess = dateToProcess.split('|')[0];
-      console.log(`[${guid}] Using first part:`, dateToProcess);
+      console.log(`[${currentGuid}] Using first part:`, dateToProcess);
     }
     
     try {
@@ -185,15 +187,15 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         
         // Create date object (month is 0-indexed in JavaScript)
         const dateObj = new Date(year, month - 1, day, hours, minutes, secs);
-        console.log(`[${guid}] Parsed date:`, dateObj);
+        console.log(`[${currentGuid}] Parsed date:`, dateObj);
         
         // Calculate time difference manually
         const now = new Date();
-        const diffMs = now - dateObj;
+        const diffMs = now.getTime() - dateObj.getTime();
         
         // For future dates, just show "just now" for active implants
         if (diffMs < 0) {
-          console.log(`[${guid}] Date is in the future by ${-diffMs}ms`);
+          console.log(`[${currentGuid}] Date is in the future by ${-diffMs}ms`);
           setLastSeenText(nimplantInfo.active ? 'just now' : 'Unknown');
           return;
         }
@@ -216,11 +218,11 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           timeString = 'less than a minute ago';
         }
         
-        console.log(`[${guid}] Manually calculated time:`, timeString);
+        console.log(`[${currentGuid}] Manually calculated time:`, timeString);
         setLastSeenText(timeString);
       } else {
         // If date format doesn't match expected pattern, fall back to status
-        console.log(`[${guid}] Date format doesn't match expected pattern`);
+        console.log(`[${currentGuid}] Date format doesn't match expected pattern`);
         
         if (nimplantInfo.active) {
           if (nimplantInfo.disconnected) {
@@ -235,7 +237,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         }
       }
     } catch (error) {
-      console.error(`[${guid}] Error processing lastCheckin:`, error);
+      console.error(`[${currentGuid}] Error processing lastCheckin:`, error);
       
       if (nimplantInfo.active) {
         if (nimplantInfo.disconnected) {
@@ -249,7 +251,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         setLastSeenText('Unknown');
       }
     }
-  }, [opened, nimplantInfo, guid]);
+  }, [opened, nimplantInfo, currentGuid]);
   
   // Simplified statistics function that uses backend values when available
   const getStatistics = useCallback(() => {
@@ -297,7 +299,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     setKillingModalOpen(true);
     
     // Kill the implant
-    nimplantExit(guid);
+    nimplantExit(currentGuid);
     
     // Wait 3 seconds before closing
     setTimeout(() => {
@@ -315,7 +317,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         onClose();
       }
     }, 1000);
-  }, [guid, onClose, onKilled]);
+  }, [currentGuid, onClose, onKilled]);
   
   // Function to delete implant
   const handleDeleteImplant = useCallback(() => {
@@ -328,12 +330,12 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     // If the implant is in state DISCONNECTED, first queue a kill command
     if (nimplantInfo?.active && nimplantInfo?.disconnected) {
       // Send kill command to queue if the implant reconnects
-      nimplantExit(guid);
+      nimplantExit(currentGuid);
       
       // Wait a moment to ensure the kill command has been registered
       setTimeout(() => {
         // Then delete from the database
-        deleteNimplant(guid).then(success => {
+        deleteNimplant(currentGuid).then(success => {
           // Force refresh of implants list
           mutate(endpoints.nimplants, undefined, { revalidate: true });
           
@@ -355,7 +357,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
       }, 1000);
     } else {
       // For inactive implants, delete directly
-      deleteNimplant(guid).then(success => {
+      deleteNimplant(currentGuid).then(success => {
         mutate(endpoints.nimplants, undefined, { revalidate: true });
         setKillingModalOpen(false);
         
@@ -371,7 +373,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         setKillingModalOpen(false);
       });
     }
-  }, [guid, onClose, onKilled, nimplantInfo]);
+  }, [currentGuid, onClose, onKilled, nimplantInfo]);
   
   // Status indicator component
   const StatusIndicator = ({ isActive, lastCheckin }: { isActive?: boolean, lastCheckin?: string }) => {
@@ -385,7 +387,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     };
     
     // Determine state based on GUID
-    if (guid.includes('TESTX01A')) {
+    if (currentGuid.includes('TESTX01A')) {
       // Active implant (demo)
       return (
         <Badge 
@@ -398,7 +400,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           Active
         </Badge>
       );
-    } else if (guid.includes('TESTX02L')) {
+    } else if (currentGuid.includes('TESTX02L')) {
       // Late implant (demo)
       return (
         <Badge 
@@ -411,7 +413,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           Late
         </Badge>
       );
-    } else if (guid.includes('TESTX03D')) {
+    } else if (currentGuid.includes('TESTX03D')) {
       // Implante disconnected (demo)
       return (
         <Badge 
@@ -424,7 +426,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           Disconnected
         </Badge>
       );
-    } else if (guid.includes('TESTX04I')) {
+    } else if (currentGuid.includes('TESTX04I')) {
       // Inactive implant (demo)
       return (
         <Badge 
@@ -527,7 +529,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
-      await api.get(endpoints.nimplantInfo(guid));
+      await api.get(endpoints.nimplantInfo(currentGuid));
       infoResult.mutate(); // Force a refresh of the SWR cache
       setIsRefreshing(false);
     } catch (error) {
@@ -535,6 +537,79 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
       setIsRefreshing(false);
     }
   };
+  
+  const router = useRouter();
+  
+  // Add this state variable definition
+  const [activeImplantId, setActiveImplantId] = useState<string | null>(null);
+  
+  // Implementation that keeps the drawer open but sends the select command
+  const handleImplantSelect = (implantId: string) => {
+    console.log(`Switching to implant ID: ${implantId}`);
+    
+    // Get the mapping from implant ID to GUID
+    api.get(`${endpoints.nimplants}`)
+      .then(response => {
+        // Find the implant with the matching ID
+        const targetImplant = response.find((imp: any) => 
+          imp.id === implantId || imp.id === Number(implantId)
+        );
+        
+        if (targetImplant && targetImplant.guid) {
+          const newGuid = targetImplant.guid;
+          
+          
+          // Show notification
+          notifications.show({
+            title: 'Switching Implant',
+            message: `Changing to Implant #${implantId} (${newGuid})`,
+            color: 'blue',
+            autoClose: 1500
+          });
+          
+          // Update the current GUID state - this will trigger all the rerendering
+          setTimeout(() => {
+            setCurrentGuid(newGuid);
+            // Force refresh of data
+            infoResult.mutate();
+            consoleResult.mutate();
+            
+            // Show completion notification
+            notifications.show({
+              title: 'Switch Completed',
+              message: `Now controlling Implant #${implantId} (${newGuid})`,
+              color: 'green',
+              autoClose: 3000
+            });
+            
+            // Add this: Scroll console to bottom after data refresh
+            setTimeout(() => {
+              const consoleElement = document.querySelector('.console-output-container');
+              if (consoleElement) {
+                consoleElement.scrollTop = consoleElement.scrollHeight;
+              }
+            }, 100);
+          }, 500);
+        } else {
+          notifications.show({
+            title: 'Command Sent',
+            message: `Selected implant #${implantId}, but couldn't find GUID information`,
+            color: 'yellow',
+            autoClose: 1500
+          });
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching implants:', error);
+      });
+  };
+  
+  // Add a useEffect to synchronize the guid prop with currentGuid
+  useEffect(() => {
+    if (guid !== currentGuid) {
+      setCurrentGuid(guid);
+    }
+  }, [guid]);
   
   return (
     <Drawer
@@ -546,7 +621,34 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
         <Group style={{ width: '100%' }} justify="apart">
           <Stack gap={5} style={{ flex: 1 }}>
             <Group gap="xs" align="center" wrap="nowrap">
-              <Text fw={600} size="lg">{`Implant #${guid}`}</Text>
+              <Text 
+                fw={600} 
+                size="lg"
+              >
+                Implant ID: 
+                <span style={{ 
+                  color: nimplantInfo?.active 
+                    ? nimplantInfo?.disconnected 
+                      ? 'var(--mantine-color-red-7)'  // Disconnected
+                      : nimplantInfo?.late 
+                        ? 'var(--mantine-color-orange-7)'  // Late
+                        : 'var(--mantine-color-green-7)'  // Active
+                    : 'var(--mantine-color-gray-7)',  // Inactive
+                  fontWeight: 700,
+                  borderBottom: `2px solid ${
+                    nimplantInfo?.active 
+                      ? nimplantInfo?.disconnected 
+                        ? 'var(--mantine-color-red-5)'  // Disconnected
+                        : nimplantInfo?.late 
+                          ? 'var(--mantine-color-orange-5)'  // Late
+                          : 'var(--mantine-color-green-5)'  // Active
+                      : 'var(--mantine-color-gray-5)'  // Inactive
+                  }`,
+                  paddingBottom: '2px'
+                }}>
+                  {` ${nimplantInfo?.id || '?'} - ${currentGuid}`}
+                </span>
+              </Text>
               {nimplantInfo && (
                 <>
                   <StatusIndicator isActive={nimplantInfo?.active} lastCheckin={nimplantInfo?.lastCheckin} />
@@ -781,13 +883,14 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           {/* Console component already has its own padding and scroll structures */}
           {opened && (
             <Console 
-              guid={guid}
+              guid={currentGuid}
               allowInput={true}
               consoleData={nimplantConsole}
               disabled={!nimplantInfo?.active}
               inputFunction={handleCommand}
               historyLimit={historyLimit}
               onUpdateHistoryLimit={updateHistoryLimit}
+              onImplantSelect={handleImplantSelect}
             />
           )}
         </Tabs.Panel>
@@ -928,7 +1031,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                 <Paper shadow="xs" radius="md" p="md" mt="lg" style={{ border: '1px solid #E9ECEF' }}>
                   <Text fw={700} size="sm" mb="md">Activity Log</Text>
                   
-                  <FileTransferLog guid={guid} />
+                  <FileTransferLog guid={currentGuid} />
                 </Paper>
               </>
             )}
@@ -945,7 +1048,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                 </Box>
                 
                 <div>
-                  <ImplantDownloadList guid={guid} />
+                  <ImplantDownloadList guid={currentGuid} />
                 </div>
               </Paper>
             )}

@@ -13,6 +13,7 @@ from src.config.config import config
 from src.servers.admin_api.models.nimplant_client_model import NimPlant
 import src.util.utils as utils
 from src.global_models.c2_server_models import Server
+import src.util.time as utils_time
 
 # Parse configuration from 'config.toml'
 try:
@@ -117,10 +118,10 @@ class NimplantServer(Server):
             res = [np for np in self.nimplant_list if np.id == nimplant_id]
 
         if res and res[0].active:
-            utils.nimplant_print(f"Starting interaction with Implant #{res[0].id}.")
+            utils.nimplant_print(f"Starting interaction with NimPlant #{res[0].id}.")
             self.active_nimplant_guid = res[0].guid
         else:
-            utils.nimplant_print("Invalid Implant ID.")
+            utils.nimplant_print("Invalid NimPlant ID.")
 
     def get_next_active_nimplant(self):
         guid = [np for np in self.nimplant_list if np.active][0].guid

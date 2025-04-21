@@ -325,27 +325,53 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
     // Show deletion in progress modal
     setKillingModalOpen(true);
     
-    // Use imported function instead of calling fetch directly
-    deleteNimplant(guid).then(success => {
-      // Force refresh of implants list
-      mutate(endpoints.nimplants, undefined, { revalidate: true });
+    // If the implant is in state DISCONNECTED, first queue a kill command
+    if (nimplantInfo?.active && nimplantInfo?.disconnected) {
+      // Send kill command to queue if the implant reconnects
+      nimplantExit(guid);
       
-      // Close modals
-      setKillingModalOpen(false);
-      
-      // Notify parent that implant was deleted
-      if (success) {
-        if (onKilled) {
-          onKilled();
-        } else {
-          onClose();
+      // Wait a moment to ensure the kill command has been registered
+      setTimeout(() => {
+        // Then delete from the database
+        deleteNimplant(guid).then(success => {
+          // Force refresh of implants list
+          mutate(endpoints.nimplants, undefined, { revalidate: true });
+          
+          // Close modals
+          setKillingModalOpen(false);
+          
+          // Notify parent that implant was deleted
+          if (success) {
+            if (onKilled) {
+              onKilled();
+            } else {
+              onClose();
+            }
+          }
+        }).catch(error => {
+          console.error('Error deleting implant:', error);
+          setKillingModalOpen(false);
+        });
+      }, 1000);
+    } else {
+      // For inactive implants, delete directly
+      deleteNimplant(guid).then(success => {
+        mutate(endpoints.nimplants, undefined, { revalidate: true });
+        setKillingModalOpen(false);
+        
+        if (success) {
+          if (onKilled) {
+            onKilled();
+          } else {
+            onClose();
+          }
         }
-      }
-    }).catch(error => {
-      console.error('Error deleting implant:', error);
-      setKillingModalOpen(false);
-    });
-  }, [guid, onClose, onKilled]);
+      }).catch(error => {
+        console.error('Error deleting implant:', error);
+        setKillingModalOpen(false);
+      });
+    }
+  }, [guid, onClose, onKilled, nimplantInfo]);
   
   // Status indicator component
   const StatusIndicator = ({ isActive, lastCheckin }: { isActive?: boolean, lastCheckin?: string }) => {
@@ -644,10 +670,23 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
       <Modal
         opened={deleteModalOpen}
         onClose={() => setDeleteModalOpen(false)}
-        title={<b>Delete Implant!</b>}
+        title={<b>{nimplantInfo?.active && nimplantInfo?.disconnected ? 'Queue Kill & Delete Implant' : 'Delete Implant'}</b>}
         centered
       >
-        Are you sure you want to delete this implant from the database? This action is irreversible.
+        {nimplantInfo?.active && nimplantInfo?.disconnected ? (
+          <>
+            This implant is disconnected. We will:
+            <ol>
+              <li>Queue a kill command in case it reconnects</li>
+              <li>Delete it from the database</li>
+            </ol>
+            Are you sure you want to proceed?
+          </>
+        ) : (
+          <>
+            Are you sure you want to delete this implant from the database? This action is irreversible.
+          </>
+        )}
 
         <Box style={{ height: 20 }} /> {/* Space */}
 
@@ -657,7 +696,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           style={{width: '100%'}}
           color="red"
         >
-          Yes, permanently delete
+          {nimplantInfo?.active && nimplantInfo?.disconnected ? 'Yes, queue kill and delete' : 'Yes, permanently delete'}
         </Button>
       </Modal>
 
@@ -709,22 +748,25 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
           <Tabs.Tab 
             value="kill" 
             style={{ 
-              color: nimplantInfo?.active ? 'var(--mantine-color-red-6)' : 'var(--mantine-color-red-6)',
+              color: 'var(--mantine-color-red-6)',
               cursor: 'pointer',
               opacity: 1
             }}
-            leftSection={nimplantInfo?.active ? <FaSkull size={15} /> : <FaTrash size={15} />}
+            leftSection={nimplantInfo?.active && !nimplantInfo?.disconnected ? <FaSkull size={15} /> : <FaTrash size={15} />}
             onClick={(e) => {
               e.preventDefault();
-              if (nimplantInfo?.active) {
+              if (nimplantInfo?.active && !nimplantInfo?.disconnected) {
                 setKillModalOpen(true);
               } else {
-                // Show the deletion modal directly, without redirecting
                 setDeleteModalOpen(true);
               }
             }}
           >
-            {nimplantInfo?.active ? 'Kill Implant' : 'Delete Implant'}
+            {nimplantInfo?.active && !nimplantInfo?.disconnected 
+              ? 'Kill Implant' 
+              : nimplantInfo?.active && nimplantInfo?.disconnected 
+                ? 'Queue Kill & Delete' 
+                : 'Delete Implant'}
           </Tabs.Tab>
         </Tabs.List>
 

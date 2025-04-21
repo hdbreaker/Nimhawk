@@ -1142,7 +1142,7 @@ Remember to update the implant configuration to point to the first redirector:
 
 ```toml
 # In config.toml
-[implant]
+[implant]å,
 listenerIp = "192.168.1.100"  # First redirector IP (exposed to implants)
 ```
 

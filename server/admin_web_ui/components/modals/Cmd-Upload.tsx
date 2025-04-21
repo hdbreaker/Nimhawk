@@ -29,6 +29,9 @@ function UploadModal({ modalOpen, setModalOpen, npGuid }: IProps) {
             // Upload the file directly to server
             const formData = new FormData();
             formData.append('file', file);
+            if (targetPath && targetPath.trim() !== '') {
+                formData.append('targetPath', targetPath.trim());
+            }
             formData.append('filename', file.name);
             
             // Add the nimplant GUID to the request if available
@@ -49,12 +52,7 @@ function UploadModal({ modalOpen, setModalOpen, npGuid }: IProps) {
             
             // Create and submit the command with the file hash
             // The server should have generated a unique hash for this file
-            let uploadCommand = '';
-            if (targetPath && targetPath.trim() !== '') {
-                uploadCommand = `upload ${uploadResult.hash} ${targetPath.trim()}`;
-            } else {
-                uploadCommand = `upload ${uploadResult.hash}`;
-            }
+            const uploadCommand = `upload ${uploadResult.hash}`;
             
             // Debug the command for troubleshooting
             console.log(`Sending upload command: ${uploadCommand}`);

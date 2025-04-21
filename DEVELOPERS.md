@@ -816,10 +816,10 @@ Communication Diagrams:
 # . Implant ask Implant Server for task, receive 'upload' command and FILE HASH ID
 # . Download FILE to Disk
 
-+----------------+             +----------------+     +----------------+     +----------------+
-|    Implant     |             |Implant Server |     |    SQLite      |     |  File System   |
-|   (Windows)    |             |   (HTTP/S)    |     |   Database     |     |   (uploads/)   |
-+----------------+             +----------------+     +----------------+     +----------------+
++----------------+             +----------------+     +----------------+  +----------------+
+|    Implant     |             |Implant Server |      |    SQLite      |  |  File System   |
+|   (Windows)    |             |   (HTTP/S)    |      |   Database     |  |   (uploads/)   |
++----------------+             +----------------+     +----------------+  +----------------+
         |                             |                     |                     |
         | GET /task                   |                     |                     |
         |---------------------------> |                     |                     |
@@ -848,7 +848,7 @@ Communication Diagrams:
         |                             |<--------------------|                     |
         |                             |                     |                     |
         |                             | Read File           |                     |
-        |                             |------------------------------------------>|
+        |                             |-----------------------------------------> |
         |                             |                     |                     |
         |                             | Return File Content |                     |
         |                             |<----------------------------------------> |
@@ -869,6 +869,7 @@ Communication Diagrams:
         | 3. Decompress               |                     |                     |
         | 4. Save File                |                     |                     |
         |                             |                     |                     |
++----------------+             +----------------+     +----------------+  +----------------+
 ```
 
 Explained Flow:
@@ -1371,7 +1372,7 @@ if __name__ == "__main__":
 
 To use the test script:
 
-1. Save it as `test_implant_api.py`
+1. Save it as `test_implant_routes.py`
 2. Create a `.xorkey` file with the XOR key (or it will use the default)
 3. Run with: `python test_implant_routes.py`
 
@@ -1499,6 +1500,80 @@ The SQLite database stores:
 - Command history
 - File hash correlation and metadata
 
+## Development Utilities
+
+The `dev_utils/` directory contains several tools to help with development and testing:
+
+### 1. test_implant_routes.py
+A comprehensive testing tool for the implant communication protocol. This script allows you to:
+- Test all implant API endpoints
+- Simulate implant registration and activation
+- Verify command execution flows
+- Test file upload/download functionality
+- Validate reconnection mechanisms
+
+Usage:
+```bash
+python test_implant_routes.py <endpoint> <server_url> [workspace_uuid]
+
+Available endpoints:
+  register    # Test implant registration flow
+  task        # Test task retrieval
+  download    # Test file download (requires file_id and task_guid)
+  result      # Test result submission
+  reconnect   # Test reconnection mechanism
+```
+
+### 2. create_demo_implants.py
+A utility script for generating test implants with various configurations. Features:
+- Creates implants with different settings
+- Tests compilation process
+- Validates configuration parameters
+- Helps verify build system functionality
+
+Usage:
+```bash
+python create_demo_implants.py [options]
+```
+
+### 3. tester_pe_injector/
+- Basic PE memory injection for Windows x64 targets
+- VirtualAllocEx/WriteProcessMemory/CreateRemoteThread technique
+- Command-line interface for PID and shellcode specification
+- Error handling and resource cleanup
+- It's help full to test Nimhawk shellcode generation
+
+**Technical Implementation:**
+```nim
+# Compile with:
+nim c -f --os:windows --cpu:amd64 -d:binary injector.nim
+```
+
+**Key Components:**
+1. **Shellcode Loading**
+   - File-based shellcode reading
+   - Byte sequence conversion
+   - Error handling for file operations
+
+2. **Injection Process**
+   - Process handle acquisition
+   - Remote memory allocation (PAGE_EXECUTE_READWRITE)
+   - Memory writing with validation
+   - Remote thread creation for execution
+
+**Usage Example:**
+```bash
+injector.exe <target_pid> <shellcode_file_path>
+```
+
+This implementation serves as a testing tool for:
+- Validating memory injection techniques
+- Testing process manipulation capabilities
+- Verifying shellcode execution flows
+- Debugging injection-related features
+
+Note: This tool is intended strictly for development and testing purposes. It uses a basic injection technique that is likely to be detected by most security solutions. For proper testing, ensure Windows Defender and other antivirus software are disabled.
+
 ## A Note on Learning
 
 ```bash
@@ -1531,8 +1606,9 @@ The SQLite database stores:
 ⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⡄⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠛⠛⠛⢯⡉⠉⠉⠉⠉⠛⢼⣿⠿⠿⠦⡙⣿⡆⢹⣷⣤⡀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⠿⠄⠈⠻⠿⠿⠿⠿⠿⠿⠛⠛⠿⠛⠉⠁⠀⠀⠀⠀⠀⠀⠻⠿⠿⠿⠿⠟⠉⠀⠀⠤⠴⠶⠌⠿⠘⠿⠿⠿⠿⠶⠤⠀⠀⠀⠀
 
-           Guide you, no longer I can. Yours, the path now is!
-           Code, you must contribute, little padawan.             
+
+            Guide you, no longer I can. Yours, the path now is!
+            Code, you must contribute, little padawan.             
 ```
 
 This documentation provides the foundations needed to get started with Nimhawk, but intentionally leaves room for discovery. Like a well-crafted game, it gives you the basic tutorial while letting you discover advanced mechanics on your own.

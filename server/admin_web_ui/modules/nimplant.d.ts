@@ -22,7 +22,7 @@ declare module Types {
         guid: string;
         active: boolean;
         late: boolean;
-        cryptKey: string;
+        UNIQUE_XOR_KEY: string;
         ipAddrExt: string;
         ipAddrInt: string;
         username: string;

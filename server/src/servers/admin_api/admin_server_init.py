@@ -221,6 +221,29 @@ def admin_server():
             
             # Ensure the release directory exists
             os.makedirs(release_dir, exist_ok=True)
+
+            # NUEVO CÓDIGO: Vaciar la carpeta release antes de compilar
+            app.build_status[build_id]['progress'] = 'Limpiando carpeta release...'
+            utils.nimplant_print(f"Cleaning release directory: {release_dir}")
+            try:
+                # Listar todos los archivos en la carpeta release
+                for filename in os.listdir(release_dir):
+                    file_path = os.path.join(release_dir, filename)
+                    # Verificar si es un archivo regular (no directorio)
+                    if os.path.isfile(file_path):
+                        # Borrar el archivo
+                        os.unlink(file_path)
+                        utils.nimplant_print(f"Deleted file: {file_path}")
+                    # Si hay subdirectorios, también los podemos borrar
+                    elif os.path.isdir(file_path):
+                        import shutil
+                        shutil.rmtree(file_path)
+                        utils.nimplant_print(f"Deleted directory: {file_path}")
+                utils.nimplant_print(f"Release directory cleaned successfully")
+            except Exception as clean_error:
+                error_msg = f"Error cleaning release directory: {str(clean_error)}"
+                utils.nimplant_print(error_msg)
+                # Continuar con la compilación a pesar del error de limpieza
             
             # Build the command to execute
             if debug:
@@ -989,18 +1012,25 @@ def admin_server():
             return flask.jsonify({"error": "No file selected"}), 400
 
         if file:
+            # CRÍTICO: Obtener targetPath si fue enviado
+            target_path = flask.request.form.get('targetPath', '')
+            utils.nimplant_print(f"DEBUG: Received targetPath: '{target_path}'")
+            
+            # Guardar el archivo físicamente con su nombre original
             os.makedirs(upload_path, exist_ok=True)
             filename = secure_filename(file.filename)
             full_path = os.path.join(upload_path, filename)
             file.save(full_path)
             
-            # Calculate MD5 hash of the file path - this will be used as the unique ID
-            # Note: We hash the full path to ensure uniqueness even with same filenames
+            # Calcular hash del archivo
             file_hash = hashlib.md5(full_path.encode("UTF-8")).hexdigest()
             
-            # Save the hash to filename mapping in the database
-            db_store_file_hash_mapping(file_hash, filename, full_path)
-            utils.nimplant_print(f"DEBUG: post_upload - Saved hash mapping {file_hash} for file {filename}", skip_db_log=True)
+            # CRÍTICO: Si hay targetPath, usarlo como nombre almacenado en vez del original
+            original_filename = target_path.strip() if target_path.strip() else filename
+            utils.nimplant_print(f"DEBUG: Using filename for DB: '{original_filename}'")
+            
+            # Almacenar en la base de datos con el nombre correcto
+            db_store_file_hash_mapping(file_hash, original_filename, full_path)
             
             # Register the file in the NimPlant object for hosting
             # Find the active nimplant (if any) to host the file

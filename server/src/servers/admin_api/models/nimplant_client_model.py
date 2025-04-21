@@ -106,7 +106,7 @@ class NimPlant:
         self.last_checkin = db_nimplant["lastCheckin"]
         self.hosting_file = db_nimplant["hostingFile"]
         self.receiving_file = db_nimplant["receivingFile"]
-        self.encryption_key = db_nimplant["cryptKey"]
+        self.encryption_key = db_nimplant["UNIQUE_XOR_KEY"]
         
         try:
             self.workspace_uuid = db_nimplant["workspace_uuid"] if db_nimplant["workspace_uuid"] else ""

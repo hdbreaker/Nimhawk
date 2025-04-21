@@ -87,7 +87,7 @@ def create_demo_implants():
             "id": 1,
             "active": True,
             "late": False,
-            "cryptKey": "testkeyABC123",
+            "UNIQUE_XOR_KEY": "testkeyABC123",
             "ipAddrExt": "203.0.113.10",
             "ipAddrInt": "192.168.1.10",
             "username": "testuser",
@@ -110,7 +110,7 @@ def create_demo_implants():
             "id": 2,
             "active": True,
             "late": True,
-            "cryptKey": "testkeyDEF456",
+            "UNIQUE_XOR_KEY": "testkeyDEF456",
             "ipAddrExt": "203.0.113.20",
             "ipAddrInt": "192.168.1.20",
             "username": "lateuser",
@@ -133,7 +133,7 @@ def create_demo_implants():
             "id": 3,
             "active": True,
             "late": True,
-            "cryptKey": "testkeyGHI789",
+            "UNIQUE_XOR_KEY": "testkeyGHI789",
             "ipAddrExt": "203.0.113.30",
             "ipAddrInt": "192.168.1.30",
             "username": "disconnuser",
@@ -157,7 +157,7 @@ def create_demo_implants():
             "id": 4,
             "active": False,
             "late": False,
-            "cryptKey": "testkeyJKL012",
+            "UNIQUE_XOR_KEY": "testkeyJKL012",
             "ipAddrExt": "203.0.113.40",
             "ipAddrInt": "192.168.1.40",
             "username": "inactiveuser",
@@ -194,7 +194,7 @@ def create_demo_implants():
             con.execute(
                 """INSERT INTO nimplant (
                     id, guid, serverGuid, active, late,
-                    cryptKey, ipAddrExt, ipAddrInt, username,
+                    UNIQUE_XOR_KEY, ipAddrExt, ipAddrInt, username,
                     hostname, osBuild, pid, pname, riskyMode,
                     sleepTime, sleepJitter, killDate,
                     firstCheckin, lastCheckin, pendingTasks, workspace_uuid
@@ -202,7 +202,7 @@ def create_demo_implants():
                 (
                     implant["id"], implant["guid"], server_guid, 
                     implant["active"], implant["late"],
-                    implant["cryptKey"], implant["ipAddrExt"], implant["ipAddrInt"], 
+                    implant["UNIQUE_XOR_KEY"], implant["ipAddrExt"], implant["ipAddrInt"], 
                     implant["username"], implant["hostname"], implant["osBuild"],
                     implant["pid"], implant["pname"], implant["riskyMode"],
                     implant["sleepTime"], implant["sleepJitter"], implant["killDate"],

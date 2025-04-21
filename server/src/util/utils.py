@@ -24,17 +24,39 @@ from src.servers.admin_api.models.nimplant_listener_model import np_server
 from src.servers.admin_api.models.nimplant_client_model import NimPlant
 
 
+# Get the project root directory (where nimhawk.py is located)
+def get_project_root():
+    # Start from the current file location
+    current_file = os.path.abspath(__file__)
+    # Go up three directories: from src/util/utils.py to project root
+    src_dir = os.path.dirname(os.path.dirname(current_file))  # src/
+    server_dir = os.path.dirname(src_dir)  # server/
+    project_root = os.path.dirname(server_dir)  # project root
+    return project_root
+
+
+# Get the standardized log directory path
+def get_log_directory():
+    # Use the project root to determine the log directory
+    log_dir = os.path.join(get_project_root(), "logs")
+    
+    # Create directory if it doesn't exist
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # Create server-specific directory
+    server_log_dir = os.path.join(log_dir, f"server-{np_server.name}")
+    os.makedirs(server_log_dir, exist_ok=True)
+    
+    return server_log_dir
+
+
 # Log input and output to flat files per session
 def log(message, target=None, **kwargs):
     from src.servers.admin_api.models.nimplant_listener_model import np_server
     np = np_server.get_nimplant_by_guid(target)
 
-    log_directory = os.path.abspath(
-        os.path.join(
-            os.path.dirname(sys.argv[0]), "logs", f"server-{np_server.name}"
-        )
-    )
-    os.makedirs(log_directory, exist_ok=True)
+    # Use the standardized log directory
+    log_directory = get_log_directory()
 
     if target is not None and np is not None:
         log_file = f"session-{np.id}-{np.guid}.log"
@@ -86,12 +108,8 @@ def tail(f: IO[bytes], lines):
 
 
 def tail_nimplant_log(np: NimPlant = None, lines=100):
-    from src.servers.admin_api.models.nimplant_listener_model import np_server
-    log_directory = os.path.abspath(
-        os.path.join( 
-            os.path.dirname(sys.argv[0]), "logs", f"server-{np_server.name}"
-        )
-    )
+    # Use the standardized log directory
+    log_directory = get_log_directory()
 
     if np:
         log_file = f"session-{np.id}-{np.guid}.log"

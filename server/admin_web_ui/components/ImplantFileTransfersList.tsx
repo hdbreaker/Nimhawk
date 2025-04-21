@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Text, Table, Group, Badge, Loader, Center } from '@mantine/core';
+import { useState, useRef, useEffect } from 'react';
+import { Text, Table, Group, Badge, Loader, Center, Tooltip } from '@mantine/core';
 import useSWR from 'swr';
 import { endpoints } from '../modules/nimplant';
 import { swrFetcher } from '../modules/apiFetcher';
@@ -20,6 +20,36 @@ interface FileTransferItem {
 interface ImplantFileTransfersListProps {
   guid: string;
 }
+
+const TruncatedText = ({ text, maxWidth = '250px' }) => {
+  const textRef = useRef(null);
+  const [isTruncated, setIsTruncated] = useState(false);
+  
+  useEffect(() => {
+    if (textRef.current) {
+      setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth);
+    }
+  }, [text]);
+
+  const textStyle = {
+    maxWidth,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis'
+  };
+
+  return isTruncated ? (
+    <Tooltip label={text} multiline width={300} withArrow>
+      <Text ref={textRef} size="sm" style={textStyle}>
+        {text}
+      </Text>
+    </Tooltip>
+  ) : (
+    <Text ref={textRef} size="sm" style={textStyle}>
+      {text}
+    </Text>
+  );
+};
 
 function ImplantFileTransfersList({ guid }: ImplantFileTransfersListProps) {
   // Get transfer data with SWR
@@ -116,7 +146,7 @@ function ImplantFileTransfersList({ guid }: ImplantFileTransfersListProps) {
         {data.map((transfer) => (
           <Table.Tr key={transfer.id}>
             <Table.Td>
-              <Text size="sm">{transfer.filename}</Text>
+              <TruncatedText text={transfer.filename} />
             </Table.Td>
             <Table.Td>
               <Text size="sm">{formatFileSize(transfer.size)}</Text>

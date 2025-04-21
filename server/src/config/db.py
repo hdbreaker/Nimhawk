@@ -85,7 +85,7 @@ def initialize_database():
             """
         CREATE TABLE IF NOT EXISTS nimplant
         (id INTEGER, guid TEXT PRIMARY KEY, serverGuid TEXT, active BOOLEAN, late BOOLEAN,
-        cryptKey TEXT, ipAddrExt TEXT, ipAddrInt TEXT, username TEXT,
+        UNIQUE_XOR_KEY TEXT, ipAddrExt TEXT, ipAddrInt TEXT, username TEXT,
         hostname TEXT, osBuild TEXT, pid INTEGER, pname TEXT, riskyMode BOOLEAN,
         sleepTime INTEGER, sleepJitter INTEGER, killDate TEXT,
         firstCheckin TEXT, lastCheckin TEXT, pendingTasks TEXT,
@@ -613,7 +613,7 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
             "serverGuid": server_guid,
             "active": np.active,
             "late": np.late,
-            "cryptKey": np.encryption_key,
+            "UNIQUE_XOR_KEY": np.encryption_key,
             "ipAddrExt": np.ip_external,
             "ipAddrInt": np.ip_internal,
             "username": np.username,
@@ -641,7 +641,7 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
             # Update existing implant
             con.execute(
                 """UPDATE nimplant SET
-                   active = :active, late = :late, cryptKey = :cryptKey,
+                   active = :active, late = :late, UNIQUE_XOR_KEY = :UNIQUE_XOR_KEY,
                    ipAddrExt = :ipAddrExt, ipAddrInt = :ipAddrInt,
                    username = :username, hostname = :hostname, 
                    osBuild = :osBuild, pid = :pid, pname = :pname,
@@ -658,7 +658,7 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
             con.execute(
                 """INSERT INTO nimplant VALUES
                    (:id, :guid, :serverGuid, :active, :late,
-                   :cryptKey, :ipAddrExt, :ipAddrInt, :username, :hostname, :osBuild, :pid, :pname,
+                   :UNIQUE_XOR_KEY, :ipAddrExt, :ipAddrInt, :username, :hostname, :osBuild, :pid, :pname,
                    :riskyMode, :sleepTime, :sleepJitter, :killDate, :firstCheckin,
                    :lastCheckin, :pendingTasks, :hostingFile, :receivingFile, :lastUpdate, :workspace_uuid)""",
                 obj,

@@ -26,7 +26,7 @@ type
         taskPath* : string
         resultPath* : string
         userAgent* : string
-        cryptKey* : string
+        UNIQUE_XOR_KEY* : string
         httpAllowCommunicationKey* : string
 
 # HTTP request function

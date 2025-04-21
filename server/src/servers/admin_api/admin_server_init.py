@@ -1238,12 +1238,25 @@ def admin_server():
                     "error": "Implant not found"
                 }), 404
             
-            # Check if the implant is still active (we don't want to delete active implants)
+            # Check if the implant is active but disconnected
+            is_disconnected = False
             if np.active:
+                try:
+                    last_checkin = datetime.datetime.strptime(np.last_checkin, '%d/%m/%Y %H:%M:%S')
+                    time_diff = datetime.datetime.now() - last_checkin
+                    
+                    # If more than 5 minutes passed without check-in, consider it disconnected
+                    if time_diff > datetime.timedelta(minutes=5):
+                        is_disconnected = True
+                except (ValueError, TypeError, AttributeError) as e:
+                    utils.nimplant_print(f"Error checking disconnection state: {str(e)}")
+            
+            # Only prevent deletion if the implant is active AND not disconnected
+            if np.active and not is_disconnected:
                 utils.nimplant_print(f"Attempt to delete active implant: {guid}")
                 return flask.jsonify({
                     "success": False,
-                    "error": "Cannot delete an active implant. Kill it first."
+                    "error": "Cannot delete an active implant. Kill it first or wait until it disconnects (5+ minutes without check-in)."
                 }), 400
             
             # Delete from database

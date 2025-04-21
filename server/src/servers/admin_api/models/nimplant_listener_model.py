@@ -149,7 +149,9 @@ class NimplantServer(Server):
 
     def is_active_nimplant_selected(self):
         if self.active_nimplant_guid is not None:
-            return self.get_active_nimplant().active
+            active_nimplant = self.get_active_nimplant()
+            # Check if we found the nimplant and it's active
+            return active_nimplant is not None and active_nimplant.active
         else:
             return False
 

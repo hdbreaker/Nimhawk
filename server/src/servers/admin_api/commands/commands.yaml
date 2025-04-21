@@ -116,7 +116,7 @@
     server_command: True
     risky_command: False
     gui_command: False
-    description: "[id] Select another Implant."
+    description: "[id] Select another Implant (Frontend only)."
     help: |
       Takes the target Implant's ID as an argument.
 

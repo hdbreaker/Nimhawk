@@ -58,7 +58,7 @@ proc executeAssembly*(li : Listener, args : varargs[string]) : string =
     var sw = @StringWriter.new()
     var oldConsOut = @Console.Out
     @Console.SetOut(sw)
-
+.
     # Actual assembly execution
     assembly.EntryPoint.Invoke(nil, toCLRVariant([arr]))
 

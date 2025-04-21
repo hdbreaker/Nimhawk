@@ -110,34 +110,19 @@ def execute_assembly(np: NimPlant, args, raw_command):
 # Handle pre-processing for the 'inline-execute' command
 def inline_execute(np: NimPlant, args, raw_command):
     try:
-        file = args[0]
+        # Correctly get the file_id (hash) and entry_point
+        file_id = args[0]
         entry_point = args[1]
         assembly_arguments = list(args[2:])
-    except:
+    except IndexError: # Use IndexError for specific error handling
         utils.nimplant_print(
-            "Invalid number of arguments received.\nUsage: 'inline-execute [localfilepath] [entrypoint] <arg1 type1 arg2 type2..>'.",
+            "Invalid number of arguments received.\nUsage: 'inline-execute [file_id] [entrypoint] <arg1 type1 arg2 type2..>'.",
             np.guid,
             raw_command,
         )
         return
-
-    # Check if BOF file path is provided correctly
-    if os.path.isfile(file):
-        with open(file, "rb") as f:
-            assembly = f.read()
-    else:
-        utils.nimplant_print(
-            "Invalid BOF file specified.",
-            np.guid,
-            raw_command,
-        )
-        return
-
-    assembly = compress(assembly, level=9)
-    assembly = encrypt_data(assembly, np.encryption_key)
 
     # Pre-process BOF arguments
-    # Check if list of arguments consists of argument-type pairs
     args_binary = ["binary", "bin", "b"]
     args_integer = ["integer", "int", "i"]
     args_short = ["short", "s"]
@@ -145,11 +130,13 @@ def inline_execute(np: NimPlant, args, raw_command):
     args_wstring = ["wstring", "Z"]
     args_all = args_binary + args_integer + args_short + args_string + args_wstring
 
+    assembly_args_final = "" # Initialize as empty string
+
     if len(assembly_arguments) != 0:
         if not len(assembly_arguments) % 2 == 0:
             utils.nimplant_print(
                 "BOF arguments not provided as arg-type pairs.\n"
-                "Usage: 'inline-execute [localfilepath] [entrypoint] <arg1 type1 arg2 type2..>'.\n"
+                "Usage: 'inline-execute [file_id] [entrypoint] <arg1 type1 arg2 type2..>'.\n"
                 "Example: 'inline-execute dir.x64.o go C:\\Users\\Testuser\\Desktop wstring'",
                 np.guid,
                 raw_command,
@@ -165,7 +152,19 @@ def inline_execute(np: NimPlant, args, raw_command):
 
             try:
                 if argument_type in args_binary:
-                    buffer.addbin(arg)
+                    # For binary, expect base64 input and decode it
+                    try:
+                        # Ensure padding is correct for base64
+                        missing_padding = len(arg) % 4
+                        if missing_padding:
+                            arg += '=' * (4 - missing_padding)
+                        decoded_bin = base64.b64decode(arg)
+                        buffer.addbin(decoded_bin)
+                    except Exception as b64_error:
+                         utils.nimplant_print(
+                            f"Invalid Base64 data for binary argument: {b64_error}",
+                            np.guid, raw_command)
+                         return
                 elif argument_type in args_integer:
                     buffer.addint(int(arg))
                 elif argument_type in args_short:
@@ -185,7 +184,7 @@ def inline_execute(np: NimPlant, args, raw_command):
 
             except ValueError:
                 utils.nimplant_print(
-                    "Invalid integer or short value provided.\nUsage: 'inline-execute [localfilepath] [entrypoint] <arg1 type1 arg2 type2..>'.\n"
+                    "Invalid integer or short value provided.\nUsage: 'inline-execute [file_id] [entrypoint] <arg1 type1 arg2 type2..>'.\n"
                     "Example: 'inline-execute createremotethread.x64.o go 1337 i [b64shellcode] b'",
                     np.guid,
                     raw_command,
@@ -196,14 +195,16 @@ def inline_execute(np: NimPlant, args, raw_command):
     else:
         assembly_args_final = ""
 
-    command = list(["inline-execute", assembly, entry_point, assembly_args_final])
+    # Pass the file_id (hash) directly, not the encrypted content
+    command = list(["inline-execute", file_id, entry_point, assembly_args_final])
 
     guid = np.add_task(command, task_friendly=raw_command)
     utils.nimplant_print(
         "Staged inline-execute command for Implant.", np.guid, task_guid=guid
     )
 
-    # Handle pre-processing for the 'powershell' command
+
+# Handle pre-processing for the 'powershell' command
 def powershell(np: NimPlant, args, raw_command):
     amsi = "1"
     etw = "1"

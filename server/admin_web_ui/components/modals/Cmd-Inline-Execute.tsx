@@ -1,7 +1,10 @@
 import { Button, CloseButton, FileButton, Grid, Group, Input, Modal, NativeSelect, Space, Stack, Text } from "@mantine/core"
 import { Dispatch, SetStateAction, useState } from "react";
 import { FaTerminal } from "react-icons/fa"
-import { submitCommand, uploadFile } from "../../modules/nimplant";
+import { submitCommand, endpoints } from "../../modules/nimplant";
+import { notifications } from "@mantine/notifications";
+import { api } from "../../modules/api";
+
 
 
 interface IProps {
@@ -33,29 +36,63 @@ function InlineExecuteModal({ modalOpen, setModalOpen, npGuid }: IProps) {
         setBofArgs(bofArgs.filter((_, i) => i !== index));
     };
 
-    const submit = () => {
-        // Check if a file is selected
-        if (!bofFile || bofFile === null) {
-            return;
+    const submit = async () => {
+        if (!bofFile) return;
+
+        try {
+            setSubmitLoading(true);
+            const formData = new FormData();
+            formData.append('file', bofFile);
+            formData.append('filename', bofFile.name);
+
+            let uploadUrl = endpoints.upload;
+            if (npGuid) {
+                uploadUrl = `${endpoints.upload}?nimplant_guid=${npGuid}`;
+            }
+
+            const uploadResult = await api.upload(uploadUrl, formData);
+
+            if (!uploadResult || !uploadResult.hash) {
+                throw new Error("Upload did not return a valid hash.");
+            }
+
+            notifications.show({
+                title: 'Success',
+                message: 'File uploaded successfully!',
+                color: 'green',
+            });
+
+            const argsForCommand: string[] = bofArgs.map((arg) => {
+                let valueToSend = arg.value;
+                if (arg.type === 'b') {
+                    console.warn("Binary argument type 'b' selected, ensure value is properly formatted (e.g., hex) if needed by BOF.");
+                }
+                return `"${valueToSend.replace(/"/g, '\\"')}" ${arg.type}`;
+            });
+
+            const finalArgString = argsForCommand.length > 0 ? ' ' + argsForCommand.join(' ') : '';
+
+            const executeCommand = `inline-execute "${uploadResult.hash}" "${bofEntryPoint}"${finalArgString}`;
+
+            console.log(`Sending inline-execute command: ${executeCommand}`);
+
+            if (npGuid) {
+                submitCommand(npGuid, executeCommand, callbackClose);
+            } else {
+                throw new Error("No active Nimplant GUID found.");
+            }
+
+        } catch (error) {
+            notifications.show({
+                title: 'Error',
+                message: `Operation failed: ${error instanceof Error ? error.message : String(error)}`,
+                color: 'red',
+            });
+            setSubmitLoading(false);
         }
-
-        // Upload the file
-        setSubmitLoading(true);
-        uploadFile(bofFile, callbackCommand, callbackClose);
-    };
-
-    const callbackCommand = (uploadPath: string) => {
-        // Parse the arguments into a string
-        const bofArgString: string = bofArgs.map((arg) => {
-            return `"${arg.value}" ${arg.type}`;
-        }).join(' ');
-
-        // Handle the execute-assembly command
-        submitCommand(String(npGuid), `inline-execute "${uploadPath}" "${bofEntryPoint}" ${bofArgString}`, callbackClose);
     };
 
     const callbackClose = () => {
-        // Reset state
         setModalOpen(false);
         setBofFile(null);
         setBofEntryPoint("go");

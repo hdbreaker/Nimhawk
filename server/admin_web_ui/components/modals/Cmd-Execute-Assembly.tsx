@@ -17,24 +17,40 @@ function ExecuteAssemblyModal({ modalOpen, setModalOpen, npGuid }: IProps) {
     const [patchEtw, setPatchEtw] = useState(true);
     const [submitLoading, setSubmitLoading] = useState(false);
 
-    const submit = () => {
+    const submit = async () => {
         // Check if a file is selected
         if (!assemblyFile || assemblyFile === null) {
             return;
         }
         
-        // Upload the file
-        setSubmitLoading(true);
-        uploadFile(assemblyFile, callbackCommand, callbackClose);
-    };
+        try {
+            setSubmitLoading(true);
+            const formData = new FormData();
+            formData.append('file', assemblyFile);
+            formData.append('filename', assemblyFile.name);
+            let uploadUrl = endpoints.upload;
+            if (npGuid) {
+                uploadUrl = `${endpoints.upload}?nimplant_guid=${npGuid}`;
+            }
 
-    const callbackCommand = (uploadPath: string) => {
-        // Parse the parameters
-        const amsi = patchAmsi ? 1 : 0;
-        const etw = patchEtw ? 1 : 0;
-        
-        // Handle the execute-assembly command
-        submitCommand(String(npGuid), `execute-assembly BYPASSAMSI=${amsi} BLOCKETW=${etw} "${uploadPath}" ${assemblyArguments}`, callbackClose);
+            // 1. Sube el archivo
+            const uploadResult = await api.upload(uploadUrl, formData); // Llama a /api/upload
+
+            // 2. Prepara los argumentos
+            const amsi = patchAmsi ? 1 : 0;
+            const etw = patchEtw ? 1 : 0;
+            const executeCommand = `execute-assembly BYPASSAMSI=${amsi} BLOCKETW=${etw} "${uploadResult.hash}" ${assemblyArguments}`;
+
+            console.log(`Sending execute-assembly command: ${executeCommand}`); // Verifica el comando aquí
+
+            // 3. Envía el comando correcto al backend
+            if (npGuid) {
+                submitCommand(npGuid, executeCommand, callbackClose);
+            }
+
+        } catch (error) {
+            // ... (manejo de error) ...
+        }
     };
 
     const callbackClose = () => {

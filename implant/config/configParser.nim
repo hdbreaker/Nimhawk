@@ -8,16 +8,16 @@ proc parseConfig*() : Table[string, string] =
 
     # Allow us to re-write the static XOR key used for pre-crypto operations
     # This is handled by the Python wrapper at compile time, the default value shouldn't be used
-    const xor_key {.intdefine.}: int = 459457925
+    const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
     
     # Workspace identifier for this implant
     const workspace_uuid {.strdefine.}: string = ""
 
     # Embed the configuration as a XORed sequence of bytes at COMPILE-time
-    const embeddedConf = xorStringToByteSeq(staticRead(obf("../../config.toml")), xor_key)
+    const embeddedConf = xorStringToByteSeq(staticRead(obf("../../config.toml")), INITIAL_XOR_KEY)
     
     # Decode the configuration at RUNtime and parse the TOML to store it in a basic table
-    var tomlConfig = parsetoml.parseString(xorByteSeqToString(embeddedConf, xor_key))
+    var tomlConfig = parsetoml.parseString(xorByteSeqToString(embeddedConf, INITIAL_XOR_KEY))
     config[obf("hostname")]         = tomlConfig[obf("implants_server")][obf("hostname")].getStr()
     config[obf("listenerType")]     = tomlConfig[obf("implants_server")][obf("type")].getStr()
     config[obf("listenerPort")]     = $tomlConfig[obf("implants_server")][obf("port")].getInt()

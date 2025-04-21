@@ -174,7 +174,7 @@ def compile_nim(binary_type, xor_key, config, workspace_uuid=None, debug=False):
     if binary_type == "exe" or binary_type == "exe-selfdelete":
         compile_command = (
             "nim c -f --os:windows --cpu:amd64 -d:release -d:strip -d:noRes "
-            + f"-d:xor_key={xor_key} "
+            + f"-d:INITIAL_XOR_KEY={xor_key} "
         )
         
         # Add workspace_uuid if provided

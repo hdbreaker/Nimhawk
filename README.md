@@ -1156,9 +1156,15 @@ watch -n 1 "netstat -an | grep :80"
 tail -f /var/log/redirector.log
 ```
 
-## TODO
-I break some stuff in Implant:
-  - executeAssembly.nim
-  - I aso need to find where server/server/logs/admin_api_nimhawk.log is created (when /logs folder exist in root)
-
-  When I changed the behaviour of file upload in Admin Server and the process of upload.nim, so I need to check this again and fix it.
+### TODO:
+    - Reverse shell command
+    - Add unhook command
+    - Keylogger via COM Object (maybe)
+    - Sock4 Tunnel command
+    - Add Nimjacker as a building option to this project
+      - https://github.com/hdbreaker/nimjacker
+    - I will start improving OPSEC
+        - Add loaders with different techniques to the building process
+        - Stack Stack Spoofing
+        - Etc.
+        

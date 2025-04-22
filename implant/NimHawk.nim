@@ -4,6 +4,16 @@
     by Alejandro Parodi (hdbreaker / @SecSignal)
 
     Heavily based on @chvancooten NimPlant project.
+    This project is a fork of NimPlant and is a work in progress.
+    I will add more features and improve the OPSEC.
+
+    Again, this project would not have been possible without the previous work of @chvancooten 
+    and all the contributors to the NimPlant project.
+
+    Special thanks to:
+    - @chvancooten
+    - @ropnop
+    - @byt3bl33d3r
 
 ]#
 from os import sleep

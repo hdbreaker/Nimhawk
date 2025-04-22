@@ -66,7 +66,7 @@ def nimplant_print(msg, np_server=None, log_to_file=True, show_time=True, show_n
 
     if log_to_file:
         try:
-            log_file = os.path.join("server", "logs", "admin_api_nimhawk.log")
+            log_file = os.path.join("logs", "admin_api_nimhawk.log")
             os.makedirs(os.path.dirname(log_file), exist_ok=True)
             with open(log_file, "a") as f:
                 f.write(fullMessage.strip() + "\n")

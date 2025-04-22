@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "restore": {
+    "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj": {}
+  },
+  "projects": {
+    "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj",
+        "projectName": "nimhawk",
+        "projectPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj",
+        "packagesPath": "/Users/hdbreaker/.nuget/packages/",
+        "outputPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/Users/hdbreaker/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net48"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net48": {
+            "targetAlias": "net48",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "9.0.200"
+      },
+      "frameworks": {
+        "net48": {
+          "targetAlias": "net48",
+          "dependencies": {
+            "Microsoft.NETFramework.ReferenceAssemblies": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[1.0.3, )",
+              "autoReferenced": true
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/9.0.203/RuntimeIdentifierGraph.json"
+        }
+      },
+      "runtimes": {
+        "win-x64": {
+          "#import": []
+        }
+      }
+    }
+  }
+}

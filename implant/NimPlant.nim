@@ -1,7 +1,7 @@
 #[
 
     Nimhawk - A Powerful, modular, lightweight and efficient implant written in Nim
-    By Alejandro Parodi (hdbreaker / @SecSignal)
+    by Alejandro Parodi (hdbreaker / @SecSignal)
 
     Heavily based on @chvancooten NimPlant project.
 

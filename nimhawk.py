@@ -209,7 +209,7 @@ def compile_nim(binary_type, xor_key, config, workspace_uuid=None, debug=False):
         if risky_mode:
             compile_command = compile_command + " -d:risky"
 
-        compile_command = compile_command + " implant/NimPlant.nim"
+        compile_command = compile_command + " implant/NimHawk.nim"
         
     elif binary_type == "dll":
         # Updated command according to specification
@@ -225,7 +225,7 @@ def compile_nim(binary_type, xor_key, config, workspace_uuid=None, debug=False):
         compile_command += (
             f"--passL:\"-static\" "
             f"--app:lib "
-            f"-o:implant/release/implant.dll implant/NimPlant.nim"
+            f"-o:implant/release/implant.dll implant/NimHawk.nim"
         )
         
         # Add additional flags while preserving the correct format

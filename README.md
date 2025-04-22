@@ -699,7 +699,7 @@ Nimhawk uses a basic client-server architecture - nothing groundbreaking, but it
      - Simple queue system for commands
      - Basic status tracking
      - Auto-reconnect when things break
-     - basic http auth vía machine to machine tokens
+     - basic http auth through machine to machine tokens
 
 3. **Web UI (The Pretty Part)**:
    - React because... well, it's React
@@ -1158,7 +1158,7 @@ tail -f /var/log/redirector.log
 
 ### TODO:
     - Reverse shell command
-    - Add unhook command
+    - Add unhook commandt
     - Keylogger via COM Object (maybe)
     - Sock4 Tunnel command
     - Add Nimjacker as a building option to this project

@@ -252,7 +252,7 @@
     help: |
       Takes no arguments.
 
-      Will return the domain the target is joined to via the 'GetComputerNameEx' Windows API.
+      Will return the domain the target is joined to through the 'GetComputerNameEx' Windows API.
 
   - command: getLocalAdm
     server_command: False
@@ -375,7 +375,7 @@
       Takes no arguments.
 
       Will take a screenshot of the user's screen which will be saved in 'downloads/server-[server-guid]',
-      where it will be accessible via the 'Downloads' tab in the web GUI.
+      where it will be accessible through the 'Downloads' tab in the web GUI.
 
   - command: shell
     server_command: False
@@ -402,7 +402,7 @@
       This command loads raw shellcode from a local file and injects it into the specified process's memory.
       This command uses dynamic invocation (D/Invoke) to inject the shellcode using Native APIs.
       The used injection method is relatively straightforward, so be mindful of the OPSEC implications of this.
-      If stealthy injection is a requirement, consider using a (custom) BOF instead via the 'inline-execute' command.
+      If stealthy injection is a requirement, consider using a (custom) BOF instead through the 'inline-execute' command.
 
   - command: sleep
     server_command: False
@@ -430,7 +430,7 @@
 
       This command executes a PowerShell command in an unmanaged runspace.
       While this does NOT spawn a child process or any instance of 'powershell.exe', 
-      it does load the Common Language Runtime (CLR) into the current process, and opens a console via the 'conhost.exe' process. 
+      it does load the Common Language Runtime (CLR) into the current process, and opens a console through the 'conhost.exe' process. 
       Be mindful of the OPSEC implications of this.
 
   - command: upload

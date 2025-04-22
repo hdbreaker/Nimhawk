@@ -216,9 +216,9 @@ class NimPlant:
         
         # Special processing for execute-assembly to ensure hash is preserved in database
         if command == "execute-assembly" and len(args) >= 3:
-            # Si estamos procesando un comando execute-assembly, usamos el task_str (que contiene el
-            # hash correcto) como task_friendly también para evitar que el hash sea sustituido por el
-            # contenido base64 en la base de datos
+            # If we are processing an execute-assembly command, we use the task_str (which contains the
+            # correct hash) as task_friendly also to avoid that the hash is replaced by the
+            # base64 content in the database
             utils.nimplant_print(f"DEBUG: execute-assembly command detected, ensuring hash is preserved")
             utils.nimplant_print(f"DEBUG: Original task_friendly: {task_friendly}")
             task_friendly = task_str

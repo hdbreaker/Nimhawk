@@ -170,7 +170,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 * **Refined data transfer calculation**: More accurate measurement of data transferred between server and implants
 * **UI improvements**: Enhanced implant details display with real-time metrics and more intuitive layout
 * **Improved reconnection system**: Enhanced implant reconnection mechanism that properly handles Registry cleanup, removing previous implant ID before registering a new one to prevent orphaned entries
-* **Inactive implant management**: Added ability to safely delete inactive implants from the database, maintaining a clean operational environment (I have a bug to check here, I will be fixing it soon, nothing really important!)
+* **Inactive implant management**: Added ability to safely delete inactive implants from the database, maintaining a clean operational environment
 * **Comprehensive Web UI**: Full-featured web interface for real-time monitoring and control of implants
 
 ## Nimhawk's Screenshots 
@@ -250,7 +250,7 @@ We are profoundly grateful to Cas van Cooten for his generosity in open-sourcing
 
 ### Implant (Nim)
 - **Target Platform**: Windows x64 only (Windows 7 SP1, Windows 8.1, Windows 10, Windows 11, Server 2012 R2+)
-- Nim toolchain (installation recommended via `choosenim`)
+- Nim toolchain (installation recommended through `choosenim`)
 - Required Nimble packages (automatically installed during build)
 - On Linux/MacOS: `mingw-w64` toolchain for cross-compilation
 
@@ -807,7 +807,7 @@ docker run -it -p 3000:3000 -p 9669:9669 -p 80:80 -p 443:443 \
 ### Available Commands
 
 ```
-server    - Start the Nimhawk server via nimhawk.py (generates .xorkey file)
+server    - Start the Nimhawk server through nimhawk.py (generates .xorkey file)
 compile   - Compile implants (e.g., docker run nimhawk compile exe nim-debug)
 frontend  - Start only the frontend dev server
 full      - Start both backend and frontend servers
@@ -1158,13 +1158,13 @@ tail -f /var/log/redirector.log
 
 ### TODO:
     - Reverse shell command
-    - Add unhook commandt
-    - Keylogger via COM Object (maybe)
+    - Add unhook command
+    - Keylogger through COM Object (maybe)
     - Sock4 Tunnel command
     - Add Nimjacker as a building option to this project
       - https://github.com/hdbreaker/nimjacker
     - I will start improving OPSEC
         - Add loaders with different techniques to the building process
-        - Stack Stack Spoofing
+        - Call Stack Spoofing
         - Etc.
         

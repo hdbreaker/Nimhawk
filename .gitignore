@@ -19,5 +19,6 @@ server/downloads/
 server/logs/
 server/uploads/
 target/
+dev_utils/execute_assembly_net48_test/obj/*
 
- 
+

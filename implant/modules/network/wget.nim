@@ -1,10 +1,11 @@
 import puppy
 from strutils import join, split
 from os import getcurrentdir, `/`
-from ../../core/webClientListener import Listener
+import ../../core/webClientListener
+from ../../util/strenc import obf
 
 # Curl an HTTP webpage to stdout
-proc wget*(li : Listener, args : varargs[string]) : string =
+proc wget*(li : webClientListener.Listener, args : seq[string]) : string =
     var 
         url : string
         filename : string

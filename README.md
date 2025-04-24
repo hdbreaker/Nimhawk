@@ -1160,11 +1160,11 @@ tail -f /var/log/redirector.log
 Implementing CRL Self Hosting for execute-assembly
 This allows multiple .NET ASM Execution without break the implant due to unhandled pointers to CRL.
 [![Execute-Assembly Functionality](docs/images/net_execution_1_1.png)](docs/images/net_execution_1.png)
-*Execute-assembly interface in operator dashboard with file selection and parameter configuration options*
+*First Execute-assembly interface in operator dashboard with file selection and parameter configuration options*
 [![Execute-Assembly Functionality](docs/images/net_execution_1_2.png)](docs/images/net_execution_1_1.png)
 *Successful .NET assembly injection with real-time execution status and output monitoring*
 [![Execute-Assembly Functionality](docs/images/net_execution_2_1.png)](docs/images/net_execution_2_1.png)
-*First execution output showing successful .NET assembly initialization and runtime status*
+*Second execution output showing successful .NET assembly initialization and runtime status*
 [![Execute-Assembly Functionality](docs/images/net_execution_2_2.png)](docs/images/net_execution_2_2.png)
 *Second execution output demonstrating CRL self-hosting implementation preventing implant termination*
 

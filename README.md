@@ -1167,7 +1167,7 @@ This allows multiple .NET ASM Execution without break the implant due to unhandl
 *Successful .NET assembly injection with real-time execution status and output monitoring*
 
 [![Execute-Assembly Functionality](docs/images/net_execution_2_1.png)](docs/images/net_execution_2_1.png)
-*First execution output showing successful .NET assembly initialization and runtime status*
+*Second execution output showing successful .NET assembly initialization and runtime status*
 
 [![Execute-Assembly Functionality](docs/images/net_execution_2_2.png)](docs/images/net_execution_2_2.png)
 *Second execution output demonstrating CRL self-hosting implementation preventing implant termination*
@@ -1211,3 +1211,4 @@ Implant is undetected at this date:
 - Implement memory protection mechanisms
 - Add anti-analysis capabilities
 - Enhance evasion techniques
+

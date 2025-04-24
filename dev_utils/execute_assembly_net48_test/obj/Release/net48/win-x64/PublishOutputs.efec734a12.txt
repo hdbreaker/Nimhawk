@@ -1,3 +1,0 @@
-/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/bin/Release/net48/win-x64/publish/nimhawk.exe
-/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/bin/Release/net48/win-x64/publish/nimhawk.exe.config
-/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/bin/Release/net48/win-x64/publish/nimhawk.pdb

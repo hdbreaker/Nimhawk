@@ -35,7 +35,7 @@ import puppy
 
 const VT_UI1 = 17
 
-proc executeAssembly*(li: Listener, args: varargs[string]): string =
+proc executeAssembly*(li: webClientListener.Listener, args: seq[string]): string =
   var result = ""
   
   ##########################################################

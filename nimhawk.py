@@ -54,7 +54,7 @@ def print_banner():
     
 "With words, man surpasses animals, but with silence he surpasses himself." 
 
- _   _ _           _   _                   _    
+ _   _ _           _   _                _    
 | \ | (_)_ __ ___ | | | | __ ___      _| | __
 |  \| | | '_ ` _ \| |_| |/ _` \ \ /\ / / |/ /
 | |\  | | | | | | |  _  | (_| |\ V  V /|   < 

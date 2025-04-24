@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("nimhawk")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b5ab970d38fc95253e30fdc77d7c2b949d92e700")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+951dae213895ccae0fa2b61a30988c3eaf81286c")]
 [assembly: System.Reflection.AssemblyProductAttribute("nimhawk")]
 [assembly: System.Reflection.AssemblyTitleAttribute("nimhawk")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

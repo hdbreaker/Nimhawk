@@ -434,11 +434,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj",
+      "projectUniqueName": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/nimhawk.csproj",
       "projectName": "nimhawk",
-      "projectPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/nimhawk.csproj",
+      "projectPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/nimhawk.csproj",
       "packagesPath": "/Users/hdbreaker/.nuget/packages/",
-      "outputPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/ExecuteAssembly_HelloWorkd_Net48/obj/",
+      "outputPath": "/Users/hdbreaker/Desktop/Scripts/Nimhawk/dev_utils/execute_assembly_net48_test/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "/Users/hdbreaker/.nuget/NuGet/NuGet.Config"

@@ -1156,15 +1156,57 @@ watch -n 1 "netstat -an | grep :80"
 tail -f /var/log/redirector.log
 ```
 
-### TODO:
-    - Reverse shell command
-    - Add unhook command
-    - Keylogger through COM Object (maybe)
-    - Sock4 Tunnel command
-    - Add Nimjacker as a building option to this project
-      - https://github.com/hdbreaker/nimjacker
-    - I will start improving OPSEC
-        - Add loaders with different techniques to the building process
-        - Call Stack Spoofing
-        - Etc.
-        
+# Improvement 21 of April 2025
+Implementing CRL Self Hosting for execute-assembly
+This allows multiple .NET ASM Execution without break the implant due to unhandled pointers to CRL.
+[![Execute-Assembly Functionality](docs/images/net_execution_1_1.png)](docs/images/net_execution_1.png)
+*Execute-assembly interface in operator dashboard with file selection and parameter configuration options*
+[![Execute-Assembly Functionality](docs/images/net_execution_1_2.png)](docs/images/net_execution_1_1.png)
+*Successful .NET assembly injection with real-time execution status and output monitoring*
+[![Execute-Assembly Functionality](docs/images/net_execution_2_1.png)](docs/images/net_execution_2_1.png)
+*First execution output showing successful .NET assembly initialization and runtime status*
+[![Execute-Assembly Functionality](docs/images/net_execution_2_2.png)](docs/images/net_execution_2_2.png)
+*Second execution output demonstrating CRL self-hosting implementation preventing implant termination*
+
+# Improvement 23 of April 2025
+Implementing in-memory DInvoke to improve OPSEC in module implant/risky/shinject.nim
+Implant is undetected at this date:
+
+[![Shinject Functionality](docs/images/shinject_dinvoke_init.png)](docs/images/shinject_dinvoke_init.png)
+*Shellcode injection interface with process selection and payload configuration options*
+[![Shinject Functionality](docs/images/shinject_dinvoke_success.png)](docs/images/shinject_dinvoke_success.png)
+*Successful shellcode injection with process verification and execution confirmation*
+[![Shinject Functionality](docs/images/shinject_dinvoke_fud.png)](docs/images/shinject_dinvoke_fud.png)
+*Windows Defender scan results confirming undetected status of the injected payload*
+
+
+
+### TODO List:
+
+#### Usability Improvements
+- Implement sucess message for download command in operator dashboard
+- Enable command line parameter support for execute-assembly in operator dashboard (currently limited to modal window interface due to an issue in how "execute-assembly" string is parsed in frontend)
+
+
+#### Command Functionality
+- Resolve PowerShell command execution issues (CRL-related implementation)
+- Implement reverse shell functionality
+- Add NTDLL unhooking command
+- Develop SOCKS4 tunneling capability
+- Implement COM-based keylogger functionality
+
+#### Integration & Features
+- Integrate Nimjacker as a build option
+  - Repository: https://github.com/hdbreaker/nimjacker
+- Add support for multiple loader techniques in build process
+- Implement call stack spoofing for enhanced evasion
+
+#### Operational Security Enhancements
+- Develop advanced loader techniques:
+  - Process hollowing
+  - Early bird injection
+  - Thread hijacking
+  - APC injection
+- Implement memory protection mechanisms
+- Add anti-analysis capabilities
+- Enhance evasion techniques

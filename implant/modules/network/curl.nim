@@ -1,9 +1,10 @@
 import puppy
 from strutils import join
-from ../../core/webClientListener import Listener
+import ../../core/webClientListener
+from ../../util/strenc import obf
 
 # Curl an HTTP webpage to stdout
-proc curl*(li : Listener, args : varargs[string]) : string =
+proc curl*(li : webClientListener.Listener, args : seq[string]) : string =
     var 
         output : string
         url = args.join(obf(" "))

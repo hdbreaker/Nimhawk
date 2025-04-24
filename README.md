@@ -1159,6 +1159,7 @@ tail -f /var/log/redirector.log
 # Improvement 21 of April 2025
 Implementing CRL Self Hosting for execute-assembly
 This allows multiple .NET ASM Execution without break the implant due to unhandled pointers to CRL.
+
 [![Execute-Assembly Functionality](docs/images/net_execution_1_1.png)](docs/images/net_execution_1.png)
 *Execute-assembly interface in operator dashboard with file selection and parameter configuration options*
 
@@ -1182,14 +1183,11 @@ Implant is undetected at this date:
 [![Shinject Functionality](docs/images/shinject_dinvoke_fud.png)](docs/images/shinject_dinvoke_fud.png)
 *Windows Defender scan results confirming undetected status of the injected payload*
 
-
-
 ### TODO List:
 
 #### Usability Improvements
 - Implement sucess message for download command in operator dashboard
 - Enable command line parameter support for execute-assembly in operator dashboard (currently limited to modal window interface due to an issue in how "execute-assembly" string is parsed in frontend)
-
 
 #### Command Functionality
 - Resolve PowerShell command execution issues (CRL-related implementation)

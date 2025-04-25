@@ -1206,7 +1206,6 @@ Implementing XOR-encrypted PowerShell reverse shell with enhanced OPSEC features
 - Enable command line parameter support for execute-assembly in operator dashboard (currently limited to modal window interface due to an issue in how "execute-assembly" string is parsed in frontend)
 
 #### Command Functionality
-- Implement reverse shell functionality
 - Add NTDLL unhooking command
 - Develop SOCKS4 tunneling capability
 - Implement COM-based keylogger functionality

@@ -1183,6 +1183,12 @@ Implant is undetected at this date:
 [![Shinject Functionality](docs/images/shinject_dinvoke_fud.png)](docs/images/shinject_dinvoke_fud.png)
 *Windows Defender scan results confirming undetected status of the injected payload*
 
+# Improvement 25 of April 2025
+Fixing Powershell implementation, now it's working.
+
+[![Powershell Functionality](docs/images/powershell.png)](docs/images/powershell.png)
+
+
 ### TODO List:
 
 #### Usability Improvements
@@ -1190,7 +1196,6 @@ Implant is undetected at this date:
 - Enable command line parameter support for execute-assembly in operator dashboard (currently limited to modal window interface due to an issue in how "execute-assembly" string is parsed in frontend)
 
 #### Command Functionality
-- Resolve PowerShell command execution issues (CRL-related implementation)
 - Implement reverse shell functionality
 - Add NTDLL unhooking command
 - Develop SOCKS4 tunneling capability

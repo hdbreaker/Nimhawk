@@ -1187,7 +1187,17 @@ Implant is undetected at this date:
 Fixing Powershell implementation, now it's working.
 
 [![Powershell Functionality](docs/images/powershell.png)](docs/images/powershell.png)
-*Powershell executed without issues*
+*PowerShell command execution interface with real-time output display and error handling*
+
+# Improvement 25 of April 2025
+Implementing XOR-encrypted PowerShell reverse shell with enhanced OPSEC features.
+
+[![Reverse Shell Functionality](docs/images/reverse_shell_1_1.png)](docs/images/reverse_shell_1_1.png)
+*Operator initiating a secure reverse shell connection with configurable XOR encryption key*
+
+[![Reverse Shell Functionality](docs/images/reverse_shell_1_2.png)](docs/images/reverse_shell_1_2.png)
+*Interactive encrypted reverse shell session with bidirectional communication and real-time command execution*
+
 
 ### TODO List:
 

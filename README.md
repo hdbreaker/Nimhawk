@@ -1187,7 +1187,7 @@ Implant is undetected at this date:
 Fixing Powershell implementation, now it's working.
 
 [![Powershell Functionality](docs/images/powershell.png)](docs/images/powershell.png)
-
+*Powershell executed without issues*
 
 ### TODO List:
 

@@ -1,4 +1,4 @@
-import { Drawer, Tabs, Box, Text, Group, Badge, ThemeIcon, Loader, Stack, Card, Grid, Button, Paper, Modal, TextInput, SimpleGrid } from '@mantine/core';
+import { Drawer, Tabs, Box, Text, Group, Badge, ThemeIcon, Loader, Stack, Card, Grid, Button, Paper, Modal, TextInput, SimpleGrid, Flex } from '@mantine/core';
 import { FaTerminal, FaInfoCircle, FaNetworkWired, FaHistory, FaCalendarAlt, FaExchangeAlt, FaClock, FaSkull, FaTrash, FaDownload, FaLink, FaUnlink, FaCloud, FaFingerprint, FaAngleRight } from 'react-icons/fa';
 import Console from './Console';
 import { submitCommand, formatBytes, timeSince, nimplantExit, deleteNimplant, registerTimeUpdateListener } from '../modules/nimplant';
@@ -646,7 +646,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                   }`,
                   paddingBottom: '2px'
                 }}>
-                  {` ${nimplantInfo?.id || '?'} - ${currentGuid}`}
+                  {` ${currentGuid}`}
                 </span>
               </Text>
               {nimplantInfo && (

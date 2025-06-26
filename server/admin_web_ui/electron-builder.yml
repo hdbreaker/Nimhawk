@@ -1,0 +1,57 @@
+appId: com.nimhawk.nimhawk-ui
+productName: Nimhawk UI
+copyright: Copyright © 2025 Nimhawk
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**/*
+  - electron/**/*
+  - node_modules/**/*
+  - package.json
+
+extraResources:
+  - from: build/
+    to: build/
+    filter:
+      - '**/*'
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+    - target: portable
+      arch:
+        - x64
+        - ia32
+
+linux:
+  target:
+    - target: AppImage
+      arch:
+        - x64
+    - target: deb
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true 

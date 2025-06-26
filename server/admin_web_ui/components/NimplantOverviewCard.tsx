@@ -65,7 +65,7 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
         
         // Calculate time difference manually
         const now = new Date();
-        const diffMs = now - dateObj;
+        const diffMs = now.getTime() - dateObj.getTime();
         
         // For future dates, just show "just now" for active implants
         if (diffMs < 0) {

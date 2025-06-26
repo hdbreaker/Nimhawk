@@ -16,6 +16,7 @@ interface ServerConfig {
   managementIp: string;
   managementPort: number;
   listenerType: string;
+  implantCallbackIp: string;
   listenerIp: string;
   listenerHost?: string;
   listenerPort: number;

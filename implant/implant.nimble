@@ -1,6 +1,6 @@
 # Package information
 # Nimhawk isn't really a package, Nimble is mainly used for easy dependency management
-version       = "1.0"
+version       = "1.4.0"
 author        = "hdbreaker"
 description   = "A Powerful, modular, lightweight and efficient implant heavily based on @chvancooten NimPlant project."
 license       = "MIT"

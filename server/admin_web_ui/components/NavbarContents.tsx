@@ -1,11 +1,12 @@
 import { Box, Center, Group, Image, AppShell, Text, UnstyledButton, Stack } from "@mantine/core";
-import { FaHome, FaServer, FaLaptopCode, FaDownload, FaBars } from 'react-icons/fa'
+import { FaHome, FaServer, FaLaptopCode, FaDownload, FaBars, FaPowerOff } from 'react-icons/fa'
 import { useMediaQuery } from "@mantine/hooks";
 import Link from "next/link";
 import React from "react";
 import classes from '../styles/buttonstyles.module.css';
-
 import { useRouter } from 'next/router'
+import axios from 'axios';
+import { SERVER_BASE_URL } from '../config';
 
 interface MainLinkProps {
   icon: React.ReactNode;
@@ -40,9 +41,35 @@ interface NavbarContentsProps {
 // Construct the navbar
 function NavbarContents({ collapsed, setCollapsed }: NavbarContentsProps) {
   const currentPath = useRouter().pathname
+  const router = useRouter();
 
   const toggleCollapsed = () => {
     setCollapsed(!collapsed);
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Get token from localStorage
+      const token = localStorage.getItem('auth_token');
+      
+      // Call the logout endpoint
+      await axios.post(`${SERVER_BASE_URL}/api/auth/logout`, {}, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      // Remove token from localStorage
+      localStorage.removeItem('auth_token');
+      
+      // Redirect to login
+      router.push('/login');
+    } catch (error) {
+      console.error('Error logging out:', error);
+      // In case of error, try to clean up anyway
+      localStorage.removeItem('auth_token');
+      router.push('/login');
+    }
   };
 
   return (
@@ -92,13 +119,43 @@ function NavbarContents({ collapsed, setCollapsed }: NavbarContentsProps) {
         />
       </Stack>
 
-      <Box py="md">
+      <Stack gap="xs">
+        {/* Logout Button */}
+        <UnstyledButton 
+          onClick={handleLogout}
+          style={{ 
+            width: '100%', 
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+            padding: '0.5rem',
+            borderRadius: '0.375rem',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 255, 255, 0.1)'
+            }
+          }}
+        >
+          {collapsed ? (
+            <Center>
+              <FaPowerOff size='1.2em' color="white" />
+            </Center>
+          ) : (
+            <Group>
+              <FaPowerOff size='1.2em' color="white" />
+              <Text size="lg" style={{ color: 'white' }}>
+                Logout
+              </Text>
+            </Group>
+          )}
+        </UnstyledButton>
+
+        {/* Expand/Collapse Button */}
         <UnstyledButton 
           onClick={toggleCollapsed}
           style={{ 
             width: '100%', 
             cursor: 'pointer',
             transition: 'all 0.3s ease',
+            padding: '0.5rem',
             '&:hover': {
               opacity: 0.8
             }
@@ -117,7 +174,7 @@ function NavbarContents({ collapsed, setCollapsed }: NavbarContentsProps) {
             )}
           </Center>
         </UnstyledButton>
-      </Box>
+      </Stack>
     </Stack>
   )
 }

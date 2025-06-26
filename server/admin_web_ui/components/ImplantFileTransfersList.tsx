@@ -21,8 +21,8 @@ interface ImplantFileTransfersListProps {
   guid: string;
 }
 
-const TruncatedText = ({ text, maxWidth = '250px' }) => {
-  const textRef = useRef(null);
+const TruncatedText = ({ text, maxWidth = '250px' }: { text: string; maxWidth?: string }) => {
+  const textRef = useRef<HTMLDivElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
   
   useEffect(() => {
@@ -31,7 +31,7 @@ const TruncatedText = ({ text, maxWidth = '250px' }) => {
     }
   }, [text]);
 
-  const textStyle = {
+  const textStyle: React.CSSProperties = {
     maxWidth,
     whiteSpace: 'nowrap',
     overflow: 'hidden',
@@ -39,7 +39,7 @@ const TruncatedText = ({ text, maxWidth = '250px' }) => {
   };
 
   return isTruncated ? (
-    <Tooltip label={text} multiline width={300} withArrow>
+    <Tooltip label={text} multiline withArrow>
       <Text ref={textRef} size="sm" style={textStyle}>
         {text}
       </Text>

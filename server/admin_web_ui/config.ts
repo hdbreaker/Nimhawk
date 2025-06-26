@@ -1,5 +1,5 @@
-export const SERVER_BASE_URL = `${process.env.SERVER_IP}:${process.env.SERVER_PORT}` as string;
-export const IMPLANT_BASE_URL = `${process.env.IMPLANT_SERVER_IP}:${process.env.IMPLANT_SERVER_PORT}` as string;
+export const SERVER_BASE_URL = `${process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP}:${process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT}` as string;
+export const IMPLANT_BASE_URL = `${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP}:${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT}` as string;
 
 // Create helper function to get server URL
 export const getServerEndpoint = () => {

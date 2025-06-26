@@ -2,13 +2,19 @@
 const nextConfig = {
   output: 'export',
   distDir: 'out',
-  env: {
-    SERVER_IP: process.env.SERVER_IP,
-    SERVER_PORT: process.env.SERVER_PORT,
-    IMPLANT_SERVER_IP: process.env.IMPLANT_SERVER_IP,
-    IMPLANT_SERVER_PORT: process.env.IMPLANT_SERVER_PORT,
+  trailingSlash: true,
+  images: {
+    unoptimized: true
   },
-  // Other configurations
+  env: {
+    NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP: process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP,
+    NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT: process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT,
+    NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP: process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP,
+    NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT: process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT,
+  },
+  // Configuración específica para Electron
+  assetPrefix: process.env.NODE_ENV === 'production' ? './' : '',
+  basePath: process.env.NODE_ENV === 'production' ? '' : '',
 };
 
 module.exports = nextConfig;

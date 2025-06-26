@@ -1,12 +1,29 @@
 {
-  "name": "nimplant-ui",
-  "version": "1.4",
+  "name": "Nimhawk",
+  "version": "1.4.0",
+  "description": "Nimhawk UI - Command & Control Framework Interface",
+  "author": {
+    "name": "Alejandro Parodi",
+    "email": "admin@nimhawk.com"
+  },
   "private": true,
+  "main": "electron/main.js",
+  "homepage": "./",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "electron": "npm run build && cross-env NODE_ENV=production electron .",
+    "electron-dev": "concurrently \"npm run dev\" \"wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .\"",
+    "electron-app": "cross-env NODE_ENV=production electron .",
+    "electron-pack": "npm run build && electron-builder",
+    "electron-build": "npm run build && electron-builder --publish=never",
+    "electron-build:mac": "npm run build && electron-builder --mac --publish=never",
+    "electron-build:windows": "npm run build && electron-builder --win --publish=never",
+    "electron-build:linux": "npm run build && electron-builder --linux --publish=never",
+    "electron-build:all": "npm run build && electron-builder --mac --win --linux --publish=never",
+    "electron-dist": "npm run build && electron-builder --publish=always"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -29,11 +46,65 @@
     "@types/node": "^22.1.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^32.2.0",
+    "electron-builder": "^25.1.8",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.5",
     "postcss": "^8.4.40",
     "postcss-preset-mantine": "^1.17.0",
     "postcss-simple-vars": "^7.0.1",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.nimhawk.Nimhawk",
+    "productName": "Nimhawk UI",
+    "directories": {
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**/*",
+      "electron/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64", "ia32"]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        }
+      ]
+    }
   }
 }

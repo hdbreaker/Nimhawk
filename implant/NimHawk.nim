@@ -41,7 +41,7 @@ when defined risky:
 # Parse the configuration at compile-time
 let CONFIG : Table[string, string] = configParser.parseConfig()
 
-const version: string = "=== Nimhawk v1.0 ==="
+const version: string = "=== Nimhawk v1.4.0 ==="
 
 # IMPORTANT: Export runNp correctly
 proc runNp() {.exportc, cdecl.} =

@@ -6,7 +6,7 @@
   [![PRs Welcome](https://img.shields.io/badge/Contributions-Welcome-brightgreen.svg)](http://makeapullrequest.com)
   [![Platform](https://img.shields.io/badge/Implant-Windows%20x64-blue.svg)](https://github.com/hdbreaker/nimhawk)
   [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-  [![Version](https://img.shields.io/badge/Version-1.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
+  [![Version](https://img.shields.io/badge/Version-1.4.0-red.svg)](https://github.com/hdbreaker/nimhawk/releases)
 </div>
 
 ---
@@ -326,7 +326,11 @@ The web interface is built with Next.js and uses npm for dependency management a
    ```
 
 3. **Development workflow**:
-   - Review Frontend .env file and adjust to proper Servers IPs
+   - Review Frontend .env file and adjust to proper Servers IPs using the new variable names:
+     - `NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP`
+     - `NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT`
+     - `NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP`
+     - `NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT`
    - Make changes to components in the `components/` directory
    - Modify pages in the `pages/` directory
    - Changes will automatically reload in the browser

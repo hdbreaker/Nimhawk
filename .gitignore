@@ -21,4 +21,14 @@ server/uploads/
 target/
 dev_utils/execute_assembly_net48_test/obj/*
 
+# Node.js / Electron
+node_modules/
+*.tsbuildinfo
+.DS_Store
+
+# Build artifacts
+server/admin_web_ui/dist/
+server/admin_web_ui/out/
+server/admin_web_ui/.next/
+
 

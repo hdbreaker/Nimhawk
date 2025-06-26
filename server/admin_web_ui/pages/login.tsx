@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Text, 
   TextInput,
@@ -8,13 +8,20 @@ import {
   Image,
   Box,
   Alert,
+  Divider,
+  Group,
+  Tooltip,
+  Collapse,
+  UnstyledButton,
 } from '@mantine/core';
 import { useMediaQuery } from '@mantine/hooks';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/router';
 import type { NextPage } from 'next';
 import axios from 'axios';
+import { FaChevronDown, FaChevronUp } from 'react-icons/fa';
 import { SERVER_BASE_URL } from '../config';
+import { getDisplayVersion } from '../version';
 
 const Login: NextPage = () => {
   const router = useRouter();
@@ -23,6 +30,37 @@ const Login: NextPage = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  
+  // Electron-specific states
+  const [isElectron, setIsElectron] = useState(false);
+  const [adminServerIp, setAdminServerIp] = useState('');
+  const [adminServerPort, setAdminServerPort] = useState('');
+  const [implantServerIp, setImplantServerIp] = useState('');
+  const [implantServerPort, setImplantServerPort] = useState('');
+  const [serverConfigOpen, setServerConfigOpen] = useState(false);
+
+  // Detect if running in Electron and load default values
+  useEffect(() => {
+    const checkElectron = () => {
+      // Check if running in Electron
+      const isElectronApp = typeof window !== 'undefined' && 
+                           (window.navigator.userAgent.toLowerCase().indexOf('electron') > -1 ||
+                            (window as any).process?.type === 'renderer' ||
+                            !!(window as any).electronAPI);
+      
+      setIsElectron(isElectronApp);
+      
+      if (isElectronApp) {
+        // Load default values from environment variables
+        setAdminServerIp(process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP || 'http://localhost');
+        setAdminServerPort(process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT || '9669');
+        setImplantServerIp(process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP || 'http://localhost');
+        setImplantServerPort(process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT || '80');
+      }
+    };
+    
+    checkElectron();
+  }, []);
   
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -68,7 +106,11 @@ const Login: NextPage = () => {
       console.log('Attempting login with:', { email: username });
       
       // Authentication endpoint URL
-      const loginUrl = `${SERVER_BASE_URL}/api/auth/login`;
+      let baseUrl = SERVER_BASE_URL;
+      if (isElectron && adminServerIp && adminServerPort) {
+        baseUrl = `${adminServerIp}:${adminServerPort}`;
+      }
+      const loginUrl = `${baseUrl}/api/auth/login`;
       console.log('Login URL:', loginUrl);
       
       // Send authentication request to the API
@@ -217,6 +259,127 @@ const Login: NextPage = () => {
               />
             </motion.div>
 
+            {/* Server Configuration - Only show in Electron */}
+            {isElectron && (
+              <motion.div variants={itemVariants} style={{width: '100%'}}>
+                <Stack gap="sm">
+                  {/* Collapsible Header */}
+                  <UnstyledButton
+                    onClick={() => setServerConfigOpen(!serverConfigOpen)}
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      borderRadius: '6px',
+                      transition: 'background-color 0.2s ease',
+                      '&:hover': {
+                        backgroundColor: 'rgba(0, 0, 0, 0.05)'
+                      }
+                    }}
+                  >
+                    <Group justify="center" gap="xs">
+                      <Tooltip
+                        label={`Help:\n\nIn general this URLs will point to same place.\n\nThe only way you must change this is if you split Python Server and deploy Admin API and Implant API in two different servers.\n\nFiles involved:\n   - servers/admin_api/admin_server_init.py\n   - servers/implants_api/implants_server_init.py`}
+                        multiline
+                        w={350}
+                        withArrow
+                        position="top"
+                      >
+                        <Text size="sm" fw={600} c="dimmed" style={{ cursor: 'help' }}>
+                          Server Configuration
+                        </Text>
+                      </Tooltip>
+                      {serverConfigOpen ? (
+                        <FaChevronUp size={12} color="#868e96" />
+                      ) : (
+                        <FaChevronDown size={12} color="#868e96" />
+                      )}
+                    </Group>
+                  </UnstyledButton>
+                  
+                  {/* Collapsible Content */}
+                  <Collapse in={serverConfigOpen}>
+                    <Stack gap="md" mt="xs">
+                      {/* Admin Server */}
+                      <Box>
+                        <Text size="sm" fw={600} mb={8} c="dark">
+                          Nimhawk Admin Server
+                        </Text>
+                        <TextInput
+                          placeholder={`${process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP || 'http://localhost'}:${process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT || '9669'}`}
+                          size="sm"
+                          value={`${adminServerIp}:${adminServerPort}`}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const lastColonIndex = value.lastIndexOf(':');
+                            if (lastColonIndex > -1) {
+                              const ip = value.substring(0, lastColonIndex);
+                              const port = value.substring(lastColonIndex + 1);
+                              setAdminServerIp(ip);
+                              setAdminServerPort(port);
+                            } else {
+                              setAdminServerIp(value);
+                            }
+                          }}
+                          disabled={loading}
+                          styles={{
+                            input: {
+                              backgroundColor: '#f8f9fa',
+                              border: '1px solid #e9ecef',
+                              fontSize: '0.9rem'
+                            },
+                            label: {
+                              fontSize: '0.8rem',
+                              fontWeight: 500,
+                              color: '#666'
+                            }
+                          }}
+                        />
+                      </Box>
+
+                      {/* Implant Server */}
+                      <Box>
+                        <Text size="sm" fw={600} mb={8} c="dark">
+                          Nimhawk Implant Server
+                        </Text>
+                        <TextInput
+                          placeholder={`${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP || 'http://localhost'}:${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT || '80'}`}
+                          size="sm"
+                          value={`${implantServerIp}:${implantServerPort}`}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            const lastColonIndex = value.lastIndexOf(':');
+                            if (lastColonIndex > -1) {
+                              const ip = value.substring(0, lastColonIndex);
+                              const port = value.substring(lastColonIndex + 1);
+                              setImplantServerIp(ip);
+                              setImplantServerPort(port);
+                            } else {
+                              setImplantServerIp(value);
+                            }
+                          }}
+                          disabled={loading}
+                          styles={{
+                            input: {
+                              backgroundColor: '#f8f9fa',
+                              border: '1px solid #e9ecef',
+                              fontSize: '0.9rem'
+                            },
+                            label: {
+                              fontSize: '0.8rem',
+                              fontWeight: 500,
+                              color: '#666'
+                            }
+                          }}
+                        />
+                      </Box>
+                    </Stack>
+                  </Collapse>
+                  
+                  <Divider size="xs" color="#e9ecef" />
+                </Stack>
+              </motion.div>
+            )}
+
             {error && (
               <motion.div variants={itemVariants} style={{width: '100%'}}>
                 <Alert color="red" title="Authentication error" withCloseButton onClose={() => setError('')}>
@@ -302,7 +465,7 @@ const Login: NextPage = () => {
                     fontSize: '0.75rem'
                   }}
                 >
-                  VERSION {'1.0'}
+                  VERSION {getDisplayVersion()}
                 </Text>
               </Box>
             </motion.div>

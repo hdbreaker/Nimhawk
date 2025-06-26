@@ -11,6 +11,7 @@ import {
   Stack,
   Image,
 } from '@mantine/core';
+import { getDisplayVersion } from '../version';
 import { useMediaQuery } from '@mantine/hooks';
 import TitleBar from '../components/TitleBar';
 import type { NextPage } from 'next';
@@ -166,7 +167,7 @@ const Index: NextPage = () => {
                   fontSize: '0.75rem'
                 }}
               >
-                VERSION {'1.0'}
+                VERSION {getDisplayVersion()}
               </Text>
             </Box>
           </motion.div>

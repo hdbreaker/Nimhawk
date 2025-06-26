@@ -387,7 +387,7 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
                     </Group>
                     
                     <Text>
-                        You are about to delete the workspace "{workspaceToDelete?.name}". This action cannot be undone.
+                        You are about to delete the workspace &quot;{workspaceToDelete?.name}&quot;. This action cannot be undone.
                     </Text>
                     
                     <Text size="sm" c="dimmed" mt="xs">
@@ -525,7 +525,7 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
                                     }}
                                     fullWidth
                                 >
-                                    Create "{searchValue}" workspace
+                                    Create &quot;{searchValue}&quot; workspace
                                 </Button>
                             )}
                         </Stack>

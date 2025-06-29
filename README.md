@@ -10,6 +10,64 @@
 [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-Support-orange.svg)](https://buymeacoffee.com/hdbreaker9s)
 </div>
 
+---
+
+## ⚠️ Disclaimer
+
+This project is intended **solely for educational and authorized red teaming purposes**.
+
+Nimhawk was created as a research framework for simulating command-and-control operations in lab environments, helping professionals understand advanced attacker techniques and improve defensive posture.
+
+You are **responsible for using this tool only in systems you own or have explicit permission to test**. Unauthorized access, use, or distribution of malware is illegal and unethical.
+
+The author assumes **no responsibility** for any misuse of this code.
+
+By using this software, you agree to comply with all applicable laws and regulations in your jurisdiction.
+
+> 📚 **For comprehensive legal information, please read [LEGAL.md](LEGAL.md)**
+
+## 🎓 Educational Focus
+
+### Research Applications
+- **Malware Analysis**: Study C2 communication patterns in controlled environments
+- **Detection Development**: Create and test security rules for SOC teams  
+- **Academic Research**: Support cybersecurity coursework and thesis projects
+- **Red Team Training**: Practice authorized adversary simulation techniques
+- **Blue Team Defense**: Understand attacker methodologies to improve detection
+
+### Learning Objectives
+This framework helps security professionals understand:
+- Advanced Persistent Threat (APT) tactics and techniques
+- Command and control communication protocols
+- Evasion techniques and their detection
+- Incident response and forensic analysis
+- Network security monitoring and detection
+
+## 🛡️ Responsible Use Guidelines
+
+### ✅ Authorized Use Cases
+- **Laboratory Testing**: Isolated network environments for research
+- **Academic Institutions**: Cybersecurity education and coursework
+- **Security Training**: Authorized corporate security training programs
+- **Penetration Testing**: With proper written authorization and scope
+- **Research Projects**: Academic or industry cybersecurity research
+
+### 📋 Before You Begin
+1. **Obtain Written Permission**: Ensure you have explicit authorization
+2. **Document Your Scope**: Clearly define testing boundaries and objectives
+3. **Use Isolated Networks**: Never test on production systems without authorization
+4. **Follow Legal Requirements**: Comply with all applicable laws and regulations
+5. **Practice Responsible Disclosure**: Report findings through proper channels
+
+### 🚫 Strictly Prohibited
+- Unauthorized access to any computer system
+- Testing without explicit written permission
+- Malicious use or criminal activities
+- Distribution of compiled implants without proper context
+- Any use that violates local or international laws
+
+---
+
 > ⚠️ **LEGAL WARNING**: This tool is designed exclusively for authorized security professionals, legitimate penetration testing, and academic research. Unauthorized use is illegal and may result in criminal prosecution.
 
 > 🛡️ **ETHICAL USE ONLY**: By using this software, you agree to use it only for legal purposes with proper authorization.
@@ -30,6 +88,10 @@
 - [🏗️ Architecture Overview](ARCHITECTURE.md) - Technical architecture and design patterns
 - [👨‍💻 Developer Guide](DEVELOPERS.md) - Development, contribution guidelines, and API documentation
 - [📋 Version Management](VERSION_MANAGEMENT.md) - Version control and update procedures
+
+### ⚖️ Legal and Ethical Guidelines
+- [📜 Legal Notice](LEGAL.md) - Comprehensive legal disclaimer and terms of use
+- [🤝 Code of Conduct](CODE_OF_CONDUCT.md) - Community standards and ethical guidelines
 
 ### 🛠️ Quick Reference
 - [System Requirements](#system-requirements)

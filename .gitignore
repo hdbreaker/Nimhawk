@@ -21,6 +21,10 @@ server/uploads/
 target/
 dev_utils/execute_assembly_net48_test/obj/*
 
+# Configuration Files
+server/admin_web_ui/.env
+implant/nim.cfg
+
 # Node.js / Electron
 node_modules/
 *.tsbuildinfo

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Text, Image, Box, Paper, Loader, Group, Code, ScrollArea, Stack, Center, useMantineTheme, rem, Button, ActionIcon, Skeleton, Tooltip, Card } from '@mantine/core';
+import NextImage from 'next/image';
 import { endpoints } from '../modules/nimplant';
 import { api } from '../modules/apiFetcher';
 import { FaFilePdf, FaFileAlt, FaFileImage, FaFileCode, FaFile, FaDownload, FaDatabase, FaFileExcel, FaFileWord, FaFileArchive, FaFileCsv } from 'react-icons/fa';
@@ -35,14 +36,17 @@ const FileThumbnail = ({ fileName, fileType, imageBlob, pdfBlob, fileContent }: 
           }}
         >
           {imageBlob ? (
-            <img 
+            <NextImage 
               src={imageBlob}
               alt={fileName}
+              width={170}
+              height={160}
               style={{ 
                 maxWidth: '100%', 
                 maxHeight: '100%', 
                 objectFit: 'contain' 
               }}
+              unoptimized
             />
           ) : (
             <Skeleton height={160} width="90%" />
@@ -389,11 +393,14 @@ const FilePreview = ({ fileName, implantGuid }: FilePreviewProps) => {
         return (
           <Box style={{ textAlign: 'center', padding: '20px' }}>
             {imageBlob && (
-              <img 
+              <NextImage 
                 src={imageBlob}
-              alt={fileName}
-              style={{ maxWidth: '100%', maxHeight: '70vh' }}
-            />
+                alt={fileName}
+                width={800}
+                height={600}
+                style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+                unoptimized
+              />
             )}
           </Box>
         );

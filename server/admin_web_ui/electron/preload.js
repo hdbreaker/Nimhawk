@@ -1,20 +1,20 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Exponer APIs seguras al proceso renderer
+// Expose secure APIs to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Funciones para comunicación con el proceso principal
+  // Functions for communication with the main process
   getVersion: () => ipcRenderer.invoke('get-version'),
   getPlatform: () => process.platform,
   
-  // Funciones para manejo de archivos (si las necesitas)
+  // Functions for file handling (if you need them)
   openFile: () => ipcRenderer.invoke('open-file'),
   saveFile: (data) => ipcRenderer.invoke('save-file', data),
   
-  // Funciones para notificaciones
+  // Functions for notifications
   showNotification: (title, body) => ipcRenderer.invoke('show-notification', title, body)
 });
 
-// Manejar eventos del DOM
+// Handle DOM events
 window.addEventListener('DOMContentLoaded', () => {
   console.log('Preload script loaded');
 }); 

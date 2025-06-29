@@ -38,7 +38,7 @@ function NimplantOverviewCardList({ onNimplantClick, nimplantsData, showOnlyActi
     }));
   }, [searchTerm]);
 
-  // Query API solo si no se pasan los datos directamente
+  // Query API only if data is not passed directly
   const {nimplants, nimplantsLoading, nimplantsError} = !nimplantsData ? getNimplants() : { nimplants: nimplantsData, nimplantsLoading: false, nimplantsError: null };
 
   useEffect(() => {

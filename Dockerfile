@@ -33,31 +33,31 @@ RUN DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:deadsnakes/ppa -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar pip de manera limpia
+# Install pip cleanly
 RUN curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/get-pip.py \
     && python3.11 /tmp/get-pip.py \
     && rm /tmp/get-pip.py
 
-# Instalar Node.js
+# Install Node.js
 RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
     && apt-get update \
     && apt-get install -y nodejs \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar archivos
+# Copy files
 COPY . /nimhawk/
 
-# Actualizar nim.cfg con rutas correctas de MinGW para Docker
+# Update nim.cfg with correct MinGW paths for Docker
 RUN sed -i 's|amd64.windows.gcc.path = "/opt/homebrew/Cellar/mingw-w64/12.0.0_2/toolchain-x86_64/bin"|amd64.windows.gcc.path = "/usr/bin"|g' /nimhawk/implant/nim.cfg \
     && sed -i 's|amd64.windows.gcc.path = "/opt/homebrew/bin"|# amd64.windows.gcc.path = "/opt/homebrew/bin"|g' /nimhawk/implant/nim.cfg \
     && echo "# Docker environment MinGW configuration" >> /nimhawk/implant/nim.cfg \
     && echo "amd64.windows.gcc.path = \"/usr/bin\"" >> /nimhawk/implant/nim.cfg
 
 # Verify MinGW installation
-RUN which x86_64-w64-mingw32-gcc || echo "MinGW no encontrado"
+RUN which x86_64-w64-mingw32-gcc || echo "MinGW not found"
 
-# Instalar requerimientos de Python (usando python3.11 directamente)
+# Install Python requirements (using python3.11 directly)
 RUN cd /nimhawk && python3.11 -m pip install --no-cache-dir -r server/requirements.txt
 
 # Create directories for persistence
@@ -76,7 +76,7 @@ fi
 # Setup permissions
 RUN chmod -R 755 /nimhawk
 
-# Instalar Nimble
+# Install Nimble
 RUN cd /nimhawk/implant && nimble install -y ; cd /nimhawk/
 
 # Expose all required ports

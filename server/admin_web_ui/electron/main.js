@@ -3,11 +3,11 @@ const path = require('path');
 const fs = require('fs');
 const isDev = process.env.NODE_ENV === 'development';
 
-// Mantener una referencia global del objeto de ventana
+// Keep a global reference of the window object
 let mainWindow;
 
 function createWindow() {
-  // Crear la ventana del navegador
+  // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -19,12 +19,12 @@ function createWindow() {
       enableRemoteModule: false,
       webSecurity: !isDev
     },
-    icon: path.join(__dirname, '../public/favicon.ico'), // Asegurate de tener un favicon
+    icon: path.join(__dirname, '../public/favicon.ico'), // Make sure you have a favicon
     titleBarStyle: 'default',
-    show: false // No mostrar hasta que esté listo
+    show: false // Don't show until ready
   });
 
-  // Determinar la URL a cargar
+  // Determine the URL to load
   const staticIndexPath = path.join(__dirname, '../out/index.html');
   
   console.log('isDev:', isDev);
@@ -32,12 +32,12 @@ function createWindow() {
   console.log('app.isPackaged:', app.isPackaged);
   
   if (isDev) {
-    // Modo desarrollo: usar servidor de desarrollo
+    // Development mode: use development server
     const startUrl = 'http://localhost:3000';
     console.log('Loading URL:', startUrl);
     mainWindow.loadURL(startUrl);
   } else {
-    // Modo producción: usar archivos estáticos
+    // Production mode: use static files
     if (fs.existsSync(staticIndexPath)) {
       const indexURL = `file://${staticIndexPath}`;
       console.log('Loading URL:', indexURL);
@@ -49,23 +49,23 @@ function createWindow() {
     }
   }
 
-  // Mostrar ventana cuando esté lista
+  // Show window when ready
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
 
-  // Abrir DevTools en desarrollo
+  // Open DevTools in development
   if (isDev) {
     mainWindow.webContents.openDevTools();
   }
 
-  // Manejar enlaces externos
+  // Handle external links
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  // Interceptar navegación en modo producción para manejar rutas de SPA
+  // Intercept navigation in production mode to handle SPA routes
   if (!isDev) {
     mainWindow.webContents.on('will-navigate', (event, navigationUrl) => {
       const parsedUrl = new URL(navigationUrl);
@@ -73,12 +73,12 @@ function createWindow() {
       if (parsedUrl.protocol === 'file:') {
         event.preventDefault();
         
-        // Extraer la ruta de la URL
+        // Extract route from URL
         let route = parsedUrl.pathname;
         if (route === '/' || route === '') {
           route = '/index.html';
         } else if (!route.endsWith('.html') && !route.includes('.')) {
-          // Si es una ruta de página sin extensión, agregar /index.html
+          // If it's a page route without extension, add /index.html
           route = route.endsWith('/') ? route + 'index.html' : route + '/index.html';
         }
         
@@ -87,7 +87,7 @@ function createWindow() {
         if (fs.existsSync(filePath)) {
           mainWindow.loadFile(filePath);
         } else {
-          // Si el archivo no existe, cargar la página 404 o index
+          // If file doesn't exist, load 404 page or index
           const indexPath = path.join(__dirname, '../out/index.html');
           if (fs.existsSync(indexPath)) {
             mainWindow.loadFile(indexPath);
@@ -96,12 +96,12 @@ function createWindow() {
       }
     });
 
-    // Interceptar peticiones de recursos para servir archivos estáticos
+    // Intercept resource requests to serve static files
     const { session } = require('electron');
     session.defaultSession.protocol.interceptFileProtocol('file', (request, callback) => {
-      const url = request.url.substr(7); // quitar "file://"
+      const url = request.url.substr(7); // remove "file://"
       
-      // Si es una petición de imagen o recurso estático
+      // If it's an image or static resource request
       if (url.match(/\.(png|jpg|jpeg|gif|svg|ico|css|js)$/)) {
         const fileName = path.basename(url);
         const staticFilePath = path.join(__dirname, '../out', fileName);
@@ -112,22 +112,22 @@ function createWindow() {
         }
       }
       
-      // Para todo lo demás, usar el comportamiento por defecto
+      // For everything else, use default behavior
       callback({ path: url });
     });
   }
 
-  // Manejar refresh (F5, Cmd+R) en modo producción
+  // Handle refresh (F5, Cmd+R) in production mode
   if (!isDev) {
     const handleRefresh = () => {
       const currentURL = mainWindow.webContents.getURL();
       console.log('Refresh detected, current URL:', currentURL);
       
-      // Siempre cargar el index.html principal y luego navegar con JavaScript
+      // Always load main index.html and then navigate with JavaScript
       const indexPath = path.join(__dirname, '../out/index.html');
       const indexURL = `file://${indexPath}`;
       
-      // Extraer la ruta que queremos
+      // Extract the route we want
       let targetRoute = '/';
       if (currentURL.startsWith('file://')) {
         const urlPath = new URL(currentURL).pathname;
@@ -146,9 +146,9 @@ function createWindow() {
       console.log('Target route:', targetRoute);
       console.log('Loading index and navigating to:', targetRoute);
       
-      // Cargar index.html
+      // Load index.html
       mainWindow.loadURL(indexURL).then(() => {
-        // Después de cargar, navegar a la ruta correcta si no es la raíz
+        // After loading, navigate to the correct route if it's not root
         if (targetRoute !== '/') {
           setTimeout(() => {
             mainWindow.webContents.executeJavaScript(`
@@ -170,7 +170,7 @@ function createWindow() {
     };
 
     mainWindow.webContents.on('before-input-event', (event, input) => {
-      // Detectar Cmd+R (macOS), Ctrl+R (Windows/Linux), o F5
+      // Detect Cmd+R (macOS), Ctrl+R (Windows/Linux), or F5
       if ((input.meta && input.key === 'r') || 
           (input.control && input.key === 'r') || 
           input.key === 'F5') {
@@ -179,26 +179,26 @@ function createWindow() {
       }
     });
 
-    // También interceptar el evento de reload del webContents
+    // Also intercept webContents reload event
     mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
       console.log('Failed to load:', validatedURL, 'Error:', errorDescription);
       if (validatedURL.startsWith('file:///') && !validatedURL.includes('out')) {
-        // Si falló cargar una URL de file:// que no incluye 'out', intentar con nuestra lógica
+        // If failed to load a file:// URL that doesn't include 'out', try with our logic
         handleRefresh();
       }
     });
   }
 
-  // Evento cuando la ventana es cerrada
+  // Event when window is closed
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-// Este método será llamado cuando Electron haya terminado de inicializarse
+// This method will be called when Electron has finished initializing
 app.whenReady().then(createWindow);
 
-// Salir cuando todas las ventanas están cerradas
+// Quit when all windows are closed
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
@@ -211,27 +211,27 @@ app.on('activate', () => {
   }
 });
 
-// Crear menú de aplicación
+// Create application menu
 const template = [
   {
-    label: 'Archivo',
+    label: 'File',
     submenu: [
       {
-        label: 'Recargar',
+        label: 'Reload',
         accelerator: 'CmdOrCtrl+R',
         click: () => {
           if (mainWindow) {
             if (isDev) {
               mainWindow.reload();
             } else {
-                             // En producción, usar la misma lógica de refresh personalizada
+                             // In production, use the same custom refresh logic
                handleRefresh();
             }
           }
         }
       },
       {
-        label: 'Herramientas de Desarrollador',
+        label: 'Developer Tools',
         accelerator: 'F12',
         click: () => {
           if (mainWindow) {
@@ -241,7 +241,7 @@ const template = [
       },
       { type: 'separator' },
       {
-        label: 'Salir',
+        label: 'Exit',
         accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
         click: () => {
           app.quit();
@@ -250,7 +250,7 @@ const template = [
     ]
   },
   {
-    label: 'Ver',
+    label: 'View',
     submenu: [
       {
         label: 'Zoom In',

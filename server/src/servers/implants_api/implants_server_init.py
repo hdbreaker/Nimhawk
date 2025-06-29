@@ -216,11 +216,11 @@ def nim_implants_server(xor_key):
                         utils.nimplant_print(f"DEBUG: Exception type: {type(e).__name__}")
                         import traceback
                         utils.nimplant_print(f"DEBUG: Traceback: {traceback.format_exc()}")
-                        BadRequestReason.notify_bad_request(flask.request, BadRequestReason.BadRequestReason.BAD_KEY)
+                        notify_bad_request(flask.request, BadRequestReason.BAD_KEY)
                         return flask.jsonify(status="Not found"), 404
             else:
                 utils.nimplant_print(f"DEBUG: ERROR - Incorrect User-Agent: '{agent_header}'")
-                BadRequestReason.notify_bad_request(flask.request, BadRequestReason.BadRequestReason.USER_AGENT_MISMATCH)
+                notify_bad_request(flask.request, BadRequestReason.USER_AGENT_MISMATCH)
                 return flask.jsonify(status="Not found"), 404
         else:
             utils.nimplant_print(f"DEBUG: ERROR - Incorrect X-Correlation-ID: '{allow_header}'")

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Box, Skeleton, useMantineTheme } from '@mantine/core';
+import NextImage from 'next/image';
 import { FaFilePdf, FaFileAlt, FaFileImage, FaFileCode, FaFile, FaDatabase, FaFileExcel, FaFileWord, FaFileArchive, FaFileCsv } from 'react-icons/fa';
 import { endpoints } from '../modules/nimplant';
 
@@ -101,9 +102,11 @@ const FileTypeIcon = ({ fileName, fileId, isImplant = true }: FileTypeIconProps)
           </Box>
         )}
         {imageSrc && !imageLoading && (
-          <img 
+          <NextImage 
             src={imageSrc}
             alt={fileName}
+            width={60}
+            height={60}
             style={{ 
               width: '100%', 
               height: '100%', 
@@ -113,6 +116,7 @@ const FileTypeIcon = ({ fileName, fileId, isImplant = true }: FileTypeIconProps)
               setImgError(true);
               setImageLoading(false);
             }}
+            unoptimized
           />
         )}
       </Box>

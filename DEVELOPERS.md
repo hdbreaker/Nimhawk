@@ -45,6 +45,12 @@
 <details>
 <summary>Click to expand</summary>
 
+- [Multi-Platform Implant](#-multi-platform-implant-wip)
+  - [Overview](#multi-platform-overview)
+  - [Supported Platforms](#supported-platforms)
+  - [Build System with Make](#build-system-with-make)
+  - [Project Structure](#multi-platform-project-structure)
+  - [Configuration](#multi-platform-configuration)
 - [How to develop your own Implant](#how-to-develop-your-own-implant-or-extend-implant-functionality)
   - [Overview](#overview)
   - [Headers and Workspace configuration](#headers-and-workspace-configuration)
@@ -518,6 +524,224 @@ This comprehensive example demonstrates the full flow:
    ```
 
 When the frontend connects with the backend after logging in, the first action it performs is calling `getServerInfo`. This function populates the `serverInfo` object in `modules/nimplant.ts` with the backend settings. This is how configuration data flows from the backend to the frontend in Nimhawk.
+
+# 🚀 Multi-Platform Implant 
+
+> **⚠️ Work In Progress**: This section documents the new multi-platform implant implementation that extends Nimhawk's capabilities beyond Windows x64.
+
+## Multi-Platform Overview
+
+The **Nimhawk Multi-Platform Implant** is a cross-platform extension of the original Windows-focused implant, designed to support multiple operating systems and architectures while maintaining compatibility with the existing Nimhawk C2 infrastructure.
+
+### Key Features
+
+- **Cross-Platform Support**: Linux, macOS, and multiple architectures
+- **Standard Library Only**: Uses only Nim standard library for maximum compatibility
+- **Make Build System**: Simplified build process with Make
+- **Configuration Inheritance**: Reads from the same `config.toml` as the main implant
+- **Docker Testing Support**: Comprehensive testing with containerized environments
+
+## Supported Platforms
+
+| Platform | Architecture | Status | Binary Name | Notes |
+|----------|-------------|--------|-------------|-------|
+| **Linux** | x86_64 | ✅ **Supported** | `nimhawk_linux_x64` | Primary target |
+| **Linux** | ARM64 (aarch64) | ✅ **Supported** | `nimhawk_linux_arm64` | IoT/Server targets |
+| **Linux** | MIPS Little-Endian | ✅ **Supported** | `nimhawk_linux_mipsel` | Router/Embedded |
+| **Linux** | ARM | ✅ **Supported** | `nimhawk_linux_arm` | Legacy ARM devices |
+| **Darwin** | x86_64 (macOS) | ✅ **Supported** | `nimhawk_darwin` | Intel Mac support |
+
+### Architecture Compatibility
+
+```bash
+# Example target environments
+- Linux servers (x86_64, ARM64)
+- IoT devices (ARM, MIPS)
+- Network equipment (MIPS routers)
+- macOS workstations (Intel Mac)
+- Embedded systems (ARM variants)
+```
+
+## Build System with Make
+
+The multi-platform implant uses a **Make-based build system** for simplified cross-compilation and deployment.
+
+### Prerequisites
+
+Before building, ensure you have:
+
+```bash
+# Required software
+- Nim compiler >= 1.6.10
+- Make utility
+- Cross-compilation toolchains (if needed)
+
+# Verify installation
+nim --version
+make --version
+```
+
+### Basic Build Commands
+
+Navigate to the multi-implant directory and use Make:
+
+```bash
+cd multi_implant/
+
+# Build all supported platforms
+make all
+
+# Build specific platforms
+make linux_x64     # Linux x86_64
+make linux_arm64   # Linux ARM64  
+make linux_mipsel  # Linux MIPS Little-Endian
+make linux_arm     # Linux ARM
+make darwin        # macOS x86_64
+
+# Test compilation (syntax check only)
+make test
+
+# Build debug version
+make debug
+
+# Clean build artifacts
+make clean
+
+# Show help
+make help
+```
+
+### Advanced Build Options
+
+#### Custom XOR Key
+
+Override the default XOR key during compilation:
+
+```bash
+# Use custom XOR key
+make all XOR_KEY=987654321
+
+# Build specific target with custom key
+make linux_x64 XOR_KEY=123456789
+```
+
+#### XOR Key Resolution
+
+The build system automatically resolves the XOR key using this priority:
+
+1. **Command line parameter**: `XOR_KEY=123456789`
+2. **`.xorkey` file**: Reads from `../.xorkey` (project root)
+3. **Default fallback**: `459457925`
+
+```bash
+# Example: Check current XOR key
+make help
+# Shows: 🔑 Using XOR_KEY: [current_key]
+```
+
+#### Verbose Build Output
+
+Enable detailed compilation information:
+
+```bash
+# Debug build with verbose output
+make debug
+
+# Check specific target compilation
+make test
+```
+
+### Build Process Flow
+
+The Make system follows this compilation flow:
+
+```mermaid
+graph TD
+    A[make target] --> B{Check .xorkey}
+    B -->|Exists| C[Read XOR Key]
+    B -->|Missing| D[Use Default Key]
+    C --> E[Set Nim Flags]
+    D --> E
+    E --> F[Create bin/ Directory]
+    F --> G[Compile with Cross-Platform Flags]
+    G --> H[Generate Binary]
+    H --> I[Success Message]
+```
+
+**Compilation Flags Explained**:
+
+```bash
+# Standard flags used in all builds
+NIM_FLAGS := -d:release -d:puppyLibcurl
+
+# Platform-specific flags
+--os:linux --cpu:amd64      # Linux x86_64
+--os:linux --cpu:arm64      # Linux ARM64
+--os:linux --cpu:mips       # Linux MIPS
+--os:macosx --cpu:amd64     # macOS Intel
+
+# Embedded compile-time constants
+-d:INITIAL_XOR_KEY=$(XOR_KEY)  # Embeds XOR key in binary
+```
+
+## Multi-Platform Project Structure
+
+The multi-platform implant follows a modular architecture:
+
+```
+multi_implant/
+├── 📁 Root Files
+│   ├── main.nim              # Entry point & main execution loop
+│   ├── Makefile              # Build system with cross-compilation
+│   ├── nim.cfg               # Minimal compiler configuration
+│   ├── multi_implant.nimble  # Package configuration
+│   └── README.md             # Platform-specific documentation
+│
+├── 📁 bin/                   # Generated binaries (created during build)
+│   ├── nimhawk_linux_x64     # Linux x86_64 binary
+│   ├── nimhawk_linux_arm64   # Linux ARM64 binary
+│   ├── nimhawk_linux_mipsel  # Linux MIPS binary
+│   ├── nimhawk_linux_arm     # Linux ARM binary
+│   └── nimhawk_darwin        # macOS binary
+│
+├── 📁 config/                # Configuration parsing
+│   └── configParser.nim     # Reads ../../config.toml
+│
+├── 📁 core/                  # Core functionality
+│   ├── webClientListener.nim # HTTP C2 communication
+│   └── cmdParser.nim         # Cross-platform command execution
+│
+├── 📁 modules/               # Command implementations
+│   ├── system/               # System information commands
+│   │   ├── whoami.nim        # User identification
+│   │   ├── env.nim           # Environment variables
+│   │   └── ps.nim            # Process enumeration
+│   │
+│   └── filesystem/           # File system operations
+│       ├── ls.nim            # Directory listing
+│       ├── pwd.nim           # Current directory
+│       └── cd.nim            # Change directory
+│
+└── 📁 util/                  # Utilities
+    ├── strenc.nim            # String encoding/obfuscation
+    └── persistence.nim       # Cross-platform persistence mechanisms
+```
+
+### Key Architecture Differences
+
+Compared to the Windows implant, the multi-platform version:
+
+| Aspect | Windows Implant | Multi-Platform Implant |
+|--------|----------------|------------------------|
+| **Dependencies** | Windows API + external libs | Nim standard library only |
+| **Build System** | nimhawk.py + direct compilation | Make + cross-compilation |
+| **Platform Support** | Windows x64 only | Linux, macOS, multiple architectures |
+| **Persistence** | Windows Registry | Cross-platform file/process-based |
+| **Process Control** | Windows APIs | POSIX + cross-platform syscalls |
+
+## Multi-Platform Configuration
+
+The multi-platform implant shares the same `config.toml` file with the Windows implant but includes platform-specific considerations.
 
 # How to develop your own Implant or extend Implant functionality
 

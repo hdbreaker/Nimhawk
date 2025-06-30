@@ -1,6 +1,6 @@
-import net, nativesockets, strutils, json, times
+import net, nativesockets, strutils
 import relay_protocol
-import ../../util/[crypto, strenc]
+import ../../util/strenc
 
 const
     MAX_MESSAGE_SIZE* = 1024 * 1024  # 1MB max message size - prevents memory exhaustion
@@ -402,7 +402,7 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                 if messagesRead > 0:
                                     echo obf("[RELAY] Connection ") & $i & obf(" no more data, read ") & $messagesRead & obf(" messages total")
                             break  # Exit loop, no more data available
-                        
+                    
                     except:
                         # Connection error or no data available
                         let errorMsg = getCurrentExceptionMsg()

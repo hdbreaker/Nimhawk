@@ -4,7 +4,7 @@
     Following the same pattern as Windows implant
 ]#
 
-import parsetoml, strutils, tables
+import parsetoml, tables
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
 import ../util/strenc
 

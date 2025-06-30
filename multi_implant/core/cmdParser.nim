@@ -1,4 +1,4 @@
-import parsetoml, strutils, tables
+import strutils
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
 from ../core/webClientListener import Listener
 import ../core/relay/[relay_protocol, relay_comm]

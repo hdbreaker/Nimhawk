@@ -226,8 +226,8 @@ const template = [
             if (isDev) {
               mainWindow.reload();
             } else {
-              // In production, use the same custom refresh logic
-              handleRefresh();
+                             // In production, use the same custom refresh logic
+               handleRefresh();
             }
           }
         }

@@ -1,7 +1,6 @@
 # Use puppy for all architectures (ARM64 and Intel x64)
 import base64, json, puppy, sequtils
 from strutils import split, toLowerAscii, replace, strip, startsWith, toHex
-from unicode import toLower
 from os import parseCmdLine
 
 import ../util/[crypto, strenc]

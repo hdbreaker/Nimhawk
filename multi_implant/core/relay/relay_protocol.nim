@@ -1,5 +1,5 @@
-import json, base64, times, sequtils, strutils, tables, random, net
-import ../../util/[crypto, strenc]
+import json, times, strutils, tables, random, net
+import ../../util/crypto
 import relay_config
 
 # Message types for relay communication

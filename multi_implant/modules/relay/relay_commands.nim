@@ -193,6 +193,8 @@ proc pollRelayServerMessages*(): seq[RelayMessage] =
                     echo "[DEBUG] 🔄 Relay polling cycle " & $pollCount & ": got " & $messages.len & " messages (timeout: " & $adaptiveTimeout & "ms)"
             else:
                 continuePolling = false  # No more messages available
+                when defined debug:
+                    echo "[DEBUG] 🔄 No more messages available in cycle " & $pollCount
         
         when defined debug:
             if allMessages.len > 0:

@@ -46,10 +46,14 @@ proc connectToRelay*(host: string, port: int): RelayConnection =
     try:
         result.socket = newSocket()
         result.socket.connect(host, Port(port))
+        
+        # CRITICAL: Set client socket to non-blocking mode ONCE at creation
+        setBlocking(result.socket.getFd(), false)
+        
         result.isConnected = true
         
         when defined verbose:
-            echo obf("[DEBUG]: Connected to relay at ") & host & ":" & $port
+            echo obf("[DEBUG]: Connected to relay at ") & host & ":" & $port & obf(" (non-blocking mode)")
     except:
         result.isConnected = false
         when defined verbose:
@@ -69,10 +73,14 @@ proc startRelayServer*(port: int): RelayServer =
         result.socket.setSockOpt(OptReuseAddr, true)
         result.socket.bindAddr(Port(port))
         result.socket.listen()
+        
+        # CRITICAL: Set to non-blocking mode ONCE at creation
+        setBlocking(result.socket.getFd(), false)
+        
         result.isListening = true
         
         when defined debug:
-            echo obf("[RELAY] Relay server successfully listening on port ") & $port
+            echo obf("[RELAY] Relay server successfully listening on port ") & $port & obf(" (non-blocking mode)")
     except:
         result.isListening = false
         when defined debug:
@@ -93,6 +101,10 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
         
         var clientSocket: Socket
         server.socket.accept(clientSocket)
+        
+        # CRITICAL: Set client socket to non-blocking mode ONCE at creation
+        setBlocking(clientSocket.getFd(), false)
+        
         result.socket = clientSocket
         result.isConnected = true
         result.remoteHost = ""  # Will be filled by client registration
@@ -102,7 +114,7 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
         server.connections.add(result)
         
         when defined debug:
-            echo obf("[RELAY] Accepted new downstream connection, total connections: ") & $server.connections.len
+            echo obf("[RELAY] Accepted new downstream connection (non-blocking), total connections: ") & $server.connections.len
     except:
         let errorMsg = getCurrentExceptionMsg()
         if "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
@@ -241,12 +253,9 @@ proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMess
     
     try:
         when defined debug:
-            echo obf("[RELAY] pollMessages: Setting socket to non-blocking mode")
+            echo obf("[RELAY] pollMessages: Attempting to read from socket (already non-blocking)")
         
-        # Set socket to non-blocking mode
-        setBlocking(conn.socket.getFd(), false)
-        
-        # Try to receive message length header (4 bytes)
+        # Try to receive message length header (4 bytes) - socket already non-blocking
         var lengthBuffer = newString(HEADER_SIZE)
         let bytesRead = conn.socket.recv(lengthBuffer, HEADER_SIZE)
         
@@ -302,6 +311,25 @@ proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMess
             when defined debug:
                 echo obf("[RELAY] pollMessages: No data available (exception): ") & errorMsg
 
+# Clean up dead connections
+proc cleanupConnections*(server: var RelayServer) =
+    var activeConnections: seq[RelayConnection] = @[]
+    var removedCount = 0
+    
+    for conn in server.connections:
+        if conn.isConnected:
+            activeConnections.add(conn)
+        else:
+            removedCount += 1
+            when defined debug:
+                echo obf("[RELAY] Removing dead connection")
+    
+    server.connections = activeConnections
+    
+    when defined debug:
+        if removedCount > 0:
+            echo obf("[RELAY] Cleanup: Removed ") & $removedCount & obf(" dead connections, ") & $activeConnections.len & obf(" remaining")
+
 # Poll relay server for new connections and messages (NON-BLOCKING)
 proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMessage] =
     result = @[]
@@ -323,24 +351,25 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                 hasActiveConnections = true
                 break
         
-        if not hasActiveConnections:
-            # Try to accept new connections only if no active connections exist
-            try:
+        # Try to accept new connections (server socket already in non-blocking mode)
+        try:
+            when defined debug:
+                echo obf("[RELAY] Attempting to accept new connections")
+            
+            var newConn = acceptConnection(server)
+            if newConn.isConnected:
                 when defined debug:
-                    echo obf("[RELAY] acceptConnection: Setting server socket to non-blocking mode")
-                
-                # Set server socket to non-blocking mode
-                setBlocking(server.socket.getFd(), false)
-                var newConn = acceptConnection(server)
-                if newConn.isConnected:
-                    when defined debug:
-                        echo obf("[RELAY] New connection accepted during poll")
-            except:
-                let errorMsg = getCurrentExceptionMsg()
-                if "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
-                    when defined debug:
-                        echo obf("[RELAY] Failed to accept connection: ") & errorMsg
-                # No new connections available, that's normal for non-blocking
+                    echo obf("[RELAY] New connection accepted during poll")
+        except:
+            let errorMsg = getCurrentExceptionMsg()
+            if "Bad file descriptor" in errorMsg:
+                when defined debug:
+                    echo obf("[RELAY] CRITICAL: Server socket corrupted - ") & errorMsg
+                # Don't attempt to use corrupted socket
+            elif "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
+                when defined debug:
+                    echo obf("[RELAY] Failed to accept connection: ") & errorMsg
+            # No new connections available, that's normal for non-blocking
         
         # Check existing connections for messages (NON-BLOCKING)
         for i, conn in server.connections.mpairs:
@@ -352,10 +381,7 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                 var messagesRead = 0
                 while true:
                     try:
-                        # Set socket to non-blocking mode
-                        setBlocking(conn.socket.getFd(), false)
-                        
-                        # Try to receive message length header (4 bytes)
+                        # Try to receive message length header (4 bytes) - socket already non-blocking
                         var lengthBuffer = newString(HEADER_SIZE)
                         let bytesRead = conn.socket.recv(lengthBuffer, HEADER_SIZE)
                         
@@ -422,6 +448,17 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
     except:
         when defined debug:
             echo obf("[RELAY] Error during server poll: ") & getCurrentExceptionMsg()
+    
+    # CRITICAL: Clean up dead connections after each poll cycle
+    cleanupConnections(server)
+    
+    when defined debug:
+        let finalConnections = server.connections.len
+        var activeCount = 0
+        for conn in server.connections:
+            if conn.isConnected:
+                activeCount += 1
+        echo obf("[RELAY] Poll completed - Total connections: ") & $finalConnections & obf(", Active: ") & $activeCount
 
 # Broadcast message to all downstream connections
 proc broadcastMessage*(server: var RelayServer, msg: RelayMessage): int =
@@ -438,19 +475,6 @@ proc sendToAgent*(server: var RelayServer, agentID: string, msg: RelayMessage): 
     # For now, broadcast and let agents filter
     let sent = broadcastMessage(server, msg)
     result = sent > 0
-
-# Clean up dead connections
-proc cleanupConnections*(server: var RelayServer) =
-    var activeConnections: seq[RelayConnection] = @[]
-    
-    for conn in server.connections:
-        if conn.isConnected:
-            activeConnections.add(conn)
-        else:
-            when defined verbose:
-                echo obf("DEBUG: Removed dead connection")
-    
-    server.connections = activeConnections
 
 # Get connection statistics
 proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connections: int] =

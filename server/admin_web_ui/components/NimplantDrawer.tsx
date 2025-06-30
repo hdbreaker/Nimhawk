@@ -84,14 +84,15 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   
   // SWR hooks - Only fetch if drawer is open
   const [currentGuid, setCurrentGuid] = useState(guid);
+  
   const infoResult = useSWR<NimplantInfo>(
-    opened ? endpoints.nimplantInfo(currentGuid) : null,
+    opened && currentGuid ? endpoints.nimplantInfo(currentGuid) : null,
     swrFetcher,
     { 
-      refreshInterval: opened ? 5000 : 0,
-      revalidateOnFocus: true,
+      refreshInterval: opened && !!currentGuid ? 10000 : 0, // Increased to 10s to reduce load
+      revalidateOnFocus: false, // Disable to reduce requests
       revalidateOnMount: true,
-      dedupingInterval: 1000, // Reduced to allow more frequent updates
+      dedupingInterval: 5000, // Increased to reduce duplicate requests
       onSuccess: (data) => {
         console.log(`SWR Success - Implant #${currentGuid} data:`, data);
         // Don't update lastSeenText here, it will be handled by the useEffect
@@ -111,12 +112,14 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   // State for delete modal
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   
+  const consoleEndpoint = opened && currentGuid ? endpoints.nimplantConsole(currentGuid, historyLimit) : null;
+  
   const consoleResult = useSWR(
-    opened ? endpoints.nimplantConsole(currentGuid, historyLimit) : null,
+    consoleEndpoint,
     swrFetcher,
     { 
-      refreshInterval: opened && autoRefresh ? 1000 : 0,
-      revalidateOnFocus: opened && autoRefresh
+      refreshInterval: opened && autoRefresh && !!currentGuid ? 3000 : 0, // Increased to 3s
+      revalidateOnFocus: false // Disable to reduce requests
     }
   );
   
@@ -274,7 +277,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   
   // Reset tab when drawer opens
   useEffect(() => {
-    if (opened) {
+    if (opened && currentGuid) {
       setActiveTab('console');
       
       // Force a revalidation when the drawer opens
@@ -283,7 +286,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
       // We can also make a direct fetch
       handleRefresh();
     }
-  }, [opened]);
+  }, [opened, currentGuid]);
   
   // Command handler (memoized to avoid recreations)
   const handleCommand = useCallback((guid: string, command: string) => {
@@ -527,6 +530,11 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
   
   // Function to refresh implant data
   const handleRefresh = async () => {
+    if (!currentGuid) {
+      console.log('handleRefresh: No currentGuid available, skipping refresh');
+      return;
+    }
+    
     setIsRefreshing(true);
     try {
       await api.get(endpoints.nimplantInfo(currentGuid));
@@ -826,10 +834,7 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
             fontSize: '0.9rem',
             padding: '10px 16px',
             fontWeight: 500,
-            height: '42px',
-            '&[data-active]': {
-              fontWeight: 600
-            }
+            height: '42px'
           },
           list: {
             borderBottom: '1px solid var(--mantine-color-gray-3)',

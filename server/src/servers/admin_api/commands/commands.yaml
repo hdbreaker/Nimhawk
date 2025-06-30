@@ -501,3 +501,33 @@
       - Uses direct CLR loading
       - No hardcoded encryption keys
     risky_command: true
+
+  - command: relay
+    server_command: False
+    risky_command: False
+    gui_command: False
+    description: "[command] [args] Dynamic relay system for agent chains."
+    help: |
+      Multi-command relay system for creating agent chains and relay networks.
+      
+      Available sub-commands:
+      
+      relay port [port]              - Start relay server on specified port
+      relay connect relay://IP:PORT  - Connect to upstream relay server
+      relay status                   - Show current relay status
+      relay stop                     - Stop relay server
+      relay disconnect               - Disconnect from upstream relay
+      
+      Examples:
+        relay port 9999                           - Start relay server on port 9999
+        relay connect relay://192.168.1.100:8080 - Connect to upstream relay
+        relay status                              - Show relay status
+        relay stop                                - Stop relay server
+        relay disconnect                          - Disconnect from upstream
+      
+      OPSEC Considerations:
+      - Opens listening sockets (relay server mode)
+      - Creates outbound connections (relay client mode)
+      - May be detected by network monitoring tools
+      - Consider firewall and network segmentation implications
+      - Use non-standard ports to avoid detection

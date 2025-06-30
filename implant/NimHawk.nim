@@ -1,7 +1,7 @@
 #[
 
     Nimhawk - A Powerful, modular, lightweight and efficient implant written in Nim
-    by Alejandro Parodi (hdbreaker / @SecSignal)
+    by Alejandro Parodi ( @hdbreaker_)
 
     Heavily based on @chvancooten NimPlant project.
     This project is a fork of NimPlant and is a work in progress.
@@ -46,6 +46,16 @@ const version: string = "=== Nimhawk v1.4.0 ==="
 # IMPORTANT: Export runNp correctly
 proc runNp() {.exportc, cdecl.} =
     echo version
+    when defined debug:
+        echo "[DEBUG] Debug mode enabled"
+        echo "[DEBUG] Risky mode: " & $riskyMode
+        echo "[DEBUG] PID: " & $winUtils.getProcId()
+        echo "[DEBUG] Process: " & winUtils.getProcName()
+        echo "[DEBUG] OS: " & winUtils.getWindowsVersion()
+        echo "[DEBUG] User: " & winUtils.getUsername()
+        echo "[DEBUG] Hostname: " & winUtils.getHost()
+        echo "[DEBUG] Local IP: " & winUtils.getIntIp()
+        echo ""
 
     # Get configuration information and create Listener object
     var listener = Listener(

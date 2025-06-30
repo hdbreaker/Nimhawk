@@ -8,15 +8,15 @@ import parsetoml, strutils, tables
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
 import ../util/strenc
 
+# Allow us to re-write the static XOR key used for pre-crypto operations
+# This is handled by the Python wrapper at compile time, the default value shouldn't be used
+const INITIAL_XOR_KEY* {.intdefine.}: int = 459457925
+
 # Parse the configuration file
 # This constant will be stored in the binary itself (hence the XOR)
 proc parseConfig*(): Table[string, string] =
     var config = initTable[string, string]()
 
-    # Allow us to re-write the static XOR key used for pre-crypto operations
-    # This is handled by the Python wrapper at compile time, the default value shouldn't be used
-    const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
-    
     # Workspace identifier for this implant
     const workspace_uuid {.strdefine.}: string = ""
 

@@ -1,6 +1,6 @@
 #[
   Nimhawk Execute-Assembly Module
-  Author: Alejandro Parodi (@SecSignal)
+  Author: Alejandro Parodi (@hdbreaker_)
   
   This module enables .NET inline in-memory execution with custom CLR AppDomain
   allowing multiple .NET assemblies to be executed without causing memory 

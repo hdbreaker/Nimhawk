@@ -3,7 +3,7 @@
 # -----
 #
 #   Nimhawk Server - The "C2-ish"™ handler for the Implant payload
-#   By Alejandro Parodi & Cas van Cooten (hdbreaker / @SecSignal & @chvancooten)
+#   By Alejandro Parodi & Cas van Cooten (@hdbreaker_ & @chvancooten)
 #
 # -----
 

@@ -35,8 +35,7 @@ const Login: NextPage = () => {
   const [isElectron, setIsElectron] = useState(false);
   const [adminServerIp, setAdminServerIp] = useState('');
   const [adminServerPort, setAdminServerPort] = useState('');
-  const [implantServerIp, setImplantServerIp] = useState('');
-  const [implantServerPort, setImplantServerPort] = useState('');
+
   const [serverConfigOpen, setServerConfigOpen] = useState(false);
 
   // Detect if running in Electron and load default values
@@ -54,8 +53,6 @@ const Login: NextPage = () => {
         // Load default values from environment variables
         setAdminServerIp(process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP || 'http://localhost');
         setAdminServerPort(process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT || '9669');
-        setImplantServerIp(process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP || 'http://localhost');
-        setImplantServerPort(process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT || '80');
       }
     };
     
@@ -336,42 +333,7 @@ const Login: NextPage = () => {
                         />
                       </Box>
 
-                      {/* Implant Server */}
-                      <Box>
-                        <Text size="sm" fw={600} mb={8} c="dark">
-                          Nimhawk Implant Server
-                        </Text>
-                        <TextInput
-                          placeholder={`${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_IP || 'http://localhost'}:${process.env.NEXT_PUBLIC_NIMHAWK_IMPLANT_SERVER_PORT || '80'}`}
-                          size="sm"
-                          value={`${implantServerIp}:${implantServerPort}`}
-                          onChange={(e) => {
-                            const value = e.target.value;
-                            const lastColonIndex = value.lastIndexOf(':');
-                            if (lastColonIndex > -1) {
-                              const ip = value.substring(0, lastColonIndex);
-                              const port = value.substring(lastColonIndex + 1);
-                              setImplantServerIp(ip);
-                              setImplantServerPort(port);
-                            } else {
-                              setImplantServerIp(value);
-                            }
-                          }}
-                          disabled={loading}
-                          styles={{
-                            input: {
-                              backgroundColor: '#f8f9fa',
-                              border: '1px solid #e9ecef',
-                              fontSize: '0.9rem'
-                            },
-                            label: {
-                              fontSize: '0.8rem',
-                              fontWeight: 500,
-                              color: '#666'
-                            }
-                          }}
-                        />
-                      </Box>
+
                     </Stack>
                   </Collapse>
                   

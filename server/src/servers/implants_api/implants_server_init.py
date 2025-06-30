@@ -75,7 +75,8 @@ def nim_implants_server(xor_key):
     @app.route(register_path, methods=["GET", "POST"])
     # Verify expected user-agent for incoming registrations
     def get_nimplant():
-        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] register_path: {flask.request.method} {register_path} from {get_external_ip(flask.request)}")
+        client_ip = get_external_ip(flask.request)
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] register_path: {flask.request.method} {register_path} from {client_ip}")
         utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
         
         if flask.request.method == "POST" and flask.request.is_json:
@@ -228,7 +229,8 @@ def nim_implants_server(xor_key):
 
     @app.route(reconnectPath, methods=["OPTIONS"])
     def reconnect_nimplant():
-        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] reconnect_path: {flask.request.method} {reconnectPath} from {get_external_ip(flask.request)}")
+        client_ip = get_external_ip(flask.request)
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] reconnect_path: {flask.request.method} {reconnectPath} from {client_ip}")
         utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
         utils.nimplant_print(f"DEBUG: reconnectPath value: {reconnectPath}")
         
@@ -278,7 +280,8 @@ def nim_implants_server(xor_key):
     @app.route(task_path, methods=["GET"])
     # Return the first active task IF the user-agent is as expected
     def get_task():
-        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] task_path: {flask.request.method} {task_path} from {get_external_ip(flask.request)}")
+        client_ip = get_external_ip(flask.request)
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] task_path: {flask.request.method} {task_path} from {client_ip}")
         utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
         
         request_id = flask.request.headers.get("X-Request-ID", "NO_ID")
@@ -726,7 +729,8 @@ def nim_implants_server(xor_key):
     @app.route(resultPath, methods=["POST"])
     # Parse command output IF the user-agent is as expected
     def get_result():
-        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] result_path: {flask.request.method} {resultPath} from {get_external_ip(flask.request)}")
+        client_ip = get_external_ip(flask.request)
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] result_path: {flask.request.method} {resultPath} from {client_ip}")
         utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
         
         if not flask.request.is_json:

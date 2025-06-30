@@ -43,6 +43,9 @@ from src.config.db import (
 
 from functools import wraps
 
+# Import the dynamic Implants Server proxy
+from src.servers.admin_api.proxy.implants_server_proxy import implants_server_proxy
+
 
 # Parse server configuration
 server_ip = config["admin_api"]["ip"]
@@ -1165,11 +1168,18 @@ def admin_server():
     @require_auth
     def get_nimplant(guid):
         try:
+            utils.nimplant_print(f"DEBUG: get_nimplant - Requesting details for GUID: {guid}", skip_db_log=True)
+            
             # Get detailed information about this implant from db
             nimplant_info = db_get_nimplant_details(guid)
             
+            utils.nimplant_print(f"DEBUG: get_nimplant - db_get_nimplant_details returned: {type(nimplant_info)}", skip_db_log=True)
+            
             if not nimplant_info:
+                utils.nimplant_print(f"DEBUG: get_nimplant - No implant found for GUID: {guid}", skip_db_log=True)
                 return flask.jsonify({"error": "Implant not found"}), 404
+            
+            utils.nimplant_print(f"DEBUG: get_nimplant - Implant found, processing workspace info", skip_db_log=True)
             
             # Add workspace name
             if 'workspace_uuid' in nimplant_info and nimplant_info['workspace_uuid']:
@@ -1186,9 +1196,12 @@ def admin_server():
                 # If it doesn't have workspace_uuid, use Default
                 nimplant_info['workspace_name'] = "Default"
             
+            utils.nimplant_print(f"DEBUG: get_nimplant - Returning implant info successfully", skip_db_log=True)
             return flask.jsonify(nimplant_info)
         except Exception as e:
-            utils.nimplant_print(f"Error getting nimplant details: {e}")
+            utils.nimplant_print(f"ERROR: get_nimplant - Exception occurred: {e}")
+            import traceback
+            utils.nimplant_print(f"ERROR: get_nimplant - Traceback: {traceback.format_exc()}")
             return flask.jsonify({"error": str(e)}), 500
 
     # Get the last X lines of console history for a specific nimplant
@@ -1524,6 +1537,23 @@ def admin_server():
             return flask.make_response(('', 200))
             
         return response
+
+    # Create dynamic proxy endpoints for Implants Server routes
+    utils.nimplant_print(f"DEBUG: Setting up dynamic Implants Server proxy...")
+    try:
+        implants_server_proxy.create_proxy_endpoints(app, require_auth)
+        utils.nimplant_print(f"DEBUG: Implants Server proxy endpoints created successfully")
+        
+        # Check Implants Server health
+        if implants_server_proxy.health_check():
+            utils.nimplant_print(f"DEBUG: Implants Server health check: OK")
+        else:
+            utils.nimplant_print(f"WARNING: Implants Server health check failed - proxy endpoints may not work")
+            
+    except Exception as e:
+        utils.nimplant_print(f"ERROR: Failed to setup Implants Server proxy: {e}")
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
 
     # Print all registered routes for debugging
     utils.nimplant_print(f"DEBUG: All registered routes in admin_server:")

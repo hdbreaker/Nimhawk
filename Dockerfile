@@ -1,6 +1,6 @@
 FROM nimlang/nim:1.6.12
 
-LABEL maintainer="Alejandro Parodi (@SecSignal)"
+LABEL maintainer="Alejandro Parodi (@hdbreaker_)"
 
 WORKDIR /nimhawk
 

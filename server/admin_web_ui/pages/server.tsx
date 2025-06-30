@@ -7,7 +7,7 @@ import ExitServerModal from '../components/modals/ExitServer'
 import BuildImplantModal from '../components/modals/BuildImplant'
 import type { NextPage } from 'next'
 import * as nimplantModule from '../modules/nimplant'
-import { getServerEndpoint, getImplantEndpoint, SERVER_BASE_URL } from '../config';
+import { getServerEndpoint, SERVER_BASE_URL, getImplantEndpointFromConfig } from '../config';
 import { api } from '../modules/apiFetcher';
 import useSWR from 'swr';
 
@@ -73,10 +73,8 @@ interface ServerInfo {
 
 const ServerInfo: NextPage = () => { 
   const adminEndpoint = getServerEndpoint();
-  const implantEndpoint = getImplantEndpoint();
 
   console.log("Admin Endpoint:", adminEndpoint);
-  console.log("Implant Endpoint:", implantEndpoint);
   
   const [exitModalOpen, setExitModalOpen] = useState(false);
   const [buildModalOpen, setBuildModalOpen] = useState(false);
@@ -88,10 +86,7 @@ const ServerInfo: NextPage = () => {
   
   // States for server connection status and endpoints
   const [adminStatus, setAdminStatus] = useState('disconnected');
-  const [implantStatus, setImplantStatus] = useState('disconnected');
   const [serverStatus, setServerStatus] = useState('disconnected');
-  const [lastImplantSuccessCheck, setLastImplantSuccessCheck] = useState(0);
-  const [failedImplantChecks, setFailedImplantChecks] = useState(0);
   
   // State to track the last verification time (moved here to fix linting error)
   const [lastCheckTime, setLastCheckTime] = useState(0);
@@ -146,7 +141,7 @@ const ServerInfo: NextPage = () => {
 
   // Function to start checks and update the overall status
   const checkServerStatus = useCallback(async () => {
-    console.log("🔄 Starting full verification");
+    console.log("🔄 Starting Team Server verification");
     
     //  Avoid multiple checks in a short time in manual calls, 
     // but allow periodic checks
@@ -170,81 +165,43 @@ const ServerInfo: NextPage = () => {
     // Update timestamp
     setLastCheckTime(now);
     
-    // Local variables to follow the status of each endpoint
+    // Local variable to follow the status of the endpoint
     let adminConnected = false;
-    let implantConnected = false;
     
     try {
       // Verify Admin API
       try {
-        console.log(`🔍 Verifying Admin API: ${adminEndpoint}`);
+        console.log(`🔍 Verifying Team Server API: ${adminEndpoint}`);
         
         // Use the api.get function
         await api.get(adminEndpoint);
-        console.log("✅ Connection successful to Admin API");
+        console.log("✅ Connection successful to Team Server");
         adminConnected = true;
       } catch (error) {
-        console.error('❌ Error checking Admin API:', error);
+        console.error('❌ Error checking Team Server:', error);
         adminConnected = false;
       }
       
-      // Verify Implant API
-      try {
-        // Determine endpoint
-        console.log(`🔍 Verifying Implant API: ${implantEndpoint}`);
-        
-        if (implantEndpoint !== "") {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
-          
-          // No authentication needed for implant API
-          const response = await fetch(implantEndpoint, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal
-          });
-        
-          clearTimeout(timeoutId);
-        
-          if (response.ok) {
-            console.log(`🟢 Implant API responded with status: ${response.status}`);
-            setLastImplantSuccessCheck(Date.now());
-            setFailedImplantChecks(0);
-            implantConnected = true;
-          } else {
-            console.warn(`⚠️ Error in Implant API response: ${response.status}`);
-            implantConnected = false;
-          }
-        }
-      } catch (error) {
-        console.error('❌ Error connecting to Implant API:', error);
-        implantConnected = false;
-      }
-      
-      // Update all states at once
-      console.log(`Verification results - Admin: ${adminConnected ? 'connected' : 'disconnected'}, Implant: ${implantConnected ? 'connected' : 'disconnected'}`);
+      // Update states
+      console.log(`Verification results - Team Server: ${adminConnected ? 'connected' : 'disconnected'}`);
       
       // Update individual states
       setAdminStatus(adminConnected ? 'connected' : 'disconnected');
-      setImplantStatus(implantConnected ? 'connected' : 'disconnected');
       
       // Update general status
-      if (adminConnected && implantConnected) {
-        console.log("✅ Both endpoints connected - Server CONNECTED");
+      if (adminConnected) {
+        console.log("✅ Team Server connected");
         setServerStatus('connected');
       } else {
-        console.log("⚠️ At least one endpoint disconnected - Server DISCONNECTED");
-        console.log(`  - Admin API: ${adminConnected ? 'connected' : 'disconnected'}`);
-        console.log(`  - Implant API: ${implantConnected ? 'connected' : 'disconnected'}`);
+        console.log("⚠️ Team Server disconnected");
         setServerStatus('disconnected');
       }
     } catch (error) {
       console.error("❌ General error during verification:", error);
       setAdminStatus('disconnected');
-      setImplantStatus('disconnected');
       setServerStatus('disconnected');
     }
-  }, [adminEndpoint, implantEndpoint, lastCheckTime, lastCheckSource]);
+  }, [adminEndpoint, lastCheckTime, lastCheckSource]);
 
   // Check server status periodically
   useEffect(() => {
@@ -426,104 +383,63 @@ const ServerInfo: NextPage = () => {
 
   // We only render indicators when we have server information
   const renderEndpointIndicators = () => {
-    // If there is no serverInfo, we show only loading indicators
-    if (!serverInfo || !serverInfo.config) {
+    // Show loading state
+    if (serverInfoLoading) {
       return (
         <tbody>
           <tr style={{ backgroundColor: 'white' }}>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '30%'
+            <td colSpan={2} style={{ 
+              padding: '2rem', 
+              textAlign: 'center',
+              borderBottom: '1px solid #F1F3F5'
             }}>
-              <Text size="sm" fw={600} color="#212529"><b>Status</b></Text>
-            </td>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '70%'
-            }}>
-              <Group gap="xs">
-                <Box
-                  style={{
-                    width: '10px',
-                    height: '10px',
-                    borderRadius: '50%',
-                    backgroundColor: serverInfoLoading ? '#FFC107' : '#FF5252',
-                    display: 'inline-block'
-                  }}
-                />
-                <Text fw={500} color={serverInfoLoading ? '#FFC107' : '#FF5252'}>
-                  {serverInfoLoading ? 'Loading...' : 'Disconnected'}
-                </Text>
-              </Group>
-            </td>
-          </tr>
-          <DataRow 
-            label="Server GUID" 
-            value="Loading..." 
-            isCode={true} 
-            isAlt={true}
-          />
-          <tr style={{ backgroundColor: 'white' }}>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '30%'
-            }}>
-              <Text size="sm" fw={600} color="#212529"><b>Admin API endpoint</b></Text>
-            </td>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '70%'
-            }}>
-              <Text fw={500} color="#1A1A1A" style={{ 
-                fontFamily: 'monospace',
-                fontSize: '0.85rem',
-                wordBreak: 'break-word'
-              }}>
-                Loading...
-              </Text>
-            </td>
-          </tr>
-          <tr style={{ backgroundColor: '#FCFCFC' }}>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '30%'
-            }}>
-              <Text size="sm" fw={600} color="#212529"><b>Implants API 3ndpoint</b></Text>
-            </td>
-            <td style={{ 
-              padding: '0.8rem 1.5rem', 
-              borderBottom: '1px solid #F1F3F5',
-              width: '70%'
-            }}>
-              <Text fw={500} color="#1A1A1A" style={{ 
-                fontFamily: 'monospace',
-                fontSize: '0.85rem',
-                wordBreak: 'break-word'
-              }}>
-                Loading...
-              </Text>
+              <Text size="sm" color="#6C757D">Loading server information...</Text>
             </td>
           </tr>
         </tbody>
       );
-      
+    }
+    
+    // Show error state
+    if (serverInfoError) {
+      return (
+        <tbody>
+          <tr style={{ backgroundColor: 'white' }}>
+            <td colSpan={2} style={{ 
+              padding: '2rem', 
+              textAlign: 'center',
+              borderBottom: '1px solid #F1F3F5'
+            }}>
+              <Text size="sm" color="#DC3545">Error loading server information</Text>
+            </td>
+          </tr>
+        </tbody>
+      );
+    }
+    
+    // If there is no serverInfo, return empty state
+    if (!serverInfo || !serverInfo.config) {
+      return (
+        <tbody>
+          <tr style={{ backgroundColor: 'white' }}>
+            <td colSpan={2} style={{ 
+              padding: '2rem', 
+              textAlign: 'center',
+              borderBottom: '1px solid #F1F3F5'
+            }}>
+              <Text size="sm" color="#6C757D">No server information available</Text>
+            </td>
+          </tr>
+        </tbody>
+      );
     }
     
     // If there is serverInfo, we show all indicators with data
     const config = serverInfo.config;
     const adminApiEndpoint = `http://${config.server?.ip || config.managementIp}:${config.server?.port || config.managementPort}`;
     
-    // Fix the construction of implantApiEndpoint to properly use the correct implantCallbackIp property
-    const implantApiEndpoint = `${config.implants_server?.type === "HTTPS" || config.listenerType === "HTTPS" ? "https://" : "http://"}${config.implants_server?.ip || config.listenerIp}${
-      (config.implants_server?.port || config.listenerPort) && 
-      (config.implants_server?.port || config.listenerPort) !== 80 ? 
-      `:${config.implants_server?.port || config.listenerPort}` : ''
-    }`;
+    // Get implant API endpoint dynamically from server configuration
+    const implantApiEndpoint = getImplantEndpointFromConfig(config);
     
     return (
       <tbody>
@@ -581,7 +497,7 @@ const ServerInfo: NextPage = () => {
                   width: '10px',
                   height: '10px',
                   borderRadius: '50%',
-                  backgroundColor: '#4CAF50',
+                  backgroundColor: adminStatus === 'connected' ? '#4CAF50' : '#FF5252',
                   display: 'inline-block'
                 }}
               />

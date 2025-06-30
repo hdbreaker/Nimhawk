@@ -118,8 +118,10 @@ function createWindow() {
   }
 
   // Handle refresh (F5, Cmd+R) in production mode
+  let handleRefresh; // Declare at module level
+  
   if (!isDev) {
-    const handleRefresh = () => {
+    handleRefresh = () => {
       const currentURL = mainWindow.webContents.getURL();
       console.log('Refresh detected, current URL:', currentURL);
       
@@ -224,8 +226,8 @@ const template = [
             if (isDev) {
               mainWindow.reload();
             } else {
-                             // In production, use the same custom refresh logic
-               handleRefresh();
+              // In production, use the same custom refresh logic
+              handleRefresh();
             }
           }
         }

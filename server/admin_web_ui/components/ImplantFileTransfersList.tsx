@@ -54,9 +54,12 @@ const TruncatedText = ({ text, maxWidth = '250px' }: { text: string; maxWidth?: 
 function ImplantFileTransfersList({ guid }: ImplantFileTransfersListProps) {
   // Get transfer data with SWR
   const { data, error, isValidating } = useSWR<FileTransferItem[]>(
-    endpoints.fileTransfers + `/${guid}`,
+    guid ? endpoints.fileTransfers + `/${guid}` : null,
     swrFetcher,
-    { refreshInterval: 10000 }
+    { 
+      refreshInterval: guid ? 30000 : 0, // Increased to 30s - file transfers don't change often
+      revalidateOnFocus: false // Disable to reduce requests
+    }
   );
 
   // Format file size for display

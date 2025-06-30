@@ -1042,6 +1042,21 @@ def db_get_server_info(server_guid):
                 "userAgent": res["userAgent"],
                 "httpAllowCommunicationKey": res["httpAllowCommunicationKey"],
                 "maxReconnectionAttemps": config.get("implant", {}).get("maxReconnectionAttemps", 3),
+                # Add implants_server configuration from config.toml
+                "implants_server": {
+                    "type": config.get("implants_server", {}).get("type", "HTTP"),
+                    "ip": config.get("implants_server", {}).get("hostname") or res["implantCallbackIp"] or res["serverIp"],
+                    "port": config.get("implants_server", {}).get("port", 80),
+                    "registerPath": config.get("implants_server", {}).get("registerPath", "/register"),
+                    "taskPath": config.get("implants_server", {}).get("taskPath", "/task"),
+                    "resultPath": config.get("implants_server", {}).get("resultPath", "/result"),
+                    "reconnectPath": config.get("implants_server", {}).get("reconnectPath", "/reconnect"),
+                },
+                # Add server configuration for Admin API
+                "server": {
+                    "ip": config.get("admin_api", {}).get("ip", res["managementIp"]),
+                    "port": config.get("admin_api", {}).get("port", res["managementPort"]),
+                },
             },
         }
         return result_json

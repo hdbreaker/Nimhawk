@@ -88,6 +88,7 @@ This framework helps security professionals understand:
 - [🏗️ Architecture Overview](ARCHITECTURE.md) - Technical architecture and design patterns
 - [👨‍💻 Developer Guide](DEVELOPERS.md) - Development, contribution guidelines, and API documentation
 - [📋 Version Management](VERSION_MANAGEMENT.md) - Version control and update procedures
+- [🔗 Relay System Guide](RELAY_SYSTEM.md) - SONET relay messaging system documentation
 
 ### ⚖️ Legal and Ethical Guidelines
 - [📜 Legal Notice](LEGAL.md) - Comprehensive legal disclaimer and terms of use
@@ -195,6 +196,7 @@ Nimhawk is an advanced command and control (C2) framework that builds upon the e
 - **DInvoke Integration**: In-memory DInvoke for improved OPSEC
 - **PowerShell Support**: Fixed and enhanced PowerShell command execution
 - **Encrypted Reverse Shell**: XOR-encrypted reverse shell with enhanced OPSEC
+- **Relay Messaging System (SONET)**: Modular relay system for chained agent communication
 
 ## System Requirements
 
@@ -271,6 +273,10 @@ Nimhawk is an advanced command and control (C2) framework that builds upon the e
 - `sleep [seconds] [jitter]` - Set sleep time and jitter
 - `checkin` - Force check-in with server
 - `kill` - Terminate implant
+
+### Relay Commands
+- `relay [port]` - Start relay server for downstream agents
+- `connect relay://IP:PORT` - Connect to upstream relay
 
 > 📚 For detailed command usage and examples, see [DEVELOPERS.md](DEVELOPERS.md#available-commands)
 

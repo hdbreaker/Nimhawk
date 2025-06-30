@@ -61,7 +61,7 @@ def print_banner():
 |_| \_|_|_| |_| |_|_| |_|\__,_| \_/\_/ |_|\_\                                  
                                                                                                   
          A powerful, modular, lightweight and efficient command & control framework
-         By Alejandro Parodi (hdbreaker / @SecSignal).
+         By Alejandro Parodi (@hdbreaker_).
 
          Credits to @chvancooten, Nimhawk is heavily based in his NimPlant project. 
          Really thanks to Cas van Cooten for sharing this amazing project with the community.

@@ -75,9 +75,23 @@ function Console({
   
   // Define a utility function to handle command and clear the input field
   const handleSubmit = () => {
-    // Avoid sending empty command or when dropdown is open
-    if (enteredCommand.trim() === '' || (dropdownOpened && autocompleteOptions.length > 0)) {
+    // Avoid sending empty command
+    if (enteredCommand.trim() === '') {
       return;
+    }
+    
+    // Only block if dropdown is open AND user hasn't typed a complete command
+    // Allow multi-argument commands like "relay port 9999" to go through
+    if (dropdownOpened && autocompleteOptions.length > 0) {
+      // Check if the entered command contains spaces (multi-argument)
+      // or if it exactly matches an autocomplete option
+      const isMultiArgument = enteredCommand.includes(' ');
+      const isExactMatch = autocompleteOptions.includes(enteredCommand);
+      
+      // Only block if it's NOT multi-argument AND NOT an exact match
+      if (!isMultiArgument && !isExactMatch) {
+        return;
+      }
     }
 
     // IMPORTANT: Early interception of select command - MUST come first

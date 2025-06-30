@@ -639,6 +639,57 @@ make help
 # Shows: 🔑 Using XOR_KEY: [current_key]
 ```
 
+#### Debug Build with Runtime Logging
+
+The implants support **compile-time debug mode** that enables detailed runtime logging for troubleshooting and development.
+
+**🔧 Compilation with Debug Mode:**
+
+```bash
+# Multi-platform implant debug build
+cd multi_implant/
+make debug                    # Creates debug binary with logging
+
+# Windows implant debug build (via Admin UI)
+# In the web interface, enable "Debug Mode" checkbox when building
+
+# Manual compilation with debug flag
+nim c -d:debug -d:verbose main.nim
+```
+
+**📋 Debug Mode Features:**
+
+When compiled with `-d:debug`, the implant will display:
+
+```bash
+=== Nimhawk Multi-Platform v1.4.0 ===
+[DEBUG] Debug mode enabled
+[DEBUG] Risky mode: false
+[DEBUG] PID: 12345
+[DEBUG] Process: nimhawk_darwin
+[DEBUG] OS: Darwin 21.6.0
+[DEBUG] User: developer
+[DEBUG] Hostname: macbook-pro.local
+[DEBUG] Local IP: 192.168.1.100
+
+[DEBUG] Received command: relay 9999
+[DEBUG] Command result: SUCCESS: Relay server started on port 9999. Implant ID: NH-RELAY-9999-1252
+```
+
+**⚠️ Important Notes:**
+
+- Debug mode is **compile-time only** - cannot be enabled at runtime
+- Debug builds include additional logging that may impact OPSEC
+- Use debug builds only for development and testing
+- Production builds should always use release mode without debug flags
+
+**🎯 Use Cases:**
+
+- **Development**: Troubleshoot new command implementations
+- **Testing**: Verify relay system functionality  
+- **Debugging**: Analyze communication issues with C2 server
+- **Integration**: Test custom modules and extensions
+
 #### Verbose Build Output
 
 Enable detailed compilation information:

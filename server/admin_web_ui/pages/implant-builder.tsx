@@ -23,7 +23,9 @@ import {
     Divider,
     ScrollArea,
     Progress,
-    Box
+    Box,
+    Flex,
+    rem
 } from "@mantine/core";
 import { 
     FaWindows, 
@@ -36,7 +38,10 @@ import {
     FaRocket,
     FaExclamationTriangle,
     FaCheckCircle,
-    FaFolder
+    FaFolder,
+    FaArrowRight,
+    FaMicrochip,
+    FaGlobe
 } from "react-icons/fa";
 import { notifications } from '@mantine/notifications';
 import MainLayout from "../components/MainLayout";
@@ -70,6 +75,7 @@ interface RelayConfig {
 function ImplantBuilderPage() {
     const theme = useMantineTheme();
     const { buildOptions, buildOptionsLoading, buildOptionsError } = getBuildOptions();
+    const typedBuildOptions = buildOptions as BuildOptions;
     
     const [selectedImplantType, setSelectedImplantType] = useState<string | null>(null);
     const [buildModalOpen, setBuildModalOpen] = useState(false);
@@ -155,7 +161,7 @@ function ImplantBuilderPage() {
         setBuildStatus(null);
         
         try {
-            const implantTypeData = buildOptions?.implant_types.find(t => t.id === selectedImplantType);
+            const implantTypeData = typedBuildOptions?.implant_types.find((t: ImplantType) => t.id === selectedImplantType);
             if (!implantTypeData) {
                 throw new Error("Invalid implant type selected");
             }
@@ -254,12 +260,12 @@ function ImplantBuilderPage() {
         );
     }
     
-    const selectedImplantTypeData = buildOptions?.implant_types.find(t => t.id === selectedImplantType);
+    const selectedImplantTypeData = typedBuildOptions?.implant_types.find((t: ImplantType) => t.id === selectedImplantType);
     
     return (
         <MainLayout>
             <Container size="xl" py="xl">
-                <Stack>
+                <Stack gap="xl">
                     <div>
                         <Title order={2} mb="md">Build Implants</Title>
                         <Text color="dimmed" size="lg">
@@ -267,68 +273,136 @@ function ImplantBuilderPage() {
                         </Text>
                     </div>
                     
-                    <Grid>
-                        {buildOptions?.implant_types.map((implantType) => (
-                            <Grid.Col key={implantType.id} span={{ base: 12, md: 6 }}>
-                                <Card
-                                    shadow="md"
-                                    padding="xl"
-                                    radius="md"
-                                    style={{
-                                        cursor: "pointer",
-                                        transition: "all 0.3s ease",
-                                        border: `2px solid ${theme.colors.gray[2]}`,
-                                    }}
-                                    styles={{
-                                        root: {
-                                            '&:hover': {
-                                                transform: 'translateY(-4px)',
-                                                boxShadow: theme.shadows.lg,
-                                                borderColor: theme.colors.blue[4]
-                                            }
+                    <Stack gap="lg">
+                        {typedBuildOptions?.implant_types.map((implantType: ImplantType) => (
+                            <Card
+                                key={implantType.id}
+                                shadow="sm"
+                                padding="xl"
+                                radius="lg"
+                                withBorder
+                                style={{
+                                    cursor: "pointer",
+                                    transition: "all 0.2s ease",
+                                    border: `1px solid ${theme.colors.gray[3]}`,
+                                    background: theme.colors.gray[0]
+                                }}
+                                styles={{
+                                    root: {
+                                        '&:hover': {
+                                            transform: 'translateY(-2px)',
+                                            boxShadow: theme.shadows.md,
+                                            borderColor: implantType.id === "windows" ? theme.colors.blue[4] : theme.colors.orange[4],
+                                            background: theme.white
                                         }
-                                    }}
-                                    onClick={() => handleImplantTypeSelect(implantType.id)}
+                                    }
+                                }}
+                                onClick={() => handleImplantTypeSelect(implantType.id)}
+                            >
+                                <Flex 
+                                    align="center" 
+                                    justify="space-between" 
+                                    gap="xl"
+                                    wrap="wrap"
+                                    style={{ minHeight: rem(80) }}
                                 >
-                                    <Stack align="center" gap="md">
+                                    {/* Left section - Icon and content */}
+                                    <Flex align="center" gap="xl" style={{ flex: 1, minWidth: rem(300) }}>
                                         <ThemeIcon 
-                                            size={80} 
+                                            size={70} 
                                             radius="xl" 
                                             variant="light"
                                             color={implantType.id === "windows" ? "blue" : "orange"}
+                                            style={{ flexShrink: 0 }}
                                         >
                                             {getIconForImplantType(implantType.icon)}
                                         </ThemeIcon>
                                         
-                                        <div style={{ textAlign: "center" }}>
-                                            <Title order={3} mb="xs">{implantType.name}</Title>
-                                            <Text color="dimmed" size="sm">
+                                        <div style={{ flex: 1 }}>
+                                            <Group gap="md" mb="xs">
+                                                <Title order={3} style={{ margin: 0 }}>
+                                                    {implantType.name}
+                                                </Title>
+                                                <Badge 
+                                                    color={implantType.id === "windows" ? "blue" : "orange"}
+                                                    variant="light"
+                                                    size="md"
+                                                    leftSection={<FaMicrochip size={12} />}
+                                                >
+                                                    {implantType.architectures.length} Architecture{implantType.architectures.length !== 1 ? 's' : ''}
+                                                </Badge>
+                                            </Group>
+                                            <Text color="dimmed" size="sm" mb="sm">
                                                 {implantType.description}
                                             </Text>
+                                            
+                                            {/* Architecture preview */}
+                                            <Group gap="xs">
+                                                {implantType.architectures.slice(0, 3).map((arch: Architecture, index: number) => (
+                                                    <Badge 
+                                                        key={arch.id}
+                                                        color="gray" 
+                                                        variant="outline" 
+                                                        size="xs"
+                                                    >
+                                                        {arch.name}
+                                                    </Badge>
+                                                ))}
+                                                {implantType.architectures.length > 3 && (
+                                                    <Badge color="gray" variant="outline" size="xs">
+                                                        +{implantType.architectures.length - 3} more
+                                                    </Badge>
+                                                )}
+                                            </Group>
                                         </div>
-                                        
-                                        <Badge 
-                                            color={implantType.id === "windows" ? "blue" : "orange"}
-                                            variant="light"
-                                            size="lg"
-                                        >
-                                            {implantType.architectures.length} Architecture{implantType.architectures.length !== 1 ? 's' : ''}
-                                        </Badge>
+                                    </Flex>
+                                    
+                                    {/* Right section - Action button and features */}
+                                    <Flex align="center" gap="lg" style={{ flexShrink: 0 }}>
+                                                                {/* Features indicators */}
+                                        <Stack gap="xs" align="flex-start" style={{ display: 'flex' }} visibleFrom="sm">
+                                            {implantType.id === "windows" && (
+                                                <>
+                                                    <Group gap="xs">
+                                                        <FaCog size={14} color={theme.colors.blue[6]} />
+                                                        <Text size="xs" color="dimmed">Full Features</Text>
+                                                    </Group>
+                                                    <Group gap="xs">
+                                                        <FaWindows size={14} color={theme.colors.blue[6]} />
+                                                        <Text size="xs" color="dimmed">Windows Only</Text>
+                                                    </Group>
+                                                </>
+                                            )}
+                                            {implantType.id === "multi_os" && (
+                                                <>
+                                                    <Group gap="xs">
+                                                        <FaGlobe size={14} color={theme.colors.orange[6]} />
+                                                        <Text size="xs" color="dimmed">Cross Platform</Text>
+                                                    </Group>
+                                                    <Group gap="xs">
+                                                        <FaNetworkWired size={14} color={theme.colors.orange[6]} />
+                                                        <Text size="xs" color="dimmed">Relay Support</Text>
+                                                    </Group>
+                                                </>
+                                            )}
+                                        </Stack>
                                         
                                         <Button
-                                            fullWidth
-                                            leftSection={<FaHammer />}
+                                            leftSection={<FaHammer size={16} />}
+                                            rightSection={<FaArrowRight size={14} />}
                                             color={implantType.id === "windows" ? "blue" : "orange"}
                                             size="md"
                                             radius="md"
+                                            variant="filled"
+                                            style={{ minWidth: rem(160) }}
                                         >
-                                            Build {implantType.name}
+                                            Build Now
                                         </Button>
-                                    </Stack>
-                                </Card>
-                            </Grid.Col>
+                                    </Flex>
+                                </Flex>
+                            </Card>
                         ))}
-                    </Grid>
+                    </Stack>
                 </Stack>
             </Container>
             
@@ -421,7 +495,7 @@ function ImplantBuilderPage() {
                                     description="Configure implant as a relay client"
                                     disabled={isBuilding || buildResult !== null}
                                     size="md"
-                                    color="blue"
+                                    color="orange"
                                 />
                                 
                                 {relayConfig.enabled && (

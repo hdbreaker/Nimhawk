@@ -349,7 +349,13 @@ proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrI
         when defined verbose:
             echo obf("DEBUG: Relay client got ID from C2: ") & clientId
             echo obf("DEBUG: Relay client got key from C2 (length: ") & $keyStr.len & ")"
-        
+            echo obf("DEBUG: 🚨 C2 ID ASSIGNMENT DEBUG:")
+            echo obf("DEBUG: 🚨 - Original request ID: ") & relayClientID
+            echo obf("DEBUG: 🚨 - C2 assigned ID: ") & clientId
+            echo obf("DEBUG: 🚨 - Request IP: ") & ipAddrInt
+            echo obf("DEBUG: 🚨 - Request hostname: ") & hostname
+            echo obf("DEBUG: 🚨 - C2 full response: ") & initRes.body
+          
         # Decode and XOR the key
         let keyBytesRaw = base64.decode(keyStr)
         let keyByteSeq = convertToByteSeq(keyBytesRaw)

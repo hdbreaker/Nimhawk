@@ -329,9 +329,20 @@ proc registerClient*(server: var RelayServer, clientID: string, connectionIndex:
 
 # Send message to specific client by ID (UNICAST)
 proc sendToClient*(server: var RelayServer, clientID: string, msg: RelayMessage): bool =
+    when defined debug:
+        echo obf("[UNICAST] 🎯 Attempting to send to clientID: '") & clientID & obf("'")
+        echo obf("[UNICAST] 🎯 Message type: ") & $msg.msgType
+        echo obf("[UNICAST] 🎯 Registry has ") & $server.clientRegistry.len & obf(" clients")
+        var registryContents = ""
+        for id, idx in server.clientRegistry:
+            if registryContents != "": registryContents.add(", ")
+            registryContents.add("'" & id & "'→" & $idx)
+        echo obf("[UNICAST] 🎯 Registry contents: [") & registryContents & obf("]")
+    
     if not server.clientRegistry.hasKey(clientID):
         when defined debug:
-            echo obf("[MULTI-CLIENT] ❌ Client not found: ") & clientID
+            echo obf("[UNICAST] ❌ Client '") & clientID & obf("' NOT FOUND in registry!")
+            echo obf("[UNICAST] ❌ This is the root cause of command delivery failure!")
         return false
     
     let connectionIndex = server.clientRegistry[clientID]
@@ -625,21 +636,60 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                         when defined debug:
                                             echo obf("[RELAY] Valid message received from connection ") & $i & obf(" (message #") & $messagesRead & obf(", type: ") & $msg.msgType & obf(")")
                                         
+                                        # IDENTITY DEBUGGING: Log every message with connection and ID info
+                                        when defined debug:
+                                            echo obf("[IDENTITY] 🔍 Connection ") & $i & obf(" → Message type: ") & $msg.msgType & obf(", fromID: '") & msg.fromID & obf("', current clientID: '") & conn.clientID & obf("'")
+                                        
                                         # AUTO-REGISTER: Only register clients with FINAL IDs (not PENDING-REGISTRATION)
                                         if conn.clientID == "" and msg.fromID != "" and msg.fromID != "PENDING-REGISTRATION":
+                                            # IDENTITY COLLISION PREVENTION: Check if this ID is already registered
+                                            if server.clientRegistry.hasKey(msg.fromID):
+                                                let existingConnIndex = server.clientRegistry[msg.fromID]
+                                                when defined debug:
+                                                    echo obf("[IDENTITY] 🚨 ID COLLISION DETECTED during AUTO-REGISTER!")
+                                                    echo obf("[IDENTITY] 🚨 Client ID '") & msg.fromID & obf("' already mapped to connection ") & $existingConnIndex
+                                                    echo obf("[IDENTITY] 🚨 New message from connection ") & $i & obf(" trying to use same ID")
+                                                
+                                                # Check if existing connection is still active
+                                                if existingConnIndex < server.connections.len and server.connections[existingConnIndex].isConnected:
+                                                    when defined debug:
+                                                        echo obf("[IDENTITY] 🚨 EXISTING connection ") & $existingConnIndex & obf(" is STILL ACTIVE - REJECTING new registration")
+                                                        echo obf("[IDENTITY] 🚨 This prevents identity theft between active clients")
+                                                    # REJECT the auto-registration - don't overwrite active client
+                                                    continue
+                                                else:
+                                                    when defined debug:
+                                                        echo obf("[IDENTITY] ✅ Existing connection ") & $existingConnIndex & obf(" is DEAD - allowing re-registration")
+                                                        echo obf("[IDENTITY] ✅ Cleaning up dead connection and registering new one")
+                                                    # Clean up the dead connection mapping
+                                                    server.clientRegistry.del(msg.fromID)
+                                            
+                                            # Safe to register now
                                             conn.clientID = msg.fromID
                                             server.connections[i].clientID = msg.fromID
                                             server.connections[i].lastActivity = epochTime().int64
                                             server.clientRegistry[msg.fromID] = i
                                             when defined debug:
-                                                echo obf("[MULTI-CLIENT] 🆔 Auto-registered client with FINAL ID: ") & msg.fromID & obf(" at connection ") & $i
-                                                echo obf("[MULTI-CLIENT] 📊 Total registered clients: ") & $server.clientRegistry.len
+                                                echo obf("[IDENTITY] 🆔 AUTO-REGISTERED: Connection ") & $i & obf(" now has clientID: '") & msg.fromID & obf("'")
+                                                echo obf("[IDENTITY] 📊 Registry state: ") & $server.clientRegistry.len & obf(" clients")
+                                                var registryState = ""
+                                                for id, idx in server.clientRegistry:
+                                                    if registryState != "": registryState.add(", ")
+                                                    registryState.add(id & "→" & $idx)
+                                                echo obf("[IDENTITY] 📋 Registry: [") & registryState & obf("]")
+                                                echo obf("[IDENTITY] ✅ Client '") & msg.fromID & obf("' should now be able to receive unicast messages!")
+                                        elif conn.clientID != "" and conn.clientID == msg.fromID:
+                                            when defined debug:
+                                                echo obf("[IDENTITY] ✅ Message from REGISTERED client: '") & msg.fromID & obf("' (connection ") & $i & obf(")")
                                         elif conn.clientID != "" and conn.clientID != msg.fromID and msg.fromID != "PENDING-REGISTRATION":
                                             when defined debug:
-                                                echo obf("[MULTI-CLIENT] ⚠️  Client ID mismatch! Connection: ") & conn.clientID & obf(", Message: ") & msg.fromID
+                                                echo obf("[IDENTITY] 🚨 IDENTITY THEFT DETECTED!")
+                                                echo obf("[IDENTITY] 🚨 Connection ") & $i & obf(" registered as: '") & conn.clientID & obf("'")
+                                                echo obf("[IDENTITY] 🚨 But message claims fromID: '") & msg.fromID & obf("'")
+                                                echo obf("[IDENTITY] 🚨 This is a CLIENT-SIDE identity confusion!")
                                         elif msg.fromID == "PENDING-REGISTRATION":
                                             when defined debug:
-                                                echo obf("[MULTI-CLIENT] 📝 Processing message from unregistered client (PENDING-REGISTRATION) at connection ") & $i
+                                                echo obf("[IDENTITY] 📝 Connection ") & $i & obf(" processing PENDING-REGISTRATION message")
                                         
                                         # Update last activity for existing clients
                                         if conn.clientID != "":
@@ -691,7 +741,34 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
             echo obf("[RELAY] Error during server poll: ") & getCurrentExceptionMsg()
     
     # CRITICAL: Clean up dead connections after each poll cycle
+    when defined debug:
+        echo obf("[IDENTITY] 🧹 Starting connection cleanup...")
+        var beforeCleanup = ""
+        for i, conn in server.connections:
+            let status = if conn.isConnected: "ACTIVE" else: "DEAD"
+            let clientInfo = if conn.clientID != "": conn.clientID else: "unregistered"
+            if beforeCleanup != "": beforeCleanup.add(", ")
+            beforeCleanup.add($i & ":" & clientInfo & "(" & status & ")")
+        echo obf("[IDENTITY] 🧹 Before cleanup: [") & beforeCleanup & obf("]")
+    
     cleanupConnections(server)
+    
+    when defined debug:
+        echo obf("[IDENTITY] 🧹 After cleanup completed...")
+        var afterCleanup = ""
+        for i, conn in server.connections:
+            let status = if conn.isConnected: "ACTIVE" else: "DEAD"
+            let clientInfo = if conn.clientID != "": conn.clientID else: "unregistered"
+            if afterCleanup != "": afterCleanup.add(", ")
+            afterCleanup.add($i & ":" & clientInfo & "(" & status & ")")
+        echo obf("[IDENTITY] 🧹 After cleanup: [") & afterCleanup & obf("]")
+        
+        # Show registry state after cleanup
+        var registryAfterCleanup = ""
+        for id, idx in server.clientRegistry:
+            if registryAfterCleanup != "": registryAfterCleanup.add(", ")
+            registryAfterCleanup.add(id & "→" & $idx)
+        echo obf("[IDENTITY] 🧹 Registry after cleanup: [") & registryAfterCleanup & obf("]")
     
     when defined debug:
         let finalConnections = server.connections.len

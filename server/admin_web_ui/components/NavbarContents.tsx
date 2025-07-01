@@ -1,5 +1,5 @@
 import { Box, Center, Group, Image, AppShell, Text, UnstyledButton, Stack } from "@mantine/core";
-import { FaHome, FaServer, FaLaptopCode, FaDownload, FaBars, FaPowerOff } from 'react-icons/fa'
+import { FaHome, FaServer, FaLaptopCode, FaDownload, FaBars, FaPowerOff, FaHammer } from 'react-icons/fa'
 import { useMediaQuery } from "@mantine/hooks";
 import Link from "next/link";
 import React from "react";
@@ -108,6 +108,13 @@ function NavbarContents({ collapsed, setCollapsed }: NavbarContentsProps) {
           label="Implants" 
           target='/implants' 
           active={currentPath.startsWith('/implants')} 
+          collapsed={collapsed}
+        />
+        <NavItem 
+          icon={<FaHammer size='1.2em' />} 
+          label="Build" 
+          target='/implant-builder' 
+          active={currentPath === '/implant-builder'} 
           collapsed={collapsed}
         />
         <NavItem 

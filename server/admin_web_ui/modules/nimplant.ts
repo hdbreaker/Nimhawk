@@ -24,6 +24,7 @@ export const endpoints = {
     getDownload: (filename: string) => `${SERVER_BASE_URL}/api/get-download/${filename}`,
     fileTransfers: `${SERVER_BASE_URL}/api/file-transfers`,
     buildStatus: `${SERVER_BASE_URL}/api/build/status`,
+    buildOptions: `${SERVER_BASE_URL}/api/build/options`,
     uploads: `${SERVER_BASE_URL}/api/upload`,
     auth: {
         login: `${SERVER_BASE_URL}/api/auth/login`,
@@ -113,6 +114,16 @@ export function getDownloads () {
         downloads: data,
         downloadsLoading: !error && !data,
         downloadsError: error
+    }
+}
+
+export function getBuildOptions () {
+    const { data, error } = useSWR(endpoints.buildOptions, swrFetcher)
+
+    return {
+        buildOptions: data,
+        buildOptionsLoading: !error && !data,
+        buildOptionsError: error
     }
 }
 
@@ -244,7 +255,14 @@ export function serverExit(): void {
 }
 
 // Build implant function
-export const buildImplant = async (debug: boolean, callback: (data: any) => void, workspace?: string | null) => {
+export const buildImplant = async (
+    debug: boolean, 
+    callback: (data: any) => void, 
+    workspace?: string | null,
+    implantType: string = "windows",
+    architecture?: string | null,
+    relayConfig?: any
+) => {
     try {
         // Get auth token
         const token = localStorage.getItem('auth_token');
@@ -258,7 +276,10 @@ export const buildImplant = async (debug: boolean, callback: (data: any) => void
             },
             body: JSON.stringify({ 
                 debug: debug,
-                workspace: workspace || '' 
+                workspace: workspace || '',
+                implant_type: implantType,
+                architecture: architecture,
+                relay_config: relayConfig
             })
         };
         

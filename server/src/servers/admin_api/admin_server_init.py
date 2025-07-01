@@ -164,7 +164,7 @@ def admin_server():
         app.build_status = {}
         
     # Function that performs the compilation in a separate thread
-    def build_process(build_id, debug, workspace=None):
+    def build_process(build_id, debug, workspace=None, implant_type="windows", architecture=None, relay_config=None):
         import os
         import subprocess
         import zipfile
@@ -209,9 +209,14 @@ def admin_server():
             app.build_status[build_id]['progress'] = f'Script directory: {nimplant_dir}'
             utils.nimplant_print(f"Script directory: {nimplant_dir}")
             
-            # Release directory where files will be generated
-            release_dir = os.path.join(nimplant_dir, "implant", "release")
-            app.build_status[build_id]['progress'] = f'Release directory: {release_dir}'
+            # Determine release directory and downloads directory based on implant type
+            if implant_type == "windows":
+                release_dir = os.path.join(nimplant_dir, "implant", "release")
+                app.build_status[build_id]['progress'] = f'Windows implant - Release directory: {release_dir}'
+            else:  # multi-os
+                release_dir = os.path.join(nimplant_dir, "multi_implant", "bin")
+                app.build_status[build_id]['progress'] = f'Multi-OS implant - Release directory: {release_dir}'
+            
             utils.nimplant_print(f"Release directory: {release_dir}")
             
             # Downloads directory where the ZIP file will be moved
@@ -248,20 +253,65 @@ def admin_server():
                 utils.nimplant_print(error_msg)
                 # Continue with the compilation despite the cleaning error
             
-            # Build the command to execute
-            if debug:
-                cmd = ["python3", "nimhawk.py", "compile", "all", "nim-debug"]
-                variant = "debug"
-            else:
-                cmd = ["python3", "nimhawk.py", "compile", "all"]
-                variant = "release"
+            # Build the command to execute based on implant type
+            if implant_type == "windows":
+                # Windows implant using nimhawk.py
+                if debug:
+                    cmd = ["python3", "nimhawk.py", "compile", "all", "nim-debug"]
+                    variant = "windows_debug"
+                else:
+                    cmd = ["python3", "nimhawk.py", "compile", "all"]
+                    variant = "windows_release"
+                    
+                # Add workspace parameter if specified
+                if workspace:
+                    cmd.extend(["--workspace", workspace])
+                    variant += f"_workspace_{workspace}"
+                    app.build_status[build_id]['progress'] = f'Using workspace: {workspace}'
+                    utils.nimplant_print(f"Using workspace: {workspace}")
+                    
+            else:  # multi-os
+                # Multi-OS implant using Makefile
+                cmd = ["make", "-C", "multi_implant"]
                 
-            # Add workspace parameter if specified
-            if workspace:
-                cmd.extend(["--workspace", workspace])
-                variant += f"_workspace_{workspace}"
-                app.build_status[build_id]['progress'] = f'Using workspace: {workspace}'
-                utils.nimplant_print(f"Using workspace: {workspace}")
+                # Add architecture target
+                if architecture:
+                    cmd.append(architecture)
+                    variant = f"multi_os_{architecture}"
+                else:
+                    cmd.append("all")
+                    variant = "multi_os_all"
+                
+                # Add debug flag if enabled
+                if debug:
+                    cmd.append("DEBUG=1")
+                    variant += "_debug"
+                
+                # Add relay configuration if provided
+                if relay_config:
+                    if relay_config.get('enabled', False):
+                        relay_address = relay_config.get('address', '')
+                        relay_port = relay_config.get('port', '')
+                        fast_mode = relay_config.get('fast_mode', False)
+                        
+                        if relay_address and relay_port:
+                            cmd.append(f"RELAY_ADDRESS=relay://{relay_address}:{relay_port}")
+                            variant += "_relay"
+                            
+                        if fast_mode:
+                            cmd.append("FAST_MODE=1")
+                            variant += "_fast"
+                            
+                        app.build_status[build_id]['progress'] = f'Relay configuration: {relay_address}:{relay_port}, Fast mode: {fast_mode}'
+                        utils.nimplant_print(f"Relay configuration: {relay_address}:{relay_port}, Fast mode: {fast_mode}")
+                
+                # Add workspace as environment variable if specified
+                if workspace:
+                    # For multi-os, we'll add it as a custom define
+                    cmd.append(f"WORKSPACE_UUID={workspace}")
+                    variant += f"_workspace_{workspace}"
+                    app.build_status[build_id]['progress'] = f'Using workspace: {workspace}'
+                    utils.nimplant_print(f"Using workspace: {workspace}")
             
             # Save current directory to restore it later
             original_dir = os.getcwd()
@@ -344,8 +394,38 @@ def admin_server():
                     }
                     return
                 
-                # Verify that the files were created
-                expected_files = ["implant.exe", "implant-selfdelete.exe", "implant.dll", "implant.bin"]
+                # Verify that the files were created based on implant type
+                if implant_type == "windows":
+                    expected_files = ["implant.exe", "implant-selfdelete.exe", "implant.dll", "implant.bin"]
+                else:  # multi-os
+                    # Check for multi-os binaries based on architecture
+                    if architecture == "all":
+                        expected_files = [
+                            "nimhawk_linux_x64", "nimhawk_linux_arm64", 
+                            "nimhawk_linux_mipsel", "nimhawk_linux_arm",
+                            "nimhawk_darwin_intelx64", "nimhawk_darwin_arm64"
+                        ]
+                    elif architecture:
+                        # Single architecture
+                        if architecture == "darwin":
+                            expected_files = ["nimhawk_darwin_intelx64", "nimhawk_darwin_arm64"]
+                        elif architecture == "linux_x64":
+                            expected_files = ["nimhawk_linux_x64"]
+                        elif architecture == "linux_arm64":
+                            expected_files = ["nimhawk_linux_arm64"]
+                        elif architecture == "linux_mipsel":
+                            expected_files = ["nimhawk_linux_mipsel"]
+                        elif architecture == "linux_arm":
+                            expected_files = ["nimhawk_linux_arm"]
+                        elif architecture == "darwin_intelx64":
+                            expected_files = ["nimhawk_darwin_intelx64"]
+                        elif architecture == "darwin_arm64":
+                            expected_files = ["nimhawk_darwin_arm64"]
+                        else:
+                            expected_files = ["nimhawk_linux_x64"]  # fallback
+                    else:
+                        expected_files = ["nimhawk_linux_x64"]  # fallback
+                
                 found_files = []
                 
                 app.build_status[build_id]['progress'] = 'Verifying generated files...'
@@ -693,9 +773,12 @@ def admin_server():
         import uuid
         
         try:
-            # Get the debug argument (if provided)
+            # Get build parameters
             debug = False
             workspace = None
+            implant_type = "windows"  # default to windows
+            architecture = None
+            relay_config = None
             
             if flask.request.method == "POST":
                 data = flask.request.get_json()
@@ -704,6 +787,12 @@ def admin_server():
                         debug = data["debug"]
                     if "workspace" in data:
                         workspace = data["workspace"]
+                    if "implant_type" in data:
+                        implant_type = data["implant_type"]
+                    if "architecture" in data:
+                        architecture = data["architecture"]
+                    if "relay_config" in data:
+                        relay_config = data["relay_config"]
             
             # Generate a unique ID for this build
             build_id = str(uuid.uuid4())
@@ -716,7 +805,7 @@ def admin_server():
             }
             
             # Start the compilation in a separate thread
-            thread = Thread(target=build_process, args=(build_id, debug, workspace))
+            thread = Thread(target=build_process, args=(build_id, debug, workspace, implant_type, architecture, relay_config))
             thread.daemon = True  # The thread will close when the main program terminates
             thread.start()
             
@@ -770,6 +859,76 @@ def admin_server():
     @require_auth
     def get_command_list():
         return flask.jsonify(get_commands()), 200
+
+    # Get available implant build options
+    @app.route("/api/build/options", methods=["GET"])
+    @require_auth
+    def get_build_options():
+        return flask.jsonify({
+            "implant_types": [
+                {
+                    "id": "windows",
+                    "name": "Windows x64",
+                    "description": "Windows implant with full functionality",
+                    "icon": "windows",
+                    "architectures": [
+                        {
+                            "id": "x64",
+                            "name": "Windows x64",
+                            "description": "Standard Windows 64-bit implant"
+                        }
+                    ]
+                },
+                {
+                    "id": "multi_os",
+                    "name": "Multi-Platform",
+                    "description": "Cross-platform implant for Linux, macOS, and embedded systems",
+                    "icon": "multi_platform",
+                    "architectures": [
+                        {
+                            "id": "all",
+                            "name": "All Platforms",
+                            "description": "Build for all supported architectures"
+                        },
+                        {
+                            "id": "linux_x64",
+                            "name": "Linux x86_64",
+                            "description": "Linux 64-bit Intel/AMD"
+                        },
+                        {
+                            "id": "linux_arm64",
+                            "name": "Linux ARM64",
+                            "description": "Linux 64-bit ARM (Raspberry Pi 4, etc.)"
+                        },
+                        {
+                            "id": "linux_arm",
+                            "name": "Linux ARM",
+                            "description": "Linux 32-bit ARM (Raspberry Pi 3, etc.)"
+                        },
+                        {
+                            "id": "linux_mipsel",
+                            "name": "Linux MIPS Little-Endian",
+                            "description": "Linux MIPS (routers, embedded devices)"
+                        },
+                        {
+                            "id": "darwin",
+                            "name": "macOS Universal",
+                            "description": "Both Intel and Apple Silicon"
+                        },
+                        {
+                            "id": "darwin_intelx64",
+                            "name": "macOS Intel x64",
+                            "description": "macOS Intel processors"
+                        },
+                        {
+                            "id": "darwin_arm64",
+                            "name": "macOS Apple Silicon",
+                            "description": "macOS M1/M2/M3 processors"
+                        }
+                    ]
+                }
+            ]
+        }), 200
 
     # Get download information
     @app.route("/api/downloads", methods=["GET"])

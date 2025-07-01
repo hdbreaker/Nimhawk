@@ -1,4 +1,4 @@
-import net, nativesockets, strutils, times, os
+import net, nativesockets, strutils, times, os, tables
 import relay_protocol
 import ../../util/strenc
 
@@ -12,12 +12,15 @@ type
         isConnected*: bool
         remoteHost*: string
         remotePort*: int
+        clientID*: string  # Track client ID for routing
+        lastActivity*: int64  # Track last message time
     
     RelayServer* = object
         socket*: Socket
         port*: int
         isListening*: bool
         connections*: seq[RelayConnection]
+        clientRegistry*: Table[string, int]  # ClientID → Connection index mapping
 
 # Safe function to parse 4 bytes into uint32 (little endian)
 proc parseUint32LE(bytes: string): uint32 =
@@ -63,6 +66,7 @@ proc connectToRelay*(host: string, port: int): RelayConnection =
 proc startRelayServer*(port: int): RelayServer =
     result.port = port
     result.connections = @[]
+    result.clientRegistry = initTable[string, int]()  # Initialize client registry
     result.isListening = false
     
     try:
@@ -79,7 +83,8 @@ proc startRelayServer*(port: int): RelayServer =
         when defined debug:
             echo obf("[SOCKET] FD=") & $int(result.socket.getFd()) & obf(" CREATED (server socket)")
             echo obf("[STATE] Server listening on port ") & $port
-            echo obf("[RELAY] Relay server started on port ") & $port & obf(" (non-blocking mode)")
+            echo obf("[RELAY] 🚀 Multi-Client Relay server started on port ") & $port & obf(" (non-blocking mode)")
+            echo obf("[MULTI-CLIENT] Ready to accept multiple relay clients on same port")
     except:
         result.isListening = false
         when defined debug:
@@ -108,6 +113,8 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
         result.isConnected = true
         result.remoteHost = ""  # Will be filled by client registration
         result.remotePort = 0
+        result.clientID = ""  # Will be set during registration
+        result.lastActivity = epochTime().int64
         
         # Only add if we don't already have this connection
         server.connections.add(result)
@@ -115,7 +122,7 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
         when defined debug:
             echo obf("[SOCKET] FD=") & $int(clientSocket.getFd()) & obf(" CREATED (client connection)")
             echo obf("[STATE] New connection created - Total connections: ") & $server.connections.len
-            echo obf("[RELAY] Accepted new downstream connection (non-blocking), total connections: ") & $server.connections.len
+            echo obf("[MULTI-CLIENT] 🔗 Accepted new relay client connection, total: ") & $server.connections.len
     except:
         let errorMsg = getCurrentExceptionMsg()
         if "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
@@ -309,6 +316,65 @@ proc closeConnection*(conn: var RelayConnection) =
         when defined debug:
             echo obf("[SOCKET] Connection already marked as closed, skipping")
 
+# Register client in the multi-client registry
+proc registerClient*(server: var RelayServer, clientID: string, connectionIndex: int) =
+    server.clientRegistry[clientID] = connectionIndex
+    if connectionIndex < server.connections.len:
+        server.connections[connectionIndex].clientID = clientID
+        server.connections[connectionIndex].lastActivity = epochTime().int64
+        
+        when defined debug:
+            echo obf("[MULTI-CLIENT] 📝 Registered client: ") & clientID & obf(" at connection index ") & $connectionIndex
+            echo obf("[MULTI-CLIENT] 📊 Total registered clients: ") & $server.clientRegistry.len
+
+# Send message to specific client by ID (UNICAST)
+proc sendToClient*(server: var RelayServer, clientID: string, msg: RelayMessage): bool =
+    if not server.clientRegistry.hasKey(clientID):
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ❌ Client not found: ") & clientID
+        return false
+    
+    let connectionIndex = server.clientRegistry[clientID]
+    if connectionIndex >= server.connections.len:
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ❌ Invalid connection index for client: ") & clientID
+        # Clean up invalid registry entry
+        server.clientRegistry.del(clientID)
+        return false
+    
+    var conn = server.connections[connectionIndex]
+    if not conn.isConnected:
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ❌ Client connection dead: ") & clientID
+        # Clean up dead connection from registry
+        server.clientRegistry.del(clientID)
+        return false
+    
+    when defined debug:
+        echo obf("[MULTI-CLIENT] 📤 Sending message to client: ") & clientID & obf(" (type: ") & $msg.msgType & obf(")")
+    
+    let success = sendMessage(conn, msg)
+    if success:
+        # Update connection back to array (sendMessage might modify it)
+        server.connections[connectionIndex] = conn
+        server.connections[connectionIndex].lastActivity = epochTime().int64
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ✅ Message sent to client: ") & clientID
+    else:
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ❌ Failed to send message to client: ") & clientID
+        # Clean up failed connection from registry
+        server.clientRegistry.del(clientID)
+    
+    return success
+
+# Get list of connected clients
+proc getConnectedClients*(server: RelayServer): seq[string] =
+    result = @[]
+    for clientID, index in server.clientRegistry:
+        if index < server.connections.len and server.connections[index].isConnected:
+            result.add(clientID)
+
 # Close relay server
 proc closeRelayServer*(server: var RelayServer) =
     if server.isListening:
@@ -316,11 +382,15 @@ proc closeRelayServer*(server: var RelayServer) =
             when defined debug:
                 echo obf("[STATE] Shutting down relay server on port ") & $server.port
                 echo obf("[STATE] Closing ") & $server.connections.len & obf(" active connections")
+                echo obf("[MULTI-CLIENT] Clearing ") & $server.clientRegistry.len & obf(" registered clients")
             
             # Close all client connections
             for conn in server.connections.mitems:
                 closeConnection(conn)
             server.connections = @[]
+            
+            # Clear client registry
+            server.clientRegistry.clear()
             
             # Close server socket
             when defined debug:
@@ -334,7 +404,7 @@ proc closeRelayServer*(server: var RelayServer) =
         
         server.isListening = false
         when defined debug:
-            echo obf("[STATE] Relay server shutdown complete")
+            echo obf("[STATE] Multi-client relay server shutdown complete")
 
 # Poll for incoming messages (NON-BLOCKING)
 proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMessage] =
@@ -405,14 +475,22 @@ proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMess
             when defined debug:
                 echo obf("[RELAY] pollMessages: No data available (exception): ") & errorMsg
 
-# Clean up dead connections
+# Clean up dead connections and client registry
 proc cleanupConnections*(server: var RelayServer) =
     var activeConnections: seq[RelayConnection] = @[]
+    var newClientRegistry = initTable[string, int]()
     var removedCount = 0
+    var newIndex = 0
     
-    for conn in server.connections:
+    for i, conn in server.connections:
         if conn.isConnected:
             activeConnections.add(conn)
+            # Update registry with new index if client is registered
+            if conn.clientID != "":
+                newClientRegistry[conn.clientID] = newIndex
+                when defined debug:
+                    echo obf("[CLEANUP] Remapped client ") & conn.clientID & obf(" from index ") & $i & obf(" to ") & $newIndex
+            newIndex += 1
         else:
             # CRITICAL FIX: Close socket before removing dead connection
             # This prevents file descriptor leaks
@@ -427,16 +505,23 @@ proc cleanupConnections*(server: var RelayServer) =
                 when defined debug:
                     echo obf("[CLEANUP] Dead connection socket already closed or invalid: ") & getCurrentExceptionMsg()
             
+            # Remove from client registry if registered
+            if conn.clientID != "":
+                when defined debug:
+                    echo obf("[MULTI-CLIENT] 🗑️  Removing dead client from registry: ") & conn.clientID
+            
             removedCount += 1
             when defined debug:
                 echo obf("[CLEANUP] Removing dead connection (socket properly closed)")
     
     server.connections = activeConnections
+    server.clientRegistry = newClientRegistry
     
     when defined debug:
         if removedCount > 0:
             echo obf("[CLEANUP] ✅ Memory leak fixed: Removed ") & $removedCount & obf(" dead connections, ") & $activeConnections.len & obf(" remaining")
             echo obf("[CLEANUP] File descriptors properly released for ") & $removedCount & obf(" connections")
+            echo obf("[MULTI-CLIENT] 🔄 Registry updated: ") & $newClientRegistry.len & obf(" clients mapped to new indices")
 
 # Poll relay server for new connections and messages (NON-BLOCKING)
 proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMessage] =
@@ -480,37 +565,31 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
             server.isListening = false
             return result
 
-        # FIXED: Only try to accept new connections if we don't have active connections
-        # This prevents socket corruption from repeated accept() calls
-        if not hasActiveConnections:
-            # Try to accept new connections (server socket already in non-blocking mode)
-            try:
-                when defined debug:
-                    echo obf("[RELAY] No active connections, attempting to accept new connections")
-                
-                var newConn = acceptConnection(server)
-                if newConn.isConnected:
-                    when defined debug:
-                        echo obf("[RELAY] New connection accepted during poll")
-            except:
-                let errorMsg = getCurrentExceptionMsg()
-                if "Bad file descriptor" in errorMsg:
-                    when defined debug:
-                        echo obf("[CRITICAL] 🚨 SOCKET CORRUPTION: Bad file descriptor detected!")
-                        echo obf("[CRITICAL] 🚨 Server Port: ") & $server.port
-                        echo obf("[CRITICAL] 🚨 Active Connections: ") & $server.connections.len
-                        echo obf("[CRITICAL] 🚨 Error Message: ") & errorMsg
-                        echo obf("[RELAY] CRITICAL: Server socket corrupted - ") & errorMsg
-                        echo obf("[RELAY] CRITICAL: Stopping relay server due to socket corruption")
-                    server.isListening = false  # Stop the corrupted server
-                    return result
-                elif "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
-                    when defined debug:
-                        echo obf("[RELAY] Failed to accept connection: ") & errorMsg
-                # No new connections available, that's normal for non-blocking
-        else:
+        # MULTI-CLIENT: Always try to accept new connections (non-blocking)
+        try:
             when defined debug:
-                echo obf("[RELAY] Active connections exist (") & $server.connections.len & obf("), skipping accept to prevent socket corruption")
+                echo obf("[MULTI-CLIENT] Checking for new connections (current: ") & $server.connections.len & obf(")")
+            
+            var newConn = acceptConnection(server)
+            if newConn.isConnected:
+                when defined debug:
+                    echo obf("[MULTI-CLIENT] 🔗 New client connection accepted! Total connections: ") & $server.connections.len
+        except:
+            let errorMsg = getCurrentExceptionMsg()
+            if "Bad file descriptor" in errorMsg:
+                when defined debug:
+                    echo obf("[CRITICAL] 🚨 SOCKET CORRUPTION: Bad file descriptor detected!")
+                    echo obf("[CRITICAL] 🚨 Server Port: ") & $server.port
+                    echo obf("[CRITICAL] 🚨 Active Connections: ") & $server.connections.len
+                    echo obf("[CRITICAL] 🚨 Error Message: ") & errorMsg
+                    echo obf("[RELAY] CRITICAL: Server socket corrupted - ") & errorMsg
+                    echo obf("[RELAY] CRITICAL: Stopping relay server due to socket corruption")
+                server.isListening = false  # Stop the corrupted server
+                return result
+            elif "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
+                when defined debug:
+                    echo obf("[RELAY] Failed to accept connection: ") & errorMsg
+            # No new connections available, that's normal for non-blocking
 
         # Check existing connections for messages (NON-BLOCKING)
         for i, conn in server.connections.mpairs:
@@ -545,6 +624,27 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                         messagesRead += 1
                                         when defined debug:
                                             echo obf("[RELAY] Valid message received from connection ") & $i & obf(" (message #") & $messagesRead & obf(", type: ") & $msg.msgType & obf(")")
+                                        
+                                        # AUTO-REGISTER: Only register clients with FINAL IDs (not PENDING-REGISTRATION)
+                                        if conn.clientID == "" and msg.fromID != "" and msg.fromID != "PENDING-REGISTRATION":
+                                            conn.clientID = msg.fromID
+                                            server.connections[i].clientID = msg.fromID
+                                            server.connections[i].lastActivity = epochTime().int64
+                                            server.clientRegistry[msg.fromID] = i
+                                            when defined debug:
+                                                echo obf("[MULTI-CLIENT] 🆔 Auto-registered client with FINAL ID: ") & msg.fromID & obf(" at connection ") & $i
+                                                echo obf("[MULTI-CLIENT] 📊 Total registered clients: ") & $server.clientRegistry.len
+                                        elif conn.clientID != "" and conn.clientID != msg.fromID and msg.fromID != "PENDING-REGISTRATION":
+                                            when defined debug:
+                                                echo obf("[MULTI-CLIENT] ⚠️  Client ID mismatch! Connection: ") & conn.clientID & obf(", Message: ") & msg.fromID
+                                        elif msg.fromID == "PENDING-REGISTRATION":
+                                            when defined debug:
+                                                echo obf("[MULTI-CLIENT] 📝 Processing message from unregistered client (PENDING-REGISTRATION) at connection ") & $i
+                                        
+                                        # Update last activity for existing clients
+                                        if conn.clientID != "":
+                                            server.connections[i].lastActivity = epochTime().int64
+                                        
                                         result.add(msg)
                                         # Continue reading more messages from this connection
                                         continue
@@ -596,32 +696,56 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
     when defined debug:
         let finalConnections = server.connections.len
         var activeCount = 0
+        var registeredCount = 0
         for conn in server.connections:
             if conn.isConnected:
                 activeCount += 1
-        echo obf("[RELAY] Poll completed - Total connections: ") & $finalConnections & obf(", Active: ") & $activeCount
+                if conn.clientID != "":
+                    registeredCount += 1
+        echo obf("[RELAY] Poll completed - Total: ") & $finalConnections & obf(", Active: ") & $activeCount & obf(", Registered: ") & $registeredCount
+        
+        # Log connected clients
+        if registeredCount > 0:
+            var clientList = ""
+            for clientID in server.clientRegistry.keys:
+                if clientList != "": clientList.add(", ")
+                clientList.add(clientID)
+            echo obf("[MULTI-CLIENT] 📋 Connected clients: ") & clientList
 
-# Broadcast message to all downstream connections
+# Broadcast message to all downstream connections (LEGACY - avoid if possible)
 proc broadcastMessage*(server: var RelayServer, msg: RelayMessage): int =
     result = 0
+    when defined debug:
+        echo obf("[MULTI-CLIENT] 📡 Broadcasting message (type: ") & $msg.msgType & obf(") to ") & $server.connections.len & obf(" connections")
     
     for conn in server.connections.mitems:
         if conn.isConnected:
             if sendMessage(conn, msg):
                 result += 1
+                when defined debug:
+                    let clientInfo = if conn.clientID != "": conn.clientID else: "unregistered"
+                    echo obf("[MULTI-CLIENT] ✅ Broadcast sent to: ") & clientInfo
 
-# Send message to specific downstream connection by agent ID
+# Send message to specific downstream connection by agent ID (PREFERRED METHOD)
 proc sendToAgent*(server: var RelayServer, agentID: string, msg: RelayMessage): bool =
-    # This would require maintaining agent ID to connection mapping
-    # For now, broadcast and let agents filter
-    let sent = broadcastMessage(server, msg)
-    result = sent > 0
+    when defined debug:
+        echo obf("[MULTI-CLIENT] 🎯 Attempting to send to specific agent: ") & agentID
+    
+    # Use the new unicast function instead of broadcast
+    result = sendToClient(server, agentID, msg)
+    
+    if not result:
+        when defined debug:
+            echo obf("[MULTI-CLIENT] ❌ Agent not found, message not delivered: ") & agentID
 
-# Get connection statistics
-proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connections: int] =
+# Get connection statistics with multi-client info
+proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connections: int, registeredClients: int] =
     result.listening = server.isListening
     result.connections = 0
+    result.registeredClients = 0
     
     for conn in server.connections:
         if conn.isConnected:
-            result.connections += 1 
+            result.connections += 1
+            if conn.clientID != "":
+                result.registeredClients += 1 

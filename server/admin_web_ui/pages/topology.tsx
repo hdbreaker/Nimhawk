@@ -484,6 +484,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
       // Create edges to children (connections flow left to right - Nimhawk style)
       node.children.forEach(child => {
         const childStatusColor = getStatusColor(child.status);
+        const isOnline = child.status === 'online';
         newEdges.push({
           id: `${node.id}-to-${child.id}`,
           source: node.id,
@@ -493,7 +494,11 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
           style: { 
             stroke: childStatusColor,
             strokeWidth: 3,
-            strokeDasharray: '8,4', // Always dotted as requested
+            strokeDasharray: '8,4',
+            ...(isOnline && {
+              animation: 'dash 0.8s linear infinite',
+              strokeDashoffset: '0',
+            }),
           },
           // No arrow markers as requested
         });
@@ -541,6 +546,13 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
       border: '1px solid rgb(114, 114, 115)',
       borderRadius: '12px',
     }}>
+      <style jsx>{`
+        @keyframes dash {
+          to {
+            stroke-dashoffset: -12;
+          }
+        }
+      `}</style>
       <ReactFlow
         nodes={nodes}
         edges={edges}

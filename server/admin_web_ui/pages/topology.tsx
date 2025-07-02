@@ -538,7 +538,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
       height: 'calc(100vh - 300px)',
       minHeight: '500px',
       background: '#0B1622',  // Nimhawk official background
-      border: '1px solid #00FF88',
+      border: '1px solid rgb(114, 114, 115)',
       borderRadius: '12px',
     }}>
       <ReactFlow
@@ -552,7 +552,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
         nodesConnectable={false}
         minZoom={0.3}
         maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
+        defaultViewport={{ x: 0, y: 30, zoom: 0.8 }}
         proOptions={{ hideAttribution: true }}
       />
     </div>
@@ -670,14 +670,20 @@ export default function TopologyPage() {
             
             <Group justify="space-between" mb="md">
               <Title order={3} style={{ color: '#ffffff' }}>
-                Implants connections flow
+                Implants connection flow
               </Title>
               <Button 
                 leftSection={<FaSyncAlt />} 
                 onClick={handleRefresh} 
                 loading={loading}
-                variant="light"
+                variant="filled"
+                color="gray"
                 size="sm"
+                style={{ 
+                  backgroundColor: '#ffffff',
+                  color: '#000000',
+                  border: '1px solid #cccccc'
+                }}
               >
                 Refresh
               </Button>

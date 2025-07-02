@@ -46,6 +46,15 @@ class NimPlant:
         self.checkin_count = 0
         self.workspace_uuid = ""
 
+        # Relay topology information
+        self.is_relay_server = False
+        self.relay_server_port = None
+        self.upstream_relay_host = None
+        self.upstream_relay_port = None
+        self.relay_chain = []  # List of relay nodes in the chain to C2
+        self.downstream_clients = []  # List of downstream relay clients
+        self.relay_topology_updated = None
+
         # Generate random, 16-char key for crypto operations
         self.encryption_key = "".join(
             choice(string.ascii_letters + string.digits) for x in range(16)
@@ -117,6 +126,31 @@ class NimPlant:
             self.checkin_count = db_nimplant["checkin_count"]
         except (KeyError, IndexError):
             self.checkin_count = 0
+
+        # Restore relay topology information
+        try:
+            self.is_relay_server = db_nimplant.get("is_relay_server", False)
+            self.relay_server_port = db_nimplant.get("relay_server_port")
+            self.upstream_relay_host = db_nimplant.get("upstream_relay_host")
+            self.upstream_relay_port = db_nimplant.get("upstream_relay_port")
+            
+            # Parse JSON fields for relay topology
+            relay_chain_json = db_nimplant.get("relay_chain")
+            self.relay_chain = json.loads(relay_chain_json) if relay_chain_json else []
+            
+            downstream_clients_json = db_nimplant.get("downstream_clients")
+            self.downstream_clients = json.loads(downstream_clients_json) if downstream_clients_json else []
+            
+            self.relay_topology_updated = db_nimplant.get("relay_topology_updated")
+        except (KeyError, IndexError, json.JSONDecodeError):
+            # Initialize with defaults if fields don't exist
+            self.is_relay_server = False
+            self.relay_server_port = None
+            self.upstream_relay_host = None
+            self.upstream_relay_port = None
+            self.relay_chain = []
+            self.downstream_clients = []
+            self.relay_topology_updated = None
 
     def checkin(self):
         self.last_checkin = time.timestamp()
@@ -309,3 +343,46 @@ class NimPlant:
     def stop_receiving_file(self):
         self.receiving_file = None
         db.db_update_nimplant(self)
+
+    def update_relay_topology(self, is_relay_server=None, relay_server_port=None, 
+                             upstream_relay_host=None, upstream_relay_port=None, 
+                             relay_chain=None, downstream_clients=None):
+        """Update relay topology information for this implant"""
+        if is_relay_server is not None:
+            self.is_relay_server = is_relay_server
+        if relay_server_port is not None:
+            self.relay_server_port = relay_server_port
+        if upstream_relay_host is not None:
+            self.upstream_relay_host = upstream_relay_host
+        if upstream_relay_port is not None:
+            self.upstream_relay_port = upstream_relay_port
+        if relay_chain is not None:
+            self.relay_chain = relay_chain
+        if downstream_clients is not None:
+            self.downstream_clients = downstream_clients
+        
+        self.relay_topology_updated = time.timestamp()
+        db.db_update_nimplant(self)
+        
+        utils.nimplant_print(f"Updated relay topology for implant {self.guid}")
+
+    def get_relay_info(self):
+        """Get relay topology information as a dictionary"""
+        return {
+            "guid": self.guid,
+            "is_relay_server": self.is_relay_server,
+            "relay_server_port": self.relay_server_port,
+            "upstream_relay_host": self.upstream_relay_host,
+            "upstream_relay_port": self.upstream_relay_port,
+            "relay_chain": self.relay_chain,
+            "downstream_clients": self.downstream_clients,
+            "relay_topology_updated": self.relay_topology_updated,
+            "hostname": self.hostname,
+            "ip_external": self.ip_external,
+            "ip_internal": self.ip_internal,
+            "active": self.active
+        }
+
+    def is_relay_node(self):
+        """Check if this implant is part of a relay chain"""
+        return self.is_relay_server or self.upstream_relay_host is not None

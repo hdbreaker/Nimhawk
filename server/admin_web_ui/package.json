@@ -32,7 +32,11 @@
     "@mantine/hooks": "^7.11.2",
     "@mantine/next": "^6.0.22",
     "@mantine/notifications": "^7.11.2",
+    "@types/dagre": "^0.7.53",
     "axios": "^1.8.4",
+    "cytoscape": "^3.32.0",
+    "cytoscape-dagre": "^2.5.0",
+    "dagre": "^0.8.5",
     "date-fns": "^3.6.0",
     "framer-motion": "^12.6.3",
     "fs": "^0.0.1-security",
@@ -40,6 +44,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.2.1",
+    "reactflow": "^11.11.4",
     "swr": "^2.2.5"
   },
   "devDependencies": {
@@ -74,11 +79,17 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["x64", "arm64"]
+          "arch": [
+            "x64",
+            "arm64"
+          ]
         }
       ]
     },
@@ -86,11 +97,17 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64", "ia32"]
+          "arch": [
+            "x64",
+            "ia32"
+          ]
         }
       ]
     },
@@ -98,11 +115,15 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "deb",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }

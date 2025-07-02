@@ -14,6 +14,7 @@ declare module Types {
         disconnected?: boolean;
         workspace_uuid?: string;
         workspace_name?: string;
+        relay_role?: string;
     }
     
     // Detailed Nimplant information

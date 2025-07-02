@@ -1267,8 +1267,9 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
 
         <Box style={{ width: '15%', paddingLeft: '0' }}>
           <Stack gap={3}>
-            {np.workspace_name && np.workspace_name !== 'Default' ? (
-              <Group gap="xs">
+            <Group gap="xs" wrap="wrap">
+              {/* Workspace Badge */}
+              {np.workspace_name && np.workspace_name !== 'Default' ? (
                 <Badge 
                   color="blue" 
                   variant="light" 
@@ -1284,9 +1285,7 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
                 >
                   {np.workspace_name}
                 </Badge>
-              </Group>
-            ) : np.workspace_uuid && (!np.workspace_name) ? (
-              <Group gap="xs">
+              ) : np.workspace_uuid && (!np.workspace_name) ? (
                 <Badge 
                   color="gray" 
                   variant="light" 
@@ -1303,9 +1302,7 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
                 >
                   {np.workspace_uuid.substring(0, 8)}...
                 </Badge>
-              </Group>
-            ) : (
-              <Group gap="xs">
+              ) : (
                 <Badge 
                   color="gray" 
                   variant="light" 
@@ -1321,8 +1318,35 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
                 >
                   Default
                 </Badge>
-              </Group>
-            )}
+              )}
+              
+              {/* Relay Role Badge */}
+              {np.relay_role && np.relay_role !== 'STANDARD' && (
+                <Badge 
+                  color={
+                    np.relay_role === 'RELAY_SERVER' ? 'green' :
+                    np.relay_role === 'RELAY_CLIENT' ? 'blue' :
+                    np.relay_role === 'RELAY_HYBRID' ? 'orange' : 'gray'
+                  }
+                  variant="filled" 
+                  size="xs"
+                  style={{ 
+                    fontWeight: 700,
+                    fontSize: '0.7rem',
+                    borderRadius: '3px',
+                    height: '22px',
+                    padding: '0 6px',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px'
+                  }}
+                  title={`Relay Role: ${np.relay_role}`}
+                >
+                  {np.relay_role === 'RELAY_SERVER' ? 'R-SRV' :
+                   np.relay_role === 'RELAY_CLIENT' ? 'R-CLI' :
+                   np.relay_role === 'RELAY_HYBRID' ? 'R-HYB' : np.relay_role}
+                </Badge>
+              )}
+            </Group>
           </Stack>
         </Box>
         

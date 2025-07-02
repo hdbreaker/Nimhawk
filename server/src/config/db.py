@@ -205,6 +205,25 @@ def initialize_database():
             # Column already exists, no problem
             pass
 
+        # Create the relay topology table
+        con.execute(
+            """
+        CREATE TABLE IF NOT EXISTS relay_topology
+        (id INTEGER PRIMARY KEY AUTOINCREMENT, nimplant_guid TEXT UNIQUE, 
+        topology_json TEXT, last_update TEXT,
+        FOREIGN KEY (nimplant_guid) REFERENCES nimplant(guid))
+        """
+        )
+
+        # Migrate nimplant table to add relay_role if it doesn't exist
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN relay_role TEXT DEFAULT 'STANDARD'")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added relay_role column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
         # Commit all table creations
         con.commit()
         
@@ -631,7 +650,8 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
             "hostingFile": np.hosting_file,
             "receivingFile": np.receiving_file,
             "lastUpdate": utils_time.timestamp(),
-            "workspace_uuid": workspace_uuid
+            "workspace_uuid": workspace_uuid,
+            "relay_role": "STANDARD"  # Default relay role for new implants
         }
         
         utils.nimplant_print(f"DEBUG: db_initialize_nimplant - Object data prepared: {obj}", skip_db_log=True)
@@ -649,7 +669,8 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
                    sleepJitter = :sleepJitter, killDate = :killDate,
                    lastCheckin = :lastCheckin, pendingTasks = :pendingTasks,
                    hostingFile = :hostingFile, receivingFile = :receivingFile,
-                   lastUpdate = :lastUpdate, workspace_uuid = :workspace_uuid
+                   lastUpdate = :lastUpdate, workspace_uuid = :workspace_uuid,
+                   relay_role = :relay_role
                  WHERE guid = :guid""",
                 obj,
             )
@@ -660,7 +681,7 @@ def db_initialize_nimplant(np: NimPlant, server_guid):
                    (:id, :guid, :serverGuid, :active, :late,
                    :UNIQUE_XOR_KEY, :ipAddrExt, :ipAddrInt, :username, :hostname, :osBuild, :pid, :pname,
                    :riskyMode, :sleepTime, :sleepJitter, :killDate, :firstCheckin,
-                   :lastCheckin, :pendingTasks, :hostingFile, :receivingFile, :lastUpdate, :workspace_uuid)""",
+                   :lastCheckin, :pendingTasks, :hostingFile, :receivingFile, :lastUpdate, :workspace_uuid, :relay_role)""",
                 obj,
             )
         
@@ -1636,3 +1657,221 @@ def db_delete_workspace(workspace_uuid):
         import traceback
         utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
         return False
+
+# Functions to manage relay topology
+def db_store_topology_update(nimplant_guid, topology_data):
+    """Store or update topology information for a relay network"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot store topology, database not initialized", skip_db_log=True)
+            return False
+            
+        # Get current timestamp
+        timestamp = utils_time.timestamp()
+        
+        # Check if topology entry already exists for this nimplant
+        existing = con.execute(
+            """SELECT nimplant_guid FROM relay_topology WHERE nimplant_guid = ?""",
+            (nimplant_guid,)
+        ).fetchone()
+        
+        if existing:
+            # Update existing topology
+            con.execute(
+                """UPDATE relay_topology 
+                   SET topology_json = ?, last_update = ? 
+                   WHERE nimplant_guid = ?""",
+                (json.dumps(topology_data), timestamp, nimplant_guid)
+            )
+            utils.nimplant_print(f"Updated topology for nimplant {nimplant_guid}", skip_db_log=True)
+        else:
+            # Insert new topology
+            con.execute(
+                """INSERT INTO relay_topology (nimplant_guid, topology_json, last_update)
+                   VALUES (?, ?, ?)""",
+                (nimplant_guid, json.dumps(topology_data), timestamp)
+            )
+            utils.nimplant_print(f"Stored new topology for nimplant {nimplant_guid}", skip_db_log=True)
+        
+        con.commit()
+        return True
+    except Exception as e:
+        utils.nimplant_print(f"Error storing topology: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return False
+
+def db_get_topology_by_nimplant(nimplant_guid):
+    """Get topology information for a specific nimplant"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot get topology, database not initialized", skip_db_log=True)
+            return None
+            
+        res = con.execute(
+            """SELECT topology_json, last_update FROM relay_topology 
+               WHERE nimplant_guid = ?""",
+            (nimplant_guid,)
+        ).fetchone()
+        
+        if res:
+            topology_data = json.loads(res["topology_json"])
+            return {
+                "topology": topology_data,
+                "last_update": res["last_update"]
+            }
+        else:
+            return None
+    except Exception as e:
+        utils.nimplant_print(f"Error getting topology: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return None
+
+def db_get_all_topologies():
+    """Get all topology information from all relay networks"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot get topologies, database not initialized", skip_db_log=True)
+            return []
+            
+        res = con.execute(
+            """SELECT rt.nimplant_guid, rt.topology_json, rt.last_update,
+                      n.hostname, n.username, n.ipAddrInt, n.ipAddrExt
+               FROM relay_topology rt
+               LEFT JOIN nimplant n ON rt.nimplant_guid = n.guid
+               ORDER BY rt.last_update DESC"""
+        ).fetchall()
+        
+        topologies = []
+        for row in res:
+            topology_data = json.loads(row["topology_json"])
+            topologies.append({
+                "nimplant_guid": row["nimplant_guid"],
+                "topology": topology_data,
+                "last_update": row["last_update"],
+                "hostname": row["hostname"],
+                "username": row["username"],
+                "internal_ip": row["ipAddrInt"],
+                "external_ip": row["ipAddrExt"]
+            })
+        
+        return topologies
+    except Exception as e:
+        utils.nimplant_print(f"Error getting all topologies: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return []
+
+def db_update_nimplant_relay_role(nimplant_guid, relay_role):
+    """Update the relay role of a nimplant (RELAY_SERVER, RELAY_CLIENT, HYBRID, STANDARD)"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot update relay role, database not initialized", skip_db_log=True)
+            return False
+            
+        # Update the relay role
+        con.execute(
+            """UPDATE nimplant SET relay_role = ? WHERE guid = ?""",
+            (relay_role, nimplant_guid)
+        )
+        con.commit()
+        
+        utils.nimplant_print(f"Updated relay role for {nimplant_guid} to {relay_role}", skip_db_log=True)
+        return True
+    except Exception as e:
+        utils.nimplant_print(f"Error updating relay role: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return False
+
+def db_get_nimplant_relay_role(nimplant_guid):
+    """Get the relay role of a nimplant"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot get relay role, database not initialized", skip_db_log=True)
+            return "STANDARD"
+            
+        res = con.execute(
+            """SELECT relay_role FROM nimplant WHERE guid = ?""",
+            (nimplant_guid,)
+        ).fetchone()
+        
+        if res and res["relay_role"]:
+            return res["relay_role"]
+        else:
+            return "STANDARD"  # Default role
+    except Exception as e:
+        utils.nimplant_print(f"Error getting relay role: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return "STANDARD"
+
+def db_delete_topology(nimplant_guid):
+    """Delete topology information for a nimplant"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot delete topology, database not initialized", skip_db_log=True)
+            return False
+            
+        con.execute(
+            """DELETE FROM relay_topology WHERE nimplant_guid = ?""",
+            (nimplant_guid,)
+        )
+        con.commit()
+        
+        utils.nimplant_print(f"Deleted topology for nimplant {nimplant_guid}", skip_db_log=True)
+        return True
+    except Exception as e:
+        utils.nimplant_print(f"Error deleting topology: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return False
+
+def db_get_nimplant_by_guid(nimplant_guid):
+    """Get nimplant information by GUID for topology enrichment - SECURITY FOCUSED"""
+    try:
+        # Ensure database is initialized
+        if not ensure_db_initialized():
+            utils.nimplant_print("Cannot get nimplant, database not initialized", skip_db_log=True)
+            return None
+            
+        res = con.execute(
+            """SELECT guid, ipAddrExt, ipAddrInt, username, hostname, osBuild, 
+                      pid, pname, lastCheckin, relay_role 
+               FROM nimplant WHERE guid = ?""",
+            (nimplant_guid,)
+        ).fetchone()
+        
+        if res:
+            # Create a simple object to hold the data
+            class NimplantInfo:
+                def __init__(self, row):
+                    self.guid = row["guid"]
+                    self.ip_external = row["ipAddrExt"]
+                    self.ip_internal = row["ipAddrInt"]
+                    self.username = row["username"]
+                    self.hostname = row["hostname"]
+                    self.os_build = row["osBuild"]
+                    self.pid = row["pid"]
+                    self.process_name = row["pname"]
+                    self.last_checkin = row["lastCheckin"]
+                    self.relay_role = row["relay_role"]
+            
+            utils.nimplant_print(f"🔒 Retrieved nimplant data for {nimplant_guid} from database", skip_db_log=True)
+            return NimplantInfo(res)
+        else:
+            utils.nimplant_print(f"🔒 Nimplant {nimplant_guid} not found in database", skip_db_log=True)
+            return None
+            
+    except Exception as e:
+        utils.nimplant_print(f"Error getting nimplant by GUID: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+        return None

@@ -237,34 +237,65 @@ function ImplantBuilderPage() {
     
     if (buildOptionsLoading) {
         return (
-            <MainLayout>
-                <Container size="xl" py="xl">
-                    <Group justify="center">
-                        <Loader size="lg" />
-                        <Text>Loading build options...</Text>
-                    </Group>
-                </Container>
-            </MainLayout>
+            <div style={{ 
+                position: 'fixed',
+                top: '0',
+                left: '80px',
+                right: '0',
+                bottom: '0',
+                paddingTop: '80px',
+                paddingBottom: '16px',
+                paddingLeft: '16px',
+                paddingRight: '16px',
+                overflowY: 'auto',
+                backgroundColor: '#f8f9fa'
+            }}>
+                <Group justify="center">
+                    <Loader size="lg" />
+                    <Text>Loading build options...</Text>
+                </Group>
+            </div>
         );
     }
     
     if (buildOptionsError) {
         return (
-            <MainLayout>
-                <Container size="xl" py="xl">
-                    <Alert color="red" title="Error" icon={<FaExclamationTriangle />}>
-                        Failed to load build options. Please check your connection to the server.
-                    </Alert>
-                </Container>
-            </MainLayout>
+            <div style={{ 
+                position: 'fixed',
+                top: '0',
+                left: '80px',
+                right: '0',
+                bottom: '0',
+                paddingTop: '80px',
+                paddingBottom: '16px',
+                paddingLeft: '16px',
+                paddingRight: '16px',
+                overflowY: 'auto',
+                backgroundColor: '#f8f9fa'
+            }}>
+                <Alert color="red" title="Error" icon={<FaExclamationTriangle />}>
+                    Failed to load build options. Please check your connection to the server.
+                </Alert>
+            </div>
         );
     }
     
     const selectedImplantTypeData = typedBuildOptions?.implant_types.find((t: ImplantType) => t.id === selectedImplantType);
     
     return (
-        <MainLayout>
-            <Container size="xl" py="xl">
+        <div style={{ 
+            position: 'fixed',
+            top: '0',
+            left: '80px',
+            right: '0',
+            bottom: '0',
+            paddingTop: '80px',
+            paddingBottom: '16px',
+            paddingLeft: '16px',
+            paddingRight: '16px',
+            overflowY: 'auto',
+            backgroundColor: '#f8f9fa'
+        }}>
                 <Stack gap="xl">
                     <div>
                         <Title order={2} mb="md">Build Implants</Title>
@@ -404,7 +435,6 @@ function ImplantBuilderPage() {
                         ))}
                     </Stack>
                 </Stack>
-            </Container>
             
             {/* Build Configuration Modal */}
             <Modal
@@ -653,7 +683,7 @@ function ImplantBuilderPage() {
                     </Group>
                 </Stack>
             </Modal>
-        </MainLayout>
+        </div>
     );
 }
 

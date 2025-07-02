@@ -535,7 +535,8 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
     return (
     <div style={{ 
       width: '100%', 
-      height: '500px',
+      height: 'calc(100vh - 300px)',
+      minHeight: '500px',
       background: '#0B1622',  // Nimhawk official background
       border: '1px solid #00FF88',
       borderRadius: '12px',
@@ -619,17 +620,23 @@ export default function TopologyPage() {
     fetchData();
   };
 
-  // Count statistics
-  const totalAgents = nimplants.length;
-  const standardAgents = nimplants.filter(n => n.relay_role === 'STANDARD').length;
-  const relayServers = nimplants.filter(n => n.relay_role === 'RELAY_SERVER').length;
-  const relayClients = nimplants.filter(n => n.relay_role === 'RELAY_CLIENT').length;
-  const relayHybrids = nimplants.filter(n => n.relay_role === 'RELAY_HYBRID').length;
+
 
   return (
     <AuthWrapper>
-      <MainLayout>
-        <Container size="xl" pt={80} pb="md">
+      <div style={{ 
+        position: 'fixed',
+        top: '0',
+        left: '80px',
+        right: '0',
+        bottom: '0',
+        paddingTop: '80px',
+        paddingBottom: '16px',
+        paddingLeft: '16px',
+        paddingRight: '16px',
+        overflowY: 'auto',
+        backgroundColor: '#f8f9fa'
+      }}>
           <div style={{ marginBottom: '24px', marginTop: '8px' }}>
             <Title order={2} mb="xs">
               <FaNetworkWired style={{ marginRight: '8px' }} />
@@ -640,73 +647,7 @@ export default function TopologyPage() {
             </Text>
           </div>
 
-          {/* Statistics Cards */}
-          <Group mb="lg">
-            <Card withBorder p="md" radius="md" style={{ 
-              minWidth: '150px',
-              background: '#1a1a1a',
-              border: '1px solid #333'
-            }}>
-              <Text size="xl" fw={600} ta="center" style={{ color: '#ffffff' }}>
-                {totalAgents}
-              </Text>
-              <Text size="sm" ta="center" style={{ color: '#9ca3af' }}>
-                Total Agents
-              </Text>
-            </Card>
-            
-            <Card withBorder p="md" radius="md" style={{ 
-              minWidth: '150px',
-              background: '#1a1a1a',
-              border: '1px solid #333'
-            }}>
-              <Text size="xl" fw={600} ta="center" style={{ color: '#4ade80' }}>
-                {standardAgents}
-              </Text>
-              <Text size="sm" ta="center" style={{ color: '#9ca3af' }}>
-                Agents
-              </Text>
-            </Card>
-            
-            <Card withBorder p="md" radius="md" style={{ 
-              minWidth: '150px',
-              background: '#1a1a1a',
-              border: '1px solid #333'
-            }}>
-              <Text size="xl" fw={600} ta="center" style={{ color: '#f97316' }}>
-                {relayServers}
-              </Text>
-              <Text size="sm" ta="center" style={{ color: '#9ca3af' }}>
-                Relay
-              </Text>
-            </Card>
-            
-            <Card withBorder p="md" radius="md" style={{ 
-              minWidth: '150px',
-              background: '#1a1a1a',
-              border: '1px solid #333'
-            }}>
-              <Text size="xl" fw={600} ta="center" style={{ color: '#eab308' }}>
-                {relayClients}
-              </Text>
-              <Text size="sm" ta="center" style={{ color: '#9ca3af' }}>
-                Client
-              </Text>
-            </Card>
 
-            <Card withBorder p="md" radius="md" style={{ 
-              minWidth: '150px',
-              background: '#1a1a1a',
-              border: '1px solid #333'
-            }}>
-              <Text size="xl" fw={600} ta="center" style={{ color: '#8b5cf6' }}>
-                {relayHybrids}
-              </Text>
-              <Text size="sm" ta="center" style={{ color: '#9ca3af' }}>
-                Hybrid
-              </Text>
-            </Card>
-          </Group>
 
           {error && (
             <Alert 
@@ -758,8 +699,7 @@ export default function TopologyPage() {
           </Card>
 
 
-        </Container>
-      </MainLayout>
+        </div>
     </AuthWrapper>
   );
 } 

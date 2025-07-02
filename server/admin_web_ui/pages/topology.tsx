@@ -564,7 +564,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
         nodesConnectable={false}
         minZoom={0.3}
         maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 30, zoom: 0.8 }}
+        defaultViewport={{ x: 0, y: 35, zoom: 0.75 }}
         proOptions={{ hideAttribution: true }}
       />
     </div>

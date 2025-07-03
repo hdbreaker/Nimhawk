@@ -39,8 +39,6 @@ from src.config.db import (
     db_delete_workspace,
     db_assign_nimplant_to_workspace,
     db_remove_nimplant_from_workspace,
-    db_get_all_topologies,
-    db_get_topology_by_nimplant,
     db_get_nimplant_relay_role,
 )
 
@@ -1318,8 +1316,8 @@ def admin_server():
                         utils.nimplant_print(f"ERROR: Direct workspace query failed: {str(db_error)}")
                         nimplant['workspace_name'] = "Default"
                 
-                # Add relay role information
-                nimplant['relay_role'] = db_get_nimplant_relay_role(nimplant['guid'])
+                # Add relay role information (use from database or default to STANDARD)
+                nimplant['relay_role'] = nimplant.get('relay_role') or 'STANDARD'
             
             return flask.jsonify(nimplants)
         except Exception as e:
@@ -1650,178 +1648,44 @@ def admin_server():
             return flask.jsonify({"error": "Internal server error"}), 500
 
     # ============================================================================
-    # RELAY TOPOLOGY ENDPOINTS
+    # RELAY CHAIN RELATIONSHIPS ENDPOINTS  
     # ============================================================================
 
-    @app.route("/api/topology", methods=["GET"])
+    @app.route("/api/chain-relationships", methods=["GET"])
     @require_auth
-    def get_all_topologies():
-        """Get all relay network topologies"""
+    def get_chain_relationships():
+        """Get all chain relationship information for distributed topology visualization"""
         try:
-            utils.nimplant_print(f"DEBUG: /api/topology endpoint called")
-            topologies = db_get_all_topologies()
-            utils.nimplant_print(f"DEBUG: Retrieved {len(topologies)} topologies from database")
+            from ...config import db
             
-            # Process topologies to add relay role information
-            processed_topologies = []
-            for topo in topologies:
-                # Add relay role for the reporting nimplant
-                topo["relay_role"] = db_get_nimplant_relay_role(topo["nimplant_guid"])
-                processed_topologies.append(topo)
+            relationships = db.db_get_all_chain_relationships()
             
-            utils.nimplant_print(f"DEBUG: Processed {len(processed_topologies)} topologies")
+            # Convert to format suitable for frontend
+            chain_data = []
+            for rel in relationships:
+                chain_data.append({
+                    "nimplant_guid": rel["nimplant_guid"],
+                    "parent_guid": rel["parent_guid"],
+                    "role": rel["role"],
+                    "listening_port": rel["listening_port"],
+                    "last_update": rel["last_update"],
+                    "hostname": rel["hostname"],
+                    "username": rel["username"],
+                    "internal_ip": rel["internal_ip"],
+                    "external_ip": rel["external_ip"],
+                    "os_build": rel["os_build"],
+                    "status": "online" if rel["active"] else "disconnected" if not rel["active"] else "late" if rel["late"] else "unknown"
+                })
+            
+            utils.nimplant_print(f"🔗 API: Returned {len(chain_data)} chain relationships")
+            
             return flask.jsonify({
-                "topologies": processed_topologies,
-                "count": len(processed_topologies)
+                "chain_relationships": chain_data,
+                "total_count": len(chain_data)
             })
             
         except Exception as e:
-            utils.nimplant_print(f"ERROR in /api/topology: {e}")
-            import traceback
-            utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
-            return flask.jsonify({"error": f"Internal server error: {str(e)}"}), 500
-
-    @app.route("/api/topology/<nimplant_guid>", methods=["GET"])
-    @require_auth
-    def get_topology_by_nimplant_endpoint(nimplant_guid):
-        """Get topology information for a specific nimplant"""
-        try:
-            topology_info = db_get_topology_by_nimplant(nimplant_guid)
-            
-            if topology_info:
-                # Add relay role information
-                topology_info["relay_role"] = db_get_nimplant_relay_role(nimplant_guid)
-                return flask.jsonify(topology_info)
-            else:
-                return flask.jsonify({"error": "Topology not found for this nimplant"}), 404
-                
-        except Exception as e:
-            utils.nimplant_print(f"Error getting topology for nimplant {nimplant_guid}: {e}")
-            import traceback
-            utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
-            return flask.jsonify({"error": "Internal server error"}), 500
-
-    @app.route("/api/topology/graph", methods=["GET"])
-    @require_auth
-    def get_topology_graph():
-        """Get topology data formatted for ReactFlow visualization"""
-        try:
-            topologies = db_get_all_topologies()
-            
-            # Convert topology data to ReactFlow format
-            nodes = []
-            edges = []
-            
-            for topo in topologies:
-                topology_data = topo["topology"]
-                
-                if "root" in topology_data and "nodes" in topology_data:
-                    root_info = topology_data["root"]
-                    nodes_info = topology_data["nodes"]
-                    
-                    # Add nodes
-                    for node_id, node_data in nodes_info.items():
-                        relay_role = db_get_nimplant_relay_role(node_id)
-                        
-                        # Determine node type and color based on relay role
-                        node_type = "default"
-                        node_color = "#e1e5e9"  # Default gray
-                        
-                        if relay_role == "RELAY_SERVER":
-                            node_color = "#28a745"  # Green
-                            node_type = "relay_server"
-                        elif relay_role == "RELAY_CLIENT":
-                            node_color = "#007bff"  # Blue
-                            node_type = "relay_client"
-                        elif relay_role == "RELAY_HYBRID":
-                            node_color = "#fd7e14"  # Orange
-                            node_type = "relay_hybrid"
-                        
-                        nodes.append({
-                            "id": node_id,
-                            "type": node_type,
-                            "position": {"x": 0, "y": 0},  # Will be auto-layouted
-                            "data": {
-                                "label": f"{node_data.get('hostname', 'Unknown')}",
-                                "nodeType": node_data.get("nodeType", "unknown"),
-                                "relayRole": relay_role,
-                                "hostname": node_data.get("hostname", "Unknown"),
-                                "ipInternal": node_data.get("ipInternal", ""),
-                                "ipExternal": node_data.get("ipExternal", ""),
-                                "listeningPort": node_data.get("listeningPort", 0),
-                                "lastSeen": node_data.get("lastSeen", 0)
-                            },
-                            "style": {
-                                "background": node_color,
-                                "color": "white",
-                                "border": "2px solid #333",
-                                "borderRadius": "8px",
-                                "fontSize": "12px",
-                                "fontWeight": "bold"
-                            }
-                        })
-                        
-                        # Add edges for direct children
-                        if "directChildren" in node_data:
-                            for child_id in node_data["directChildren"]:
-                                edges.append({
-                                    "id": f"{node_id}-{child_id}",
-                                    "source": node_id,
-                                    "target": child_id,
-                                    "type": "smoothstep",
-                                    "animated": True,
-                                    "style": {
-                                        "stroke": "#333",
-                                        "strokeWidth": 2
-                                    },
-                                    "markerEnd": {
-                                        "type": "arrowclosed",
-                                        "color": "#333"
-                                    }
-                                })
-            
-            # Auto-layout nodes (simple hierarchical layout)
-            if nodes:
-                # Find root nodes (nodes without incoming edges)
-                root_nodes = []
-                for node in nodes:
-                    is_root = True
-                    for edge in edges:
-                        if edge["target"] == node["id"]:
-                            is_root = False
-                            break
-                    if is_root:
-                        root_nodes.append(node)
-                
-                # Simple layout: root at top, children below
-                y_offset = 0
-                for i, root in enumerate(root_nodes):
-                    root["position"]["x"] = i * 300
-                    root["position"]["y"] = y_offset
-                    
-                    # Position children
-                    child_x = i * 300
-                    child_y = y_offset + 150
-                    for edge in edges:
-                        if edge["source"] == root["id"]:
-                            for node in nodes:
-                                if node["id"] == edge["target"]:
-                                    node["position"]["x"] = child_x
-                                    node["position"]["y"] = child_y
-                                    child_x += 200
-            
-            return flask.jsonify({
-                "nodes": nodes,
-                "edges": edges,
-                "metadata": {
-                    "total_nodes": len(nodes),
-                    "total_edges": len(edges),
-                    "topologies_count": len(topologies)
-                }
-            })
-            
-        except Exception as e:
-            utils.nimplant_print(f"Error generating topology graph: {e}")
+            utils.nimplant_print(f"Error getting chain relationships: {e}")
             import traceback
             utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
             return flask.jsonify({"error": "Internal server error"}), 500

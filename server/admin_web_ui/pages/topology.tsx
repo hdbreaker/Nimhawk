@@ -12,21 +12,14 @@ import ReactFlow, {
   Handle,
   Position,
 } from 'reactflow';
-import dagre from 'dagre';
+// dagre import removed - using custom positioning
 
 import 'reactflow/dist/style.css';
 
 import AuthWrapper from '../components/AuthWrapper';
 import MainLayout from '../components/MainLayout';
+import NimplantDrawer from '../components/NimplantDrawer';
 import { api } from '../modules/apiFetcher';
-
-interface TopologyData {
-  id: string;
-  nimplant_guid: string;
-  topology_json: any;
-  last_update: string;
-  relay_role: string;
-}
 
 interface NimplantData {
   guid: string;
@@ -39,6 +32,7 @@ interface NimplantData {
   relay_role: string;
   active: boolean;
   late: boolean;
+  disconnected: boolean;
 }
 
 // Hierarchical tree data structure
@@ -52,15 +46,45 @@ interface TreeNode {
   children: TreeNode[];
 }
 
-// Helper function to get OS icon
+// Helper function to get OS icon image path
 const getOSIcon = (os: string) => {
+  console.log('[DEBUG TOPOLOGY] getOSIcon called with:', os, 'Type:', typeof os);
+  
+  if (!os || os === 'Unknown' || os === 'unknown') {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: OS is Unknown or empty, returning question mark');
+    return null; // Will show text fallback
+  }
+  
   const osLower = os.toLowerCase();
-  if (osLower.includes('windows') || osLower.includes('win')) return '🪟';
-  if (osLower.includes('linux') || osLower.includes('ubuntu') || osLower.includes('debian')) return '🐧';
-  if (osLower.includes('darwin') || osLower.includes('macos') || osLower.includes('mac')) return '🍎';
-  if (osLower.includes('android')) return '🤖';
-  if (osLower.includes('ios')) return '📱';
-  return '💻';
+  console.log('[DEBUG TOPOLOGY] getOSIcon: OS lowercase:', osLower);
+  
+  if (osLower.includes('windows') || osLower.includes('win') || osLower.includes('microsoft')) {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: Detected Windows');
+    return '/windows.png';
+  }
+  
+  if (osLower.includes('linux') || osLower.includes('ubuntu') || osLower.includes('debian') || osLower.includes('centos') || osLower.includes('redhat')) {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: Detected Linux');
+    return '/linux.png';
+  }
+  
+  if (osLower.includes('darwin') || osLower.includes('macos') || osLower.includes('mac') || osLower.includes('osx')) {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: Detected macOS/Darwin');
+    return '/mac.png';
+  }
+  
+  if (osLower.includes('android')) {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: Detected Android');
+    return null; // Could add android.png later
+  }
+  
+  if (osLower.includes('ios')) {
+    console.log('[DEBUG TOPOLOGY] getOSIcon: Detected iOS');
+    return null; // Could add ios.png later
+  }
+  
+  console.log('[DEBUG TOPOLOGY] getOSIcon: No match found, returning null');
+  return null; // Will show text fallback
 };
 
 // Helper function to get status color (Nimhawk official colors)
@@ -73,6 +97,28 @@ const getStatusColor = (status: string) => {
   }
 };
 
+// Helper function to get relay role colors (logical hierarchy)
+const getRelayRoleColor = (relayRole: string) => {
+  switch (relayRole) {
+    case 'RELAY_SERVER': return '#F59E0B';   // Amber/Orange warning (important server role)
+    case 'RELAY_HYBRID': return '#8B5CF6';   // Purple/Violet (hybrid role - most complex)
+    case 'RELAY_CLIENT': return '#00FF88';   // Green (client role)
+    case 'STANDARD': return '#9CA3AF';       // Gray (neutral)
+    default: return '#9CA3AF';               // Gray (neutral)
+  }
+};
+
+// Helper function to get relay role display names
+const getRelayRoleDisplayName = (relayRole: string) => {
+  switch (relayRole) {
+    case 'RELAY_SERVER': return 'RELAY SERVER';
+    case 'RELAY_CLIENT': return 'RELAY CLIENT';
+    case 'RELAY_HYBRID': return 'RELAY HYBRID';
+    case 'STANDARD': return 'STANDARD';
+    default: return 'STANDARD';
+  }
+};
+
 // Helper function to create hierarchical tree node style (Refined Nimhawk style)
 const createTreeNodeStyle = (status: string, isC2Server = false) => {
   const statusColor = getStatusColor(status);
@@ -82,7 +128,7 @@ const createTreeNodeStyle = (status: string, isC2Server = false) => {
     border: `2px solid ${statusColor}`,
     borderRadius: '10px',
     padding: '16px',
-    width: '280px',
+    width: '320px',
     height: '180px',
     fontFamily: 'system-ui, -apple-system, sans-serif',
     color: '#ffffff',
@@ -94,70 +140,24 @@ const createTreeNodeStyle = (status: string, isC2Server = false) => {
   };
 };
 
-// Build tree structure from flat nimplants data
-const buildTreeStructure = (nimplants: NimplantData[]): TreeNode => {
-  // Create the root C2 node
-  const c2Root: TreeNode = {
-    id: 'c2-server',
-    type: 'C2 Server',
-    status: 'online',
-    ip: 'Command & Control',
-    os: 'server',
-    hostname: 'C2 SERVER',
-    children: []
-  };
-
-  // Convert nimplants to tree nodes
-  const treeNodes: TreeNode[] = nimplants.map(nimplant => ({
-    id: nimplant.guid,
-    type: nimplant.relay_role || 'STANDARD',
-    status: nimplant.active ? (nimplant.late ? 'late' : 'online') : 'disconnected',
-    ip: nimplant.ip_internal || 'No IP',
-    os: nimplant.os_build || 'Unknown',
-    hostname: nimplant.hostname || `Agent-${nimplant.guid.substring(0, 8)}`,
-    children: []
-  }));
-
-  // Sort function: ONLINE first, then LATE, then DISCONNECTED
-  const sortByStatus = (a: TreeNode, b: TreeNode) => {
-    const statusOrder = { 'online': 0, 'late': 1, 'disconnected': 2 };
-    return statusOrder[a.status] - statusOrder[b.status];
-  };
-
-  // Organize by hierarchy: Relay Servers -> Standard/Clients -> others
-  const relayServers = treeNodes.filter(n => n.type === 'RELAY_SERVER').sort(sortByStatus);
-  const relayClients = treeNodes.filter(n => n.type === 'RELAY_CLIENT').sort(sortByStatus);
-  const relayHybrids = treeNodes.filter(n => n.type === 'RELAY_HYBRID').sort(sortByStatus);
-  const standardAgents = treeNodes.filter(n => n.type === 'STANDARD').sort(sortByStatus);
-
-  // Create hierarchy: C2 -> Relay Servers -> [Standard, Clients, Hybrids]
-  if (relayServers.length > 0) {
-    // Relay servers connect directly to C2
-    c2Root.children = relayServers;
-    
-    // Distribute other agents among relay servers, maintaining sort order
-    const otherAgents = [...standardAgents, ...relayClients, ...relayHybrids];
-    otherAgents.forEach((agent, index) => {
-      const serverIndex = index % relayServers.length;
-      relayServers[serverIndex].children.push(agent);
-    });
-    
-    // Sort children of each relay server by status
-    relayServers.forEach(server => {
-      server.children.sort(sortByStatus);
-    });
-  } else {
-    // No relay servers, all agents connect directly to C2 (already sorted)
-    c2Root.children = treeNodes.sort(sortByStatus);
-  }
-
-  return c2Root;
-};
+// Legacy buildTreeStructure removed - using only distributed chain relationships
 
 // Custom node component with proper handles
-const CustomNode = ({ data }: { data: any }) => {
+const CustomNode = ({ data, id }: { data: any, id: string }) => {
+  const handleClick = () => {
+    if (data.onNodeClick) {
+      data.onNodeClick(id);
+    }
+  };
+
   return (
-    <div style={data.style}>
+    <div 
+      style={{
+        ...data.style,
+        cursor: id !== 'c2-server' ? 'pointer' : 'default'
+      }}
+      onClick={handleClick}
+    >
       {/* Left handle for incoming connections */}
       <Handle
         type="target"
@@ -193,52 +193,121 @@ const nodeTypes = {
   customNode: CustomNode,
 };
 
-// Auto-layout function using dagre
-const getLayoutedElements = (nodes: Node[], edges: Edge[], direction = 'LR') => {
-  const dagreGraph = new dagre.graphlib.Graph();
-  dagreGraph.setDefaultEdgeLabel(() => ({}));
+// Auto-layout function removed - using custom positioning
+
+// Build tree structure using distributed chain relationships + standard agents (NEW APPROACH)
+const buildDistributedTopologyStructure = (chainRelationships: any[], standardAgents: NimplantData[]): TreeNode => {
+  // Create the root C2 node
+  const c2Root: TreeNode = {
+    id: 'c2-server',
+    type: 'C2 Server',
+    status: 'online',
+    ip: 'Command & Control',
+    os: 'server',
+    hostname: 'C2 SERVER',
+    children: []
+  };
+
+  console.log('[DEBUG DISTRIBUTED] Building topology from chain relationships:', chainRelationships);
+  console.log('[DEBUG DISTRIBUTED] Building topology from standard agents:', standardAgents);
+
+  // Process standard agents (direct C2 connections) even if no chain relationships
+  const chainGuids = new Set(chainRelationships?.map(rel => rel.nimplant_guid) || []);
   
-  const nodeWidth = 280;
-  const nodeHeight = 200;
+  if (standardAgents && standardAgents.length > 0) {
+    standardAgents.forEach(agent => {
+      // Only add agents that are NOT in chain relationships (= direct C2 connections)
+      if (!chainGuids.has(agent.guid)) {
+        const status: 'online' | 'late' | 'disconnected' = agent.active ? 'online' :
+                                                           agent.late ? 'late' : 'disconnected';
+        
+        const standardNode: TreeNode = {
+          id: agent.guid,
+          type: agent.relay_role || 'STANDARD',
+          status: status,
+          ip: agent.ip_internal || 'No IP',
+          os: agent.os_build || 'Unknown',
+          hostname: agent.hostname || `Agent-${agent.guid.substring(0, 8)}`,
+          children: []
+        };
+        
+        c2Root.children.push(standardNode);
+        console.log('[DEBUG DISTRIBUTED] ✅ Added STANDARD agent to C2:', agent.guid, 'Role:', agent.relay_role);
+      }
+    });
+  }
+
+  if (!chainRelationships || chainRelationships.length === 0) {
+    console.log('[DEBUG DISTRIBUTED] No chain relationships found, showing only standard agents');
+    return c2Root;
+  }
+
+  // Create map of all nodes by GUID
+  const nodeMap = new Map<string, TreeNode>();
+
+  // Sort function: ONLINE first, then LATE, then DISCONNECTED
+  const sortByStatus = (a: TreeNode, b: TreeNode) => {
+    const statusOrder = { 'online': 0, 'late': 1, 'disconnected': 2 };
+    return statusOrder[a.status] - statusOrder[b.status];
+  };
+
+  // Create tree nodes from chain relationships
+  chainRelationships.forEach(rel => {
+    if (!nodeMap.has(rel.nimplant_guid)) {
+      const status: 'online' | 'late' | 'disconnected' = rel.status === 'online' ? 'online' :
+                                                         rel.status === 'late' ? 'late' : 'disconnected';
+      
+      const treeNode: TreeNode = {
+        id: rel.nimplant_guid,
+        type: rel.role || 'STANDARD',
+        status: status,
+        ip: rel.internal_ip || 'No IP',
+        os: rel.os_build || 'Unknown',
+        hostname: rel.hostname || `Agent-${rel.nimplant_guid.substring(0, 8)}`,
+        children: []
+      };
+      
+      nodeMap.set(rel.nimplant_guid, treeNode);
+      console.log('[DEBUG DISTRIBUTED] Created node:', rel.nimplant_guid, 'Role:', rel.role, 'Parent:', rel.parent_guid);
+    }
+  });
+
+  // Build parent-child relationships
+  chainRelationships.forEach(rel => {
+    const childNode = nodeMap.get(rel.nimplant_guid);
+    
+    if (rel.parent_guid && rel.parent_guid !== '') {
+      // Has parent - add to parent's children
+      const parentNode = nodeMap.get(rel.parent_guid);
+      if (parentNode && childNode) {
+        parentNode.children.push(childNode);
+        console.log('[DEBUG DISTRIBUTED] ✅ Connected:', rel.parent_guid, '→', rel.nimplant_guid);
+      } else {
+        console.log('[DEBUG DISTRIBUTED] ❌ Parent not found for connection:', rel.parent_guid, '->', rel.nimplant_guid);
+      }
+    } else {
+      // No parent - connects directly to C2
+      if (childNode) {
+        c2Root.children.push(childNode);
+        console.log('[DEBUG DISTRIBUTED] ✅ Connected to C2:', rel.nimplant_guid);
+      }
+    }
+  });
+
+  // Sort all children by status
+  c2Root.children.sort(sortByStatus);
+  nodeMap.forEach(node => {
+    node.children.sort(sortByStatus);
+  });
+
+  console.log('[DEBUG DISTRIBUTED] Final topology - C2 children:', c2Root.children.length);
   
-  dagreGraph.setGraph({ 
-    rankdir: direction,
-    nodesep: 300,    // Much more horizontal spacing between nodes in same rank
-    ranksep: 500,    // Much more vertical spacing between different ranks/levels
-    marginx: 100,
-    marginy: 100,
-  });
-
-  nodes.forEach((node) => {
-    dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });
-  });
-
-  edges.forEach((edge) => {
-    dagreGraph.setEdge(edge.source, edge.target);
-  });
-
-  dagre.layout(dagreGraph);
-
-  nodes.forEach((node) => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    node.targetPosition = Position.Left;
-    node.sourcePosition = Position.Right;
-
-    // Dagre gives center coordinates, we need top-left
-    node.position = {
-      x: nodeWithPosition.x - nodeWidth / 2,
-      y: nodeWithPosition.y - nodeHeight / 2,
-    };
-
-    return node;
-  });
-
-  return { nodes, edges };
+  return c2Root;
 };
 
+// REMOVED: Legacy topology functions - now using only chain relationships
 
-
-function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], nimplants: NimplantData[] }) {
+function TopologyGraph({ nimplants, chainRelationships, onNodeClick }: { nimplants: NimplantData[], chainRelationships: any[], onNodeClick: (nodeId: string) => void }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
@@ -248,90 +317,22 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
   );
 
   useEffect(() => {
-    if (!nimplants || nimplants.length === 0) {
-      // Show just the C2 node when no nimplants
-      const c2Node: Node = {
-        id: 'c2-server',
-        type: 'customNode',
-        position: { x: 250, y: 250 },
-        data: { 
-          style: createTreeNodeStyle('online', true),
-          content: (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-              <div style={{ 
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                marginBottom: '8px'
-              }}>
-                <div style={{ 
-                  width: '32px', 
-                  height: '32px',
-                  background: 'url(/nimhawk-head.png) center/contain no-repeat',
-                  flexShrink: 0
-                }} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ 
-                    fontSize: '16px', 
-                    fontWeight: 'bold',
-                    color: '#ffffff',
-                    marginBottom: '2px'
-                  }}>
-                    Nimhawk C2
-                  </div>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    color: '#AAAAAA'
-                  }}>
-                    Command & Control
-                  </div>
-                </div>
-              </div>
-              
-              <div style={{ 
-                fontSize: '12px', 
-                color: '#666666',
-                fontFamily: 'monospace',
-                marginBottom: '8px'
-              }}>
-                10.0.0.1
-              </div>
-              
-              <div style={{
-                display: 'inline-block',
-                background: 'rgba(0, 255, 136, 0.1)',
-                border: '1px solid #00FF88',
-                color: '#00FF88',
-                padding: '4px 8px',
-                borderRadius: '6px',
-                fontSize: '10px',
-                fontWeight: '600',
-                textTransform: 'uppercase' as const,
-                alignSelf: 'flex-start'
-              }}>
-                ONLINE
-              </div>
-            </div>
-          )
-        },
-        draggable: true,
-      };
-      
-      setNodes([c2Node]);
-      setEdges([]);
-      return;
-    }
-
-    // Build tree structure
-    const tree = buildTreeStructure(nimplants);
+    // Always build tree structure using distributed chain relationships + standard agents
+    console.log('[DEBUG TOPOLOGY] Building topology from chain relationships');
+    console.log('[DEBUG TOPOLOGY] Chain relationships:', chainRelationships);
+    console.log('[DEBUG TOPOLOGY] Nimplants (standard agents):', nimplants?.length || 0);
+    
+    const tree = buildDistributedTopologyStructure(chainRelationships, nimplants);
     
     const newNodes: Node[] = [];
     const newEdges: Edge[] = [];
 
     // Create nodes for the tree
     const createTreeNode = (treeNode: TreeNode): Node => {
+      console.log('[DEBUG NODE] Creating node for:', treeNode.id, 'OS field:', treeNode.os);
       const statusColor = getStatusColor(treeNode.status);
-      const osIcon = getOSIcon(treeNode.os);
+      const osIconPath = getOSIcon(treeNode.os);
+      console.log('[DEBUG NODE] OS icon path for', treeNode.id, ':', osIconPath);
       
       // Special styling for C2 server
       if (treeNode.id === 'c2-server') {
@@ -341,6 +342,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
           position: { x: 0, y: 0 }, // Will be set by dagre layout
           data: {
             style: createTreeNodeStyle(treeNode.status, true),
+            onNodeClick: onNodeClick,
             content: (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
                 <div style={{ 
@@ -379,7 +381,7 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
                   fontFamily: 'monospace',
                   marginBottom: '8px'
                 }}>
-                  10.0.0.1
+                  Team Server
                 </div>
                 
                 <div style={{
@@ -409,7 +411,8 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
         type: 'customNode',
         position: { x: 0, y: 0 }, // Will be set by dagre layout
         data: {
-          style: createTreeNodeStyle(treeNode.status),
+          style: createTreeNodeStyle(treeNode.status, false),
+          onNodeClick: onNodeClick,
           content: (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
               <div style={{ 
@@ -418,33 +421,86 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
                 gap: '12px',
                 marginBottom: '8px'
               }}>
-                <div style={{ fontSize: '24px' }}>{osIcon}</div>
-                <div style={{ flex: 1 }}>
+                <div style={{ 
+                  width: '32px', 
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0
+                }}>
+                  {osIconPath ? (
+                    <img 
+                      src={osIconPath} 
+                      alt="OS"
+                      style={{
+                        width: '32px',
+                        height: '32px',
+                        filter: 'brightness(0.9)',
+                        objectFit: 'contain'
+                      }}
+                    />
+                  ) : (
+                    <span style={{
+                      fontSize: '18px',
+                      fontWeight: 'bold',
+                      color: '#AAAAAA',
+                      border: '2px solid #AAAAAA',
+                      borderRadius: '6px',
+                      padding: '4px 6px',
+                      display: 'inline-block',
+                      minWidth: '28px',
+                      textAlign: 'center'
+                    }}>
+                      {treeNode.os.includes('mac') || treeNode.os.includes('darwin') ? 'M' :
+                       treeNode.os.includes('win') ? 'W' :
+                       treeNode.os.includes('linux') ? 'L' : '?'}
+                    </span>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ 
-                    fontSize: '14px', 
+                    fontSize: '16px', 
                     fontWeight: 'bold',
                     color: '#ffffff',
                     marginBottom: '2px'
                   }}>
-                    {treeNode.hostname}
+                    {treeNode.hostname.length > 28 
+                      ? `${treeNode.hostname.substring(0, 24)}...` 
+                      : treeNode.hostname}
                   </div>
                   <div style={{ 
                     fontSize: '12px', 
-                    color: '#AAAAAA',
-                    fontFamily: 'monospace'
+                    color: '#AAAAAA'
                   }}>
                     ID: {treeNode.id.substring(0, 8).toUpperCase()}
                   </div>
                 </div>
               </div>
               
+              {/* Relay Role Tag - Colorful and Prominent */}
               <div style={{ 
-                fontSize: '12px', 
-                color: '#AAAAAA',
-                textTransform: 'uppercase' as const,
-                marginBottom: '8px'
+                display: 'flex',
+                gap: '8px',
+                marginBottom: '8px',
+                alignItems: 'center'
               }}>
-                {treeNode.type.replace('_', ' ')}
+                <div style={{
+                  display: 'inline-block',
+                  background: 'transparent',
+                  color: getRelayRoleColor(treeNode.type),
+                  padding: '4px 8px',
+                  borderRadius: '8px',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  textTransform: 'uppercase' as const,
+                  border: `1.5px solid ${getRelayRoleColor(treeNode.type)}`,
+                }}>
+                  {(() => {
+                    console.log(`[DEBUG RENDER] Node ${treeNode.id} - Rendering type:`, treeNode.type);
+                    return getRelayRoleDisplayName(treeNode.type);
+                  })()}
+                </div>
               </div>
               
               <div style={{ 
@@ -509,33 +565,71 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
 
     traverse(tree);
     
-    // Apply simple manual positioning (more reliable than dagre)
-    const layoutedNodes = newNodes.map((node, index) => {
-      if (node.id === 'c2-server') {
-        // C2 server on the left, centered
-        return {
-          ...node,
-          position: { x: 50, y: 250 },
-          targetPosition: Position.Left,
-          sourcePosition: Position.Right,
-        };
-      } else {
-        // Agents distributed vertically on the right, centered around C2
-        const agentIndex = index - 1; // Subtract 1 for C2 server
-        const totalAgents = newNodes.length - 1; // Exclude C2
-        const startY = 250 - ((totalAgents - 1) * 150); // Center around C2 with more spacing
-        return {
-          ...node,
-          position: { x: 450, y: startY + (agentIndex * 300) },
-          targetPosition: Position.Left,
-          sourcePosition: Position.Right,
-        };
-      }
+    // Apply hierarchical positioning that respects tree structure
+    const positionedNodes: Node[] = [];
+    const nodeDepth = new Map<string, number>(); // Track depth of each node
+    const nodeLevelCounts = new Map<number, number>(); // Count nodes per level
+    const nodeLevelIndices = new Map<number, number>(); // Track current index per level
+    
+    // First pass: calculate depths
+    const calculateDepths = (node: TreeNode, depth: number) => {
+      nodeDepth.set(node.id, depth);
+      const currentCount = nodeLevelCounts.get(depth) || 0;
+      nodeLevelCounts.set(depth, currentCount + 1);
+      
+      node.children.forEach(child => {
+        calculateDepths(child, depth + 1);
+      });
+    };
+    
+    calculateDepths(tree, 0);
+    
+    // Initialize level indices
+    Array.from(nodeLevelCounts.keys()).forEach(level => {
+      nodeLevelIndices.set(level, 0);
     });
+    
+    // Second pass: position nodes based on depth and order
+    const positionNode = (node: TreeNode) => {
+      const depth = nodeDepth.get(node.id) || 0;
+      const levelIndex = nodeLevelIndices.get(depth) || 0;
+      const nodesInLevel = nodeLevelCounts.get(depth) || 1;
+      
+      // X position based on depth (each level 450px apart)
+      const x = 50 + (depth * 450);
+      
+      // Y position: distribute nodes in this level vertically
+      const levelHeight = nodesInLevel * 250; // 250px spacing between nodes
+      const startY = 300 - (levelHeight / 2); // Center the level vertically
+      const y = startY + (levelIndex * 250);
+      
+      // Find the ReactFlow node that corresponds to this tree node
+      const reactFlowNode = newNodes.find(n => n.id === node.id);
+      if (reactFlowNode) {
+        positionedNodes.push({
+          ...reactFlowNode,
+          position: { x, y },
+          targetPosition: Position.Left,
+          sourcePosition: Position.Right,
+        });
+      }
+      
+      // Increment the level index for next node in this level
+      nodeLevelIndices.set(depth, levelIndex + 1);
+      
+      // Position children
+      node.children.forEach(child => {
+        positionNode(child);
+      });
+    };
+    
+    positionNode(tree);
+    
+    const layoutedNodes = positionedNodes;
     
     setNodes(layoutedNodes);
     setEdges(newEdges);
-  }, [nimplants]);
+  }, [chainRelationships, onNodeClick]);
 
     return (
     <div style={{ 
@@ -572,48 +666,95 @@ function TopologyGraph({ topologies, nimplants }: { topologies: TopologyData[], 
 }
 
 export default function TopologyPage() {
-  const [topologies, setTopologies] = useState<TopologyData[]>([]);
   const [nimplants, setNimplants] = useState<NimplantData[]>([]);
+  const [chainRelationships, setChainRelationships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Drawer state management
+  const [drawerOpened, setDrawerOpened] = useState(false);
+  const [selectedGuid, setSelectedGuid] = useState<string>('');
+
+  // Handler for node clicks
+  const handleNodeClick = useCallback((nodeId: string) => {
+    // Don't open drawer for C2 server node
+    if (nodeId === 'c2-server') {
+      return;
+    }
+    
+    console.log('Node clicked:', nodeId);
+    setSelectedGuid(nodeId);
+    setDrawerOpened(true);
+  }, []);
+
+  // Handler to close drawer
+  const handleCloseDrawer = useCallback(() => {
+    setDrawerOpened(false);
+    setSelectedGuid('');
+  }, []);
+
+  // Handler for when implant is killed
+  const handleImplantKilled = useCallback(() => {
+    setDrawerOpened(false);
+    setSelectedGuid('');
+    // Refresh data to update the topology
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     try {
       setError(null);
       
       // Fetch nimplants first, then topology if needed
+      console.log('[DEBUG TOPOLOGY] Fetching nimplants data...');
       const nimplantsData = await api.get('/api/nimplants');
+      console.log('[DEBUG TOPOLOGY] Raw nimplants data received:', nimplantsData);
       
       // Map the API fields to our expected interface
-      const mappedNimplants = Array.isArray(nimplantsData) ? nimplantsData.map((nimplant: any) => ({
-        guid: nimplant.guid,
-        hostname: nimplant.hostname,
-        username: nimplant.username,
-        ip_external: nimplant.ipAddrExt,
-        ip_internal: nimplant.ipAddrInt,
-        os_build: nimplant.os_build || 'Unknown',
-        process_name: nimplant.pname,
-        relay_role: nimplant.relay_role || 'STANDARD',
-        active: nimplant.active,
-        late: nimplant.late
-      })) : [];
+      const mappedNimplants = Array.isArray(nimplantsData) ? nimplantsData.map((nimplant: any, index: number) => {
+        console.log(`[DEBUG TOPOLOGY] Processing nimplant ${index}:`, nimplant);
+        console.log(`[DEBUG TOPOLOGY] osBuild field for ${nimplant.guid}:`, nimplant.osBuild, 'Type:', typeof nimplant.osBuild);
+        console.log(`[DEBUG TOPOLOGY] relay_role field for ${nimplant.guid}:`, nimplant.relay_role, 'Type:', typeof nimplant.relay_role);
+        
+        const mapped = {
+          guid: nimplant.guid,
+          hostname: nimplant.hostname,
+          username: nimplant.username,
+          ip_external: nimplant.ipAddrExt,
+          ip_internal: nimplant.ipAddrInt,
+          os_build: nimplant.osBuild || 'Unknown',
+          process_name: nimplant.pname,
+          relay_role: nimplant.relay_role || 'STANDARD',
+          active: nimplant.active,
+          late: nimplant.late,
+          disconnected: nimplant.disconnected
+        };
+        
+        console.log(`[DEBUG TOPOLOGY] Mapped nimplant ${index} - relay_role:`, mapped.relay_role);
+        return mapped;
+      }) : [];
       
+      console.log('[DEBUG TOPOLOGY] Final mapped nimplants:', mappedNimplants);
       setNimplants(mappedNimplants);
       
-      // Try to fetch topology data, but don't fail if it doesn't exist
+      // Try to fetch chain relationships (NEW distributed approach)
       try {
-        const topologyData = await api.get('/api/topology');
-        setTopologies(topologyData.topologies || []);
-      } catch (topologyErr) {
-        console.warn('Topology data not available:', topologyErr);
-        setTopologies([]);
+        console.log('[DEBUG TOPOLOGY] Fetching chain relationships...');
+        const chainData = await api.get('/api/chain-relationships');
+        console.log('[DEBUG TOPOLOGY] Chain relationships received:', chainData);
+        setChainRelationships(chainData.chain_relationships || []);
+      } catch (chainErr) {
+        console.warn('Chain relationships not available:', chainErr);
+        setChainRelationships([]);
       }
+      
+      // REMOVED: Legacy topology fetching - now using only chain relationships
       
     } catch (err) {
       console.error('Error fetching data:', err);
       setError('Failed to fetch network data');
-      setTopologies([]);
       setNimplants([]);
+      setChainRelationships([]);
     } finally {
       setLoading(false);
     }
@@ -621,18 +762,12 @@ export default function TopologyPage() {
 
   useEffect(() => {
     fetchData();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(fetchData, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const handleRefresh = () => {
     setLoading(true);
     fetchData();
   };
-
-
 
   return (
     <AuthWrapper>
@@ -658,8 +793,6 @@ export default function TopologyPage() {
               Hierarchical view of network connections
             </Text>
           </div>
-
-
 
           {error && (
             <Alert 
@@ -701,9 +834,13 @@ export default function TopologyPage() {
               </Button>
             </Group>
             
-            <TopologyGraph topologies={topologies} nimplants={nimplants} />
+            <TopologyGraph 
+              nimplants={nimplants} 
+              chainRelationships={chainRelationships}
+              onNodeClick={handleNodeClick}
+            />
             
-            {!loading && nimplants.length === 0 && (
+            {!loading && chainRelationships.length === 0 && (
               <Stack align="center" py="xl">
                 <FaNetworkWired size={48} color="#64748b" />
                 <Text size="lg" ta="center" style={{ color: '#cbd5e1' }}>
@@ -716,7 +853,12 @@ export default function TopologyPage() {
             )}
           </Card>
 
-
+          <NimplantDrawer 
+            opened={drawerOpened}
+            onClose={handleCloseDrawer}
+            guid={selectedGuid}
+            onKilled={handleImplantKilled}
+          />
         </div>
     </AuthWrapper>
   );

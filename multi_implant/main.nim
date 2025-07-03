@@ -98,6 +98,8 @@ proc setRelayClientID(clientID: string) =
 
 proc setParentRelayServerGuid(guid: string) =
     g_parentRelayServerGuid = guid
+    # Also update the relay_commands module variable
+    relay_commands.g_localParentRelayServerGuid = guid
     when defined debug:
         echo "[DEBUG] 🔗 Chain Info: Set parent relay server GUID to: " & guid
 

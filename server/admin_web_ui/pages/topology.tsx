@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Container, Title, Text, Card, Group, Button, Alert, LoadingOverlay, Stack } from '@mantine/core';
 import { FaSyncAlt, FaExclamationTriangle, FaNetworkWired } from 'react-icons/fa';
 import ReactFlow, {
@@ -22,6 +22,7 @@ import NimplantDrawer from '../components/NimplantDrawer';
 import { api } from '../modules/apiFetcher';
 
 interface NimplantData {
+  id: number; // Database ID
   guid: string;
   hostname: string;
   username: string;
@@ -44,6 +45,7 @@ interface TreeNode {
   os: string;
   hostname: string;
   children: TreeNode[];
+  dbId?: number; // Database ID for consistent ordering
 }
 
 // Helper function to get OS icon image path
@@ -102,7 +104,7 @@ const getRelayRoleColor = (relayRole: string) => {
   switch (relayRole) {
     case 'RELAY_SERVER': return '#F59E0B';   // Amber/Orange warning (important server role)
     case 'RELAY_HYBRID': return '#8B5CF6';   // Purple/Violet (hybrid role - most complex)
-    case 'RELAY_CLIENT': return '#00FF88';   // Green (client role)
+    case 'RELAY_CLIENT': return '#3B82F6';   // Blue (client role)
     case 'STANDARD': return '#9CA3AF';       // Gray (neutral)
     default: return '#9CA3AF';               // Gray (neutral)
   }
@@ -196,7 +198,7 @@ const nodeTypes = {
 // Auto-layout function removed - using custom positioning
 
 // Build tree structure using distributed chain relationships + standard agents (NEW APPROACH)
-const buildDistributedTopologyStructure = (chainRelationships: any[], standardAgents: NimplantData[]): TreeNode => {
+const buildDistributedTopologyStructure = (chainRelationships: any[], allNimplants: NimplantData[]): TreeNode => {
   // Create the root C2 node
   const c2Root: TreeNode = {
     id: 'c2-server',
@@ -205,21 +207,26 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], standardAg
     ip: 'Command & Control',
     os: 'server',
     hostname: 'C2 SERVER',
-    children: []
+    children: [],
+    dbId: 0 // C2 always has priority (lowest ID)
   };
 
   console.log('[DEBUG DISTRIBUTED] Building topology from chain relationships:', chainRelationships);
-  console.log('[DEBUG DISTRIBUTED] Building topology from standard agents:', standardAgents);
+  console.log('[DEBUG DISTRIBUTED] Building topology from all nimplants:', allNimplants);
 
   // Process standard agents (direct C2 connections) even if no chain relationships
   const chainGuids = new Set(chainRelationships?.map(rel => rel.nimplant_guid) || []);
   
-  if (standardAgents && standardAgents.length > 0) {
-    standardAgents.forEach(agent => {
-      // Only add agents that are NOT in chain relationships (= direct C2 connections)
-      if (!chainGuids.has(agent.guid)) {
-        const status: 'online' | 'late' | 'disconnected' = agent.active ? 'online' :
-                                                           agent.late ? 'late' : 'disconnected';
+  if (allNimplants && allNimplants.length > 0) {
+    allNimplants.forEach(agent => {
+      // Only add agents that are NOT in chain relationships AND are truly STANDARD agents
+      const isInChain = chainGuids.has(agent.guid);
+      const isRelayAgent = agent.relay_role === 'RELAY_SERVER' || agent.relay_role === 'RELAY_CLIENT';
+      
+      if (!isInChain && !isRelayAgent) {
+        // Priority: disconnected > late > active
+        const status: 'online' | 'late' | 'disconnected' = agent.disconnected ? 'disconnected' :
+                                                           agent.late ? 'late' : 'online';
         
         const standardNode: TreeNode = {
           id: agent.guid,
@@ -228,11 +235,14 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], standardAg
           ip: agent.ip_internal || 'No IP',
           os: agent.os_build || 'Unknown',
           hostname: agent.hostname || `Agent-${agent.guid.substring(0, 8)}`,
-          children: []
+          children: [],
+          dbId: agent.id // Include DB ID for chronological ordering
         };
         
         c2Root.children.push(standardNode);
         console.log('[DEBUG DISTRIBUTED] ✅ Added STANDARD agent to C2:', agent.guid, 'Role:', agent.relay_role);
+      } else if (isRelayAgent && !isInChain) {
+        console.log('[DEBUG DISTRIBUTED] ⏳ Relay agent not yet in chain relationships:', agent.guid, 'Role:', agent.relay_role);
       }
     });
   }
@@ -245,17 +255,36 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], standardAg
   // Create map of all nodes by GUID
   const nodeMap = new Map<string, TreeNode>();
 
-  // Sort function: ONLINE first, then LATE, then DISCONNECTED
+  // Sort function: CHRONOLOGICAL order by DB ID (stable topology)
+  // Status is shown visually but doesn't affect positioning
   const sortByStatus = (a: TreeNode, b: TreeNode) => {
-    const statusOrder = { 'online': 0, 'late': 1, 'disconnected': 2 };
-    return statusOrder[a.status] - statusOrder[b.status];
+    // Primary sort: Database ID (chronological order) - STABLE TOPOLOGY
+    if (a.dbId !== undefined && b.dbId !== undefined) {
+      return a.dbId - b.dbId; // Always 1, 2, 3, 4... regardless of status
+    }
+    
+    // Fallback for nodes without dbId (like C2): alphabetical by GUID
+    return a.id.localeCompare(b.id);
   };
 
   // Create tree nodes from chain relationships
   chainRelationships.forEach(rel => {
     if (!nodeMap.has(rel.nimplant_guid)) {
-      const status: 'online' | 'late' | 'disconnected' = rel.status === 'online' ? 'online' :
-                                                         rel.status === 'late' ? 'late' : 'disconnected';
+      // Find the corresponding nimplant data for current state
+      const nimplant = allNimplants.find(agent => agent.guid === rel.nimplant_guid);
+      
+      // Use nimplant data for current state if available, otherwise fall back to chain relationship data
+      const status: 'online' | 'late' | 'disconnected' = nimplant 
+        ? (nimplant.disconnected ? 'disconnected' : nimplant.late ? 'late' : 'online')
+        : (rel.status === 'online' ? 'online' : rel.status === 'late' ? 'late' : 'disconnected');
+      
+      // Debug logging for state determination
+      console.log(`[DEBUG DISTRIBUTED] Agent ${rel.nimplant_guid} state determination:`, {
+        foundNimplant: !!nimplant,
+        nimplantState: nimplant ? { active: nimplant.active, late: nimplant.late, disconnected: nimplant.disconnected } : null,
+        relStatus: rel.status,
+        finalStatus: status
+      });
       
       const treeNode: TreeNode = {
         id: rel.nimplant_guid,
@@ -264,11 +293,12 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], standardAg
         ip: rel.internal_ip || 'No IP',
         os: rel.os_build || 'Unknown',
         hostname: rel.hostname || `Agent-${rel.nimplant_guid.substring(0, 8)}`,
-        children: []
+        children: [],
+        dbId: nimplant?.id // Include DB ID if available from nimplant data
       };
       
       nodeMap.set(rel.nimplant_guid, treeNode);
-      console.log('[DEBUG DISTRIBUTED] Created node:', rel.nimplant_guid, 'Role:', rel.role, 'Parent:', rel.parent_guid);
+      console.log('[DEBUG DISTRIBUTED] Created node:', rel.nimplant_guid, 'Role:', rel.role, 'Status:', status, 'Parent:', rel.parent_guid);
     }
   });
 
@@ -295,9 +325,17 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], standardAg
   });
 
   // Sort all children by status
+  console.log('[DEBUG DISTRIBUTED] Sorting C2 children...');
+  console.log('[DEBUG DISTRIBUTED] Before sort:', c2Root.children.map(c => `${c.id}(dbId:${c.dbId},status:${c.status})`));
   c2Root.children.sort(sortByStatus);
+  console.log('[DEBUG DISTRIBUTED] After sort:', c2Root.children.map(c => `${c.id}(dbId:${c.dbId},status:${c.status})`));
+  
   nodeMap.forEach(node => {
-    node.children.sort(sortByStatus);
+    if (node.children.length > 0) {
+      console.log(`[DEBUG DISTRIBUTED] Sorting children of ${node.id}:`, node.children.map(c => `${c.id}(dbId:${c.dbId})`));
+      node.children.sort(sortByStatus);
+      console.log(`[DEBUG DISTRIBUTED] After sort:`, node.children.map(c => `${c.id}(dbId:${c.dbId})`));
+    }
   });
 
   console.log('[DEBUG DISTRIBUTED] Final topology - C2 children:', c2Root.children.length);
@@ -670,10 +708,24 @@ export default function TopologyPage() {
   const [chainRelationships, setChainRelationships] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  
+  // Refs for interval management and current state
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const currentNimplantsRef = useRef<NimplantData[]>([]);
+  const currentChainRelationshipsRef = useRef<any[]>([]);
+  const loadingRef = useRef<boolean>(false);
+  const errorRef = useRef<string | null>(null);
   
   // Drawer state management
   const [drawerOpened, setDrawerOpened] = useState(false);
   const [selectedGuid, setSelectedGuid] = useState<string>('');
+  
+  // Memoized timestamp to prevent constant updates
+  // Without this, toLocaleTimeString() would execute on every render causing "ticking"
+  const lastUpdateTimeString = useMemo(() => {
+    return lastUpdate.toLocaleTimeString();
+  }, [lastUpdate]);
 
   // Handler for node clicks
   const handleNodeClick = useCallback((nodeId: string) => {
@@ -704,6 +756,7 @@ export default function TopologyPage() {
   const fetchData = async () => {
     try {
       setError(null);
+      errorRef.current = null;
       
       // Fetch nimplants first, then topology if needed
       console.log('[DEBUG TOPOLOGY] Fetching nimplants data...');
@@ -717,6 +770,7 @@ export default function TopologyPage() {
         console.log(`[DEBUG TOPOLOGY] relay_role field for ${nimplant.guid}:`, nimplant.relay_role, 'Type:', typeof nimplant.relay_role);
         
         const mapped = {
+          id: nimplant.id,
           guid: nimplant.guid,
           hostname: nimplant.hostname,
           username: nimplant.username,
@@ -736,36 +790,200 @@ export default function TopologyPage() {
       
       console.log('[DEBUG TOPOLOGY] Final mapped nimplants:', mappedNimplants);
       setNimplants(mappedNimplants);
+      currentNimplantsRef.current = mappedNimplants;
       
       // Try to fetch chain relationships (NEW distributed approach)
       try {
         console.log('[DEBUG TOPOLOGY] Fetching chain relationships...');
         const chainData = await api.get('/api/chain-relationships');
         console.log('[DEBUG TOPOLOGY] Chain relationships received:', chainData);
-        setChainRelationships(chainData.chain_relationships || []);
+        const chainRelationships = chainData.chain_relationships || [];
+        setChainRelationships(chainRelationships);
+        currentChainRelationshipsRef.current = chainRelationships;
       } catch (chainErr) {
         console.warn('Chain relationships not available:', chainErr);
         setChainRelationships([]);
+        currentChainRelationshipsRef.current = [];
       }
       
       // REMOVED: Legacy topology fetching - now using only chain relationships
       
     } catch (err) {
       console.error('Error fetching data:', err);
-      setError('Failed to fetch network data');
+      const errorMessage = 'Failed to fetch network data';
+      setError(errorMessage);
+      errorRef.current = errorMessage;
       setNimplants([]);
       setChainRelationships([]);
     } finally {
       setLoading(false);
+      loadingRef.current = false;
+      // Initial load and manual refresh should update timestamp
+      setLastUpdate(new Date());
     }
   };
 
+  // Smart incremental fetch - only updates differences
+  // Uses refs to avoid closure problems and ensure polling works with current state
+  const fetchDataIncremental = async () => {
+    // Skip polling if currently in loading state or there's an error
+    if (loadingRef.current || errorRef.current) {
+      console.log('[DEBUG TOPOLOGY] ⏭️ Skipping polling - loading:', loadingRef.current, 'error:', !!errorRef.current);
+      return;
+    }
+    
+    try {
+      // Silent polling - no UI state changes
+      console.log('[DEBUG TOPOLOGY] 🔄 Starting incremental polling...');
+      
+      // Fetch new data silently (no loading state change)
+      const nimplantsData = await api.get('/api/nimplants');
+      const chainData = await api.get('/api/chain-relationships');
+      
+      // Debug: Log raw API data
+      console.log('[DEBUG TOPOLOGY] Raw API data from /api/nimplants:');
+      if (Array.isArray(nimplantsData)) {
+        nimplantsData.forEach(raw => {
+          console.log(`  - ${raw.guid}: active=${raw.active}, late=${raw.late}, disconnected=${raw.disconnected}`);
+        });
+      } else {
+        console.log('  - API returned non-array:', nimplantsData);
+      }
+      
+      // Map new nimplants data
+      const newNimplants = Array.isArray(nimplantsData) ? nimplantsData.map((nimplant: any) => {
+        const mapped = {
+          id: nimplant.id,
+          guid: nimplant.guid,
+          hostname: nimplant.hostname,
+          username: nimplant.username,
+          ip_external: nimplant.ipAddrExt,
+          ip_internal: nimplant.ipAddrInt,
+          os_build: nimplant.osBuild || 'Unknown',
+          process_name: nimplant.pname,
+          relay_role: nimplant.relay_role || 'STANDARD',
+          active: nimplant.active,
+          late: nimplant.late,
+          disconnected: nimplant.disconnected
+        };
+        
+        // Debug logging for state changes
+        console.log(`[DEBUG TOPOLOGY] Agent ${nimplant.guid} state:`, {
+          active: nimplant.active,
+          late: nimplant.late,
+          disconnected: nimplant.disconnected
+        });
+        
+        return mapped;
+      }) : [];
+      
+      const newChainRelationships = chainData.chain_relationships || [];
+      
+      // Detect changes using refs to avoid closure problems
+      const hasNimplantsChanged = JSON.stringify(newNimplants) !== JSON.stringify(currentNimplantsRef.current);
+      const hasChainChanged = JSON.stringify(newChainRelationships) !== JSON.stringify(currentChainRelationshipsRef.current);
+      
+      // Debug logging for change detection
+      console.log('[DEBUG TOPOLOGY] Change detection:');
+      console.log('  - New nimplants count:', newNimplants.length);
+      console.log('  - Current nimplants count:', currentNimplantsRef.current.length);
+      console.log('  - Nimplants changed:', hasNimplantsChanged);
+      console.log('  - Chain relationships changed:', hasChainChanged);
+      
+      // Show current state of each agent
+      console.log('[DEBUG TOPOLOGY] Current agent states:');
+      newNimplants.forEach(agent => {
+        console.log(`  - ${agent.guid}: active=${agent.active}, late=${agent.late}, disconnected=${agent.disconnected}`);
+      });
+      
+      // If no changes detected, check if this is the expected state
+      if (!hasNimplantsChanged && !hasChainChanged) {
+        console.log('[DEBUG TOPOLOGY] No changes detected. Current vs previous states:');
+        newNimplants.forEach(newAgent => {
+          const oldAgent = currentNimplantsRef.current.find(a => a.guid === newAgent.guid);
+          if (oldAgent) {
+            console.log(`  - ${newAgent.guid}:`, {
+              current: { active: newAgent.active, late: newAgent.late, disconnected: newAgent.disconnected },
+              previous: { active: oldAgent.active, late: oldAgent.late, disconnected: oldAgent.disconnected },
+              identical: JSON.stringify(newAgent) === JSON.stringify(oldAgent)
+            });
+          }
+        });
+      }
+      
+      if (hasNimplantsChanged) {
+        console.log('[DEBUG TOPOLOGY] Detailed nimplant changes:');
+        newNimplants.forEach((newAgent, index) => {
+          const oldAgent = currentNimplantsRef.current[index];
+          if (oldAgent && oldAgent.guid === newAgent.guid) {
+            const stateChanged = oldAgent.active !== newAgent.active || 
+                               oldAgent.late !== newAgent.late || 
+                               oldAgent.disconnected !== newAgent.disconnected;
+            if (stateChanged) {
+              console.log(`  - Agent ${newAgent.guid} state changed:`, {
+                old: { active: oldAgent.active, late: oldAgent.late, disconnected: oldAgent.disconnected },
+                new: { active: newAgent.active, late: newAgent.late, disconnected: newAgent.disconnected }
+              });
+            }
+          }
+        });
+      }
+      
+      if (hasNimplantsChanged || hasChainChanged) {
+        console.log('[DEBUG TOPOLOGY] 🔄 Changes detected, updating topology incrementally');
+        console.log('[DEBUG TOPOLOGY] - Nimplants changed:', hasNimplantsChanged);
+        console.log('[DEBUG TOPOLOGY] - Chain relationships changed:', hasChainChanged);
+        
+        // Update state and refs - this will trigger topology rebuild but preserve viewport
+        setNimplants(newNimplants);
+        setChainRelationships(newChainRelationships);
+        currentNimplantsRef.current = newNimplants;
+        currentChainRelationshipsRef.current = newChainRelationships;
+        
+        // Only update timestamp when there are actual changes
+        setLastUpdate(new Date());
+      } else {
+        console.log('[DEBUG TOPOLOGY] ✅ No changes detected, keeping current topology');
+      }
+      
+    } catch (err) {
+      console.warn('[DEBUG TOPOLOGY] Incremental fetch failed:', err);
+      // Don't update error state for background polling failures
+    }
+  };
+
+  // Sync refs with state
+  useEffect(() => {
+    loadingRef.current = loading;
+  }, [loading]);
+  
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
+
   useEffect(() => {
     fetchData();
-  }, []);
+    
+    // Start smart polling with a simple interval
+    console.log('[DEBUG TOPOLOGY] 🚀 Starting polling interval...');
+          intervalRef.current = setInterval(() => {
+        console.log('[DEBUG TOPOLOGY] 🔄 Polling tick - executing fetchDataIncremental');
+        console.log('[DEBUG TOPOLOGY] Current refs state - loading:', loadingRef.current, 'error:', errorRef.current);
+        fetchDataIncremental();
+      }, 5000); // 5 second polling - much more reasonable
+    
+    return () => {
+      console.log('[DEBUG TOPOLOGY] 🛑 Stopping polling interval...');
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, []); // Only run once on mount
 
   const handleRefresh = () => {
+    console.log('[DEBUG TOPOLOGY] 🔄 Manual refresh triggered');
     setLoading(true);
+    loadingRef.current = true;
     fetchData();
   };
 
@@ -814,9 +1032,18 @@ export default function TopologyPage() {
             <LoadingOverlay visible={loading} />
             
             <Group justify="space-between" mb="md">
-              <Title order={3} style={{ color: '#ffffff' }}>
-                Implants connection flow
-              </Title>
+              <div>
+                <Title order={3} style={{ color: '#ffffff' }}>
+                  Implants connection flow
+                </Title>
+                <Text size="xs" style={{ color: '#888888', marginTop: '4px' }}>
+                  {loading ? (
+                    <>🔄 Refreshing...</>
+                  ) : (
+                    <>✅ Last change: {lastUpdateTimeString}</>
+                  )}
+                </Text>
+              </div>
               <Button 
                 leftSection={<FaSyncAlt />} 
                 onClick={handleRefresh} 

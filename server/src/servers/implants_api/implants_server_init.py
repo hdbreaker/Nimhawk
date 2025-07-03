@@ -257,11 +257,19 @@ def nim_implants_server(xor_key):
                     if np is not None:
                         utils.nimplant_print(f"DEBUG: Implant found: {np.guid}, encryption_key: {np.encryption_key[:5]}...")
                         
-                        # Verify if the implant is active
-                        if not np.is_active():
-                            utils.nimplant_print(f"DEBUG: Implant {np.guid} is inactive, telling client to re-register")
+                        # FIXED: Allow reconnection for temporarily disconnected implants
+                        # Only reject if the implant was explicitly killed (not just inactive due to timeout)
+                        if hasattr(np, 'killed') and np.killed:
+                            utils.nimplant_print(f"DEBUG: Implant {np.guid} was explicitly killed, telling client to re-register")
                             # Return code 410 Gone to indicate that the implant must register again
-                            return flask.jsonify(status="inactive", message="Implant is inactive, please re-register"), 410
+                            return flask.jsonify(status="inactive", message="Implant was killed, please re-register"), 410
+                        
+                        # For temporarily disconnected implants, allow reconnection and reactivate
+                        if not np.is_active():
+                            utils.nimplant_print(f"DEBUG: Implant {np.guid} was inactive, reactivating on reconnection")
+                            np.active = True
+                            np.late = False
+                            db.db_update_nimplant(np)
                         
                         xor_bytes = xor_string(np.encryption_key, xor_key)
                         encoded_key = base64.b64encode(xor_bytes).decode("utf-8")

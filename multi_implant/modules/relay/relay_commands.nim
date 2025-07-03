@@ -16,6 +16,9 @@ var isConnectedToRelay* = false
 var g_immediateChainInfoUpdate*: bool = false
 var g_pendingChainInfo*: tuple[role: string, parentGuid: string, port: int]
 
+# Global variable to store parent relay server GUID (set by main.nim)
+var g_localParentRelayServerGuid*: string = ""
+
 # Helper functions for main.nim compatibility
 proc isRelayServer*(): bool = g_relayServer.isListening
 proc relayServerPort*(): int = g_relayServer.port
@@ -81,9 +84,11 @@ proc processRelayCommand*(cmd: string): string =
                 # If we have an upstream connection, this means we're becoming hybrid
                 if upstreamRelay.isConnected:
                     newRole = "RELAY_HYBRID"
-                    # TODO: Get parent GUID from upstream relay connection
+                    # FIXED: Use stored parent GUID from relay registration
+                    parentGuid = g_localParentRelayServerGuid
                     when defined debug:
                         echo "[DEBUG] 🔗 Chain Info: HYBRID transition detected - Client becoming HYBRID on port " & $port
+                        echo "[DEBUG] 🔗 Chain Info: Using stored parent GUID: " & parentGuid
                 else:
                     when defined debug:
                         echo "[DEBUG] 🔗 Chain Info: SERVER role detected - Starting relay server on port " & $port

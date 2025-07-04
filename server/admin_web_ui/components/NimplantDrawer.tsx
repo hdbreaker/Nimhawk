@@ -1325,8 +1325,7 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
                 <Badge 
                   color={
                     np.relay_role === 'RELAY_SERVER' ? 'green' :
-                    np.relay_role === 'RELAY_CLIENT' ? 'blue' :
-                    np.relay_role === 'RELAY_HYBRID' ? 'orange' : 'gray'
+                    np.relay_role === 'RELAY_CLIENT' ? 'blue' : 'gray'
                   }
                   variant="filled" 
                   size="xs"
@@ -1342,8 +1341,7 @@ function NimplantOverviewCard({np, largeScreen, onClick} : NimplantOverviewCardT
                   title={`Relay Role: ${np.relay_role}`}
                 >
                   {np.relay_role === 'RELAY_SERVER' ? 'R-SRV' :
-                   np.relay_role === 'RELAY_CLIENT' ? 'R-CLI' :
-                   np.relay_role === 'RELAY_HYBRID' ? 'R-HYB' : np.relay_role}
+                   np.relay_role === 'RELAY_CLIENT' ? 'R-CLI' : np.relay_role}
                 </Badge>
               )}
             </Group>

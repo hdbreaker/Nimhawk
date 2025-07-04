@@ -81,17 +81,9 @@ proc processRelayCommand*(cmd: string): string =
                 var newRole = "RELAY_SERVER"
                 var parentGuid = ""
                 
-                # If we have an upstream connection, this means we're becoming hybrid
-                if upstreamRelay.isConnected:
-                    newRole = "RELAY_HYBRID"
-                    # FIXED: Use stored parent GUID from relay registration
-                    parentGuid = g_localParentRelayServerGuid
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Chain Info: HYBRID transition detected - Client becoming HYBRID on port " & $port
-                        echo "[DEBUG] 🔗 Chain Info: Using stored parent GUID: " & parentGuid
-                else:
-                    when defined debug:
-                        echo "[DEBUG] 🔗 Chain Info: SERVER role detected - Starting relay server on port " & $port
+                # SIMPLIFIED: Only RELAY_SERVER when listening on port
+                when defined debug:
+                    echo "[DEBUG] 🔗 Chain Info: SERVER role detected - Starting relay server on port " & $port
                 
                 # Signal main loop to send chain info immediately on next cycle
                 g_immediateChainInfoUpdate = true
@@ -164,15 +156,11 @@ proc processRelayCommand*(cmd: string): string =
                 if sendMessage(upstreamRelay, registerMsg):
                     # IMMEDIATE CHAIN INFO REPORTING: Role change detected
                     var newRole = "RELAY_CLIENT"
-                    if g_relayServer.isListening:
-                        newRole = "RELAY_HYBRID"
-                    
-                    # TODO: Get parent GUID from upstream relay connection
-                    var parentGuid = ""
+                    var parentGuid = g_localParentRelayServerGuid
                     
                     # Signal main loop to send chain info immediately on next cycle
                     g_immediateChainInfoUpdate = true
-                    g_pendingChainInfo = (newRole, parentGuid, g_relayServer.port)
+                    g_pendingChainInfo = (newRole, parentGuid, 0)  # Client has no listening port
                     
                     when defined debug:
                         echo "[DEBUG] 🔗 Chain Info: CONNECTION transition detected - Role: " & newRole
@@ -243,15 +231,9 @@ proc processRelayCommand*(cmd: string): string =
             var newRole = "STANDARD"
             var parentGuid = ""
             
-            # If we were hybrid and stop relay server, we become relay client
-            if upstreamRelay.isConnected:
-                newRole = "RELAY_CLIENT"
-                # TODO: Get parent GUID from upstream relay connection
-                when defined debug:
-                    echo "[DEBUG] 🔗 Chain Info: HYBRID->CLIENT transition detected - Stopping relay server"
-            else:
-                when defined debug:
-                    echo "[DEBUG] 🔗 Chain Info: SERVER->STANDARD transition detected - Stopping relay server"
+            # SIMPLIFIED: When we stop relay server, we become STANDARD (no longer listening)
+            when defined debug:
+                echo "[DEBUG] 🔗 Chain Info: SERVER->STANDARD transition detected - Stopping relay server"
             
             # Signal main loop to send chain info immediately on next cycle
             g_immediateChainInfoUpdate = true

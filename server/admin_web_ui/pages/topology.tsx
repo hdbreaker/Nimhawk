@@ -103,7 +103,6 @@ const getStatusColor = (status: string) => {
 const getRelayRoleColor = (relayRole: string) => {
   switch (relayRole) {
     case 'RELAY_SERVER': return '#F59E0B';   // Amber/Orange warning (important server role)
-    case 'RELAY_HYBRID': return '#8B5CF6';   // Purple/Violet (hybrid role - most complex)
     case 'RELAY_CLIENT': return '#3B82F6';   // Blue (client role)
     case 'STANDARD': return '#9CA3AF';       // Gray (neutral)
     default: return '#9CA3AF';               // Gray (neutral)
@@ -115,7 +114,6 @@ const getRelayRoleDisplayName = (relayRole: string) => {
   switch (relayRole) {
     case 'RELAY_SERVER': return 'RELAY SERVER';
     case 'RELAY_CLIENT': return 'RELAY CLIENT';
-    case 'RELAY_HYBRID': return 'RELAY HYBRID';
     case 'STANDARD': return 'STANDARD';
     default: return 'STANDARD';
   }
@@ -283,16 +281,18 @@ const buildDistributedTopologyStructure = (chainRelationships: any[], allNimplan
         foundNimplant: !!nimplant,
         nimplantState: nimplant ? { active: nimplant.active, late: nimplant.late, disconnected: nimplant.disconnected } : null,
         relStatus: rel.status,
-        finalStatus: status
+        finalStatus: status,
+        ipSource: nimplant ? 'nimplant.ip_internal' : 'rel.internal_ip',
+        ipValue: nimplant ? nimplant.ip_internal : rel.internal_ip
       });
       
       const treeNode: TreeNode = {
         id: rel.nimplant_guid,
         type: rel.role || 'STANDARD',
         status: status,
-        ip: rel.internal_ip || 'No IP',
-        os: rel.os_build || 'Unknown',
-        hostname: rel.hostname || `Agent-${rel.nimplant_guid.substring(0, 8)}`,
+        ip: nimplant ? (nimplant.ip_internal || 'No IP') : (rel.internal_ip || 'No IP'), // FIXED: Use fresh nimplant data for IP
+        os: nimplant ? (nimplant.os_build || 'Unknown') : (rel.os_build || 'Unknown'), // FIXED: Use fresh nimplant data for OS
+        hostname: nimplant ? (nimplant.hostname || `Agent-${rel.nimplant_guid.substring(0, 8)}`) : (rel.hostname || `Agent-${rel.nimplant_guid.substring(0, 8)}`), // FIXED: Use fresh nimplant data for hostname
         children: [],
         dbId: nimplant?.id // Include DB ID if available from nimplant data
       };

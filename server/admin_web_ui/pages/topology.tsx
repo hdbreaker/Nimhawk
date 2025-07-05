@@ -99,13 +99,23 @@ const getStatusColor = (status: string) => {
   }
 };
 
-// Helper function to get relay role colors (logical hierarchy)
+// Enhanced relay role colors with better visual hierarchy
 const getRelayRoleColor = (relayRole: string) => {
   switch (relayRole) {
-    case 'RELAY_SERVER': return '#F59E0B';   // Amber/Orange warning (important server role)
-    case 'RELAY_CLIENT': return '#3B82F6';   // Blue (client role)
-    case 'STANDARD': return '#9CA3AF';       // Gray (neutral)
-    default: return '#9CA3AF';               // Gray (neutral)
+    case 'RELAY_SERVER': return '#FF6B35';   // Bright orange (critical infrastructure)
+    case 'RELAY_CLIENT': return '#4ECDC4';   // Teal (active relay client)
+    case 'STANDARD': return '#95A5A6';       // Cool gray (standard implant)
+    default: return '#95A5A6';               // Cool gray (unknown)
+  }
+};
+
+// Enhanced relay role background colors for better contrast
+const getRelayRoleBackgroundColor = (relayRole: string) => {
+  switch (relayRole) {
+    case 'RELAY_SERVER': return 'rgba(255, 107, 53, 0.15)';   // Orange glow
+    case 'RELAY_CLIENT': return 'rgba(78, 205, 196, 0.15)';   // Teal glow  
+    case 'STANDARD': return 'rgba(149, 165, 166, 0.1)';       // Gray glow
+    default: return 'rgba(149, 165, 166, 0.1)';               // Gray glow
   }
 };
 
@@ -119,24 +129,42 @@ const getRelayRoleDisplayName = (relayRole: string) => {
   }
 };
 
-// Helper function to create hierarchical tree node style (Refined Nimhawk style)
-const createTreeNodeStyle = (status: string, isC2Server = false) => {
+// Enhanced tree node style with relay role integration
+const createTreeNodeStyle = (status: string, relayRole: string = 'STANDARD', isC2Server = false) => {
   const statusColor = getStatusColor(status);
+  const roleColor = getRelayRoleColor(relayRole);
+  const roleBackground = getRelayRoleBackgroundColor(relayRole);
   
   return {
-    background: '#0E1A26',  // Refined background color
-    border: `2px solid ${statusColor}`,
-    borderRadius: '10px',
+    background: isC2Server 
+      ? 'linear-gradient(135deg, #1a2332 0%, #0E1A26 100%)'  // Special C2 gradient
+      : `linear-gradient(135deg, ${roleBackground} 0%, #0E1A26 100%)`,  // Role-based gradient
+    border: isC2Server 
+      ? `3px solid ${statusColor}`  // Thicker border for C2
+      : `2px solid ${statusColor}`,
+    borderRadius: '12px',
     padding: '16px',
-    width: '320px',
-    height: '180px',
+    width: '340px',  // Slightly wider for more info
+    height: '200px',  // Slightly taller for enhanced info
     fontFamily: 'system-ui, -apple-system, sans-serif',
     color: '#ffffff',
-    boxShadow: `0 4px 16px rgba(0, 0, 0, 0.4)`,
+    boxShadow: isC2Server
+      ? `0 6px 24px rgba(${statusColor === '#00FF88' ? '0, 255, 136' : statusColor === '#FFB300' ? '255, 179, 0' : '255, 59, 48'}, 0.3), 0 2px 8px rgba(0, 0, 0, 0.6)`
+      : `0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px ${roleBackground}`,
     position: 'relative' as const,
     display: 'flex',
     flexDirection: 'column' as const,
     justifyContent: 'flex-start',
+    transition: 'all 0.3s ease',
+    // Enhanced visual hierarchy
+    ...(relayRole === 'RELAY_SERVER' && {
+      transform: 'scale(1.02)',  // Slightly larger for relay servers
+      zIndex: 10,
+    }),
+    ...(isC2Server && {
+      transform: 'scale(1.05)',  // Largest for C2
+      zIndex: 20,
+    }),
   };
 };
 
@@ -379,7 +407,7 @@ function TopologyGraph({ nimplants, chainRelationships, onNodeClick }: { nimplan
           type: 'customNode',
           position: { x: 0, y: 0 }, // Will be set by dagre layout
           data: {
-            style: createTreeNodeStyle(treeNode.status, true),
+            style: createTreeNodeStyle(treeNode.status, 'C2_SERVER', true),
             onNodeClick: onNodeClick,
             content: (
               <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -449,7 +477,7 @@ function TopologyGraph({ nimplants, chainRelationships, onNodeClick }: { nimplan
         type: 'customNode',
         position: { x: 0, y: 0 }, // Will be set by dagre layout
         data: {
-          style: createTreeNodeStyle(treeNode.status, false),
+          style: createTreeNodeStyle(treeNode.status, treeNode.type, false),
           onNodeClick: onNodeClick,
           content: (
             <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -516,7 +544,7 @@ function TopologyGraph({ nimplants, chainRelationships, onNodeClick }: { nimplan
                 </div>
               </div>
               
-              {/* Relay Role Tag - Colorful and Prominent */}
+              {/* Enhanced Relay Role Tag with Connection Indicators */}
               <div style={{ 
                 display: 'flex',
                 gap: '8px',
@@ -525,19 +553,49 @@ function TopologyGraph({ nimplants, chainRelationships, onNodeClick }: { nimplan
               }}>
                 <div style={{
                   display: 'inline-block',
-                  background: 'transparent',
+                  background: `linear-gradient(135deg, ${getRelayRoleBackgroundColor(treeNode.type)}, transparent)`,
                   color: getRelayRoleColor(treeNode.type),
-                  padding: '4px 8px',
-                  borderRadius: '8px',
-                  fontSize: '10px',
+                  padding: '6px 10px',
+                  borderRadius: '10px',
+                  fontSize: '11px',
                   fontWeight: '700',
                   textTransform: 'uppercase' as const,
-                  border: `1.5px solid ${getRelayRoleColor(treeNode.type)}`,
+                  border: `2px solid ${getRelayRoleColor(treeNode.type)}`,
+                  boxShadow: `0 2px 8px ${getRelayRoleBackgroundColor(treeNode.type)}`,
+                  position: 'relative' as const,
                 }}>
                   {(() => {
                     console.log(`[DEBUG RENDER] Node ${treeNode.id} - Rendering type:`, treeNode.type);
                     return getRelayRoleDisplayName(treeNode.type);
                   })()}
+                  
+                  {/* Enhanced role indicator */}
+                  {treeNode.type === 'RELAY_SERVER' && (
+                    <span style={{
+                      position: 'absolute' as const,
+                      top: '-2px',
+                      right: '-2px',
+                      width: '8px',
+                      height: '8px',
+                      background: '#FF6B35',
+                      borderRadius: '50%',
+                      animation: 'pulse 2s infinite',
+                      boxShadow: '0 0 4px rgba(255, 107, 53, 0.8)',
+                    }} />
+                  )}
+                  
+                  {treeNode.type === 'RELAY_CLIENT' && (
+                    <span style={{
+                      position: 'absolute' as const,
+                      top: '-2px',
+                      right: '-2px',
+                      width: '6px',
+                      height: '6px',
+                      background: '#4ECDC4',
+                      borderRadius: '50%',
+                      boxShadow: '0 0 3px rgba(78, 205, 196, 0.8)',
+                    }} />
+                  )}
                 </div>
               </div>
               

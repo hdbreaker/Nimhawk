@@ -1,4 +1,4 @@
-import strutils, json, times
+import strutils, json, times, net, nativesockets
 import ../../core/relay/[relay_protocol, relay_comm, relay_config]
 import ../../util/sysinfo
 

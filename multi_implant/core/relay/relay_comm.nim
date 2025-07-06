@@ -388,20 +388,42 @@ proc sendMessage*(conn: var RelayConnection, msg: RelayMessage): bool =
         
         return true
     except:
-        # TIMEOUT OR CONNECTION ERROR
         let errorMsg = getCurrentExceptionMsg()
+        
+        # ONLY disconnect on REAL connection errors, not on normal network conditions
+        let isRealError = not (
+            "would block" in errorMsg.toLower() or
+            "temporarily unavailable" in errorMsg.toLower() or
+            "interrupted system call" in errorMsg.toLower() or
+            "try again" in errorMsg.toLower()
+        )
+        
+        # These indicate REAL connection problems:
+        let isConnectionDead = (
+            "connection reset" in errorMsg.toLower() or
+            "broken pipe" in errorMsg.toLower() or
+            "connection refused" in errorMsg.toLower() or
+            "network unreachable" in errorMsg.toLower() or
+            "host unreachable" in errorMsg.toLower() or
+            "socket is not connected" in errorMsg.toLower() or
+            "connection aborted" in errorMsg.toLower()
+        )
+        
         when defined debug:
             echo obf("[RELAY] 💥 Send failed: ") & errorMsg
-            if "would block" in errorMsg.toLower() or "temporarily unavailable" in errorMsg.toLower():
-                echo obf("[RELAY] 🔍 Send would block - server connection dead")
+            if isRealError and isConnectionDead:
+                echo obf("[RELAY] 💀 REAL connection error - marking as dead")
+            elif isRealError:
+                echo obf("[RELAY] ⚠️  Network issue but connection may be alive")
             else:
-                echo obf("[RELAY] 🔍 Send error - connection problem")
+                echo obf("[RELAY] 📡 Normal network condition (send would block)")
         
-        # ATOMIC STATE CHANGE: Mark as disconnected only if still connected
-        if conn.isConnected:
+        # ATOMIC STATE CHANGE: Only mark as disconnected for REAL connection errors
+        if conn.isConnected and isRealError and isConnectionDead:
             conn.isConnected = false
             when defined debug:
-                echo obf("[STATE] Connection marked as disconnected due to send error: ") & errorMsg
+                echo obf("[STATE] Connection marked as disconnected due to REAL error: ") & errorMsg
+        
         return false
 
 # Receive message from connection
@@ -641,13 +663,36 @@ proc pollMessages*(conn: var RelayConnection, timeout: int = 100): seq[RelayMess
         
     except:
         let errorMsg = getCurrentExceptionMsg()
-        if "Operation would block" notin errorMsg and "Resource temporarily unavailable" notin errorMsg:
+        
+        # ONLY disconnect on REAL connection errors, not on normal network conditions
+        let isRealError = not (
+            "Operation would block" in errorMsg or
+            "Resource temporarily unavailable" in errorMsg or
+            "Interrupted system call" in errorMsg or
+            "Try again" in errorMsg
+        )
+        
+        # These indicate REAL connection problems:
+        let isConnectionDead = (
+            "Connection reset" in errorMsg or
+            "Broken pipe" in errorMsg or
+            "Connection refused" in errorMsg or
+            "Network unreachable" in errorMsg or
+            "Host unreachable" in errorMsg or
+            "Socket is not connected" in errorMsg or
+            "Connection aborted" in errorMsg
+        )
+        
+        if isRealError and isConnectionDead:
             conn.isConnected = false
             when defined debug:
-                echo obf("[RELAY] pollMessages: Connection error: ") & errorMsg
+                echo obf("[RELAY] pollMessages: 💀 REAL connection error - marking as dead: ") & errorMsg
+        elif isRealError:
+            when defined debug:
+                echo obf("[RELAY] pollMessages: ⚠️  Network issue but connection may be alive: ") & errorMsg
         else:
             when defined debug:
-                echo obf("[RELAY] pollMessages: No data available (exception): ") & errorMsg
+                echo obf("[RELAY] pollMessages: 📡 Normal network condition (no data available): ") & errorMsg
 
 # Clean up dead connections and client registry
 proc cleanupConnections*(server: var RelayServer) =

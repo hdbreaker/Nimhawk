@@ -7,32 +7,17 @@ const
     MAX_MESSAGE_SIZE* = 1024 * 1024  # 1MB max message size - prevents memory exhaustion
     HEADER_SIZE = 4  # 4 bytes for message length
 
-# === COMMAND QUEUE CONFIGURATION ===
-const MAX_COMMANDS_PER_CLIENT = 100
-const MAX_COMMAND_AGE_SECONDS = 3600  # 1 hour
-const MAX_TOTAL_QUEUED_COMMANDS = 10000  # Global limit
-const CLEANUP_INTERVAL_SECONDS = 300  # Clean up every 5 minutes
-
 # Global relay connection state - shared between modules
 var isConnectedToRelay* = false
 
 type
-    ClientMessageQueue* = ref object
-        clientID*: string
-        messages*: seq[RelayMessage]
-        lastAccess*: int64
-
-    RelayConnection* = ref object
+    RelayConnection* = object
         socket*: Socket
         isConnected*: bool
         remoteHost*: string
         remotePort*: int
         clientID*: string  # Track client ID for routing
         lastActivity*: int64  # Track last message time
-        # Authentication state
-        isAuthenticated*: bool
-        # Message queue for this client
-        messageQueue*: seq[RelayMessage]
     
     RelayServer* = object
         socket*: Socket
@@ -40,8 +25,6 @@ type
         isListening*: bool
         connections*: seq[RelayConnection]
         clientRegistry*: Table[string, int]  # ClientID → Connection index mapping
-        # Command queue system for relay clients
-        commandQueues*: Table[string, seq[RelayMessage]]  # clientID -> queued commands
 
 # Forward declarations for routing functions
 proc routeMessage*(server: var RelayServer, msg: RelayMessage): bool
@@ -50,15 +33,6 @@ proc isResponseMessage*(msgType: RelayMessageType): bool
 proc analyzeRouteDirection*(route: seq[string], currentID: string, isResponse: bool): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int, shouldRoute: bool]
 proc debugRouteDecision*(msg: RelayMessage, currentID: string)
 proc testDistributedRoutingSystem*(): tuple[passed: int, failed: int, details: seq[string]]
-
-# Forward declarations for command queue functions
-proc queueCommandForClient*(server: var RelayServer, clientID: string, command: RelayMessage)
-proc getQueuedCommandsForClient*(server: var RelayServer, clientID: string): seq[RelayMessage]
-proc hasQueuedCommands*(server: RelayServer, clientID: string): bool
-proc cleanupEmptyQueues*(server: var RelayServer)
-proc getTotalQueuedCommands*(server: RelayServer): int
-proc cleanupExpiredCommands*(server: var RelayServer)
-proc performQueueMaintenance*(server: var RelayServer)
 
 # === ROUTING FUNCTIONS FOR PERSISTENT ROUTE MANAGEMENT ===
 
@@ -256,7 +230,6 @@ proc startRelayServer*(port: int): RelayServer =
     result.port = port
     result.connections = @[]
     result.clientRegistry = initTable[string, int]()  # Initialize client registry
-    result.commandQueues = initTable[string, seq[RelayMessage]]()  # Initialize command queues
     result.isListening = false
     
     try:
@@ -557,16 +530,6 @@ proc sendToClient*(server: var RelayServer, clientID: string, msg: RelayMessage)
             echo obf("[UNICAST] ❌ This is the root cause of command delivery failure!")
         return false
     
-    # CRITICAL FIX: For COMMAND messages, queue them instead of sending immediately
-    if msg.msgType == COMMAND:
-        when defined debug:
-            echo obf("[UNICAST] 📥 COMMAND message detected - queueing for PULL delivery")
-        queueCommandForClient(server, clientID, msg)
-        when defined debug:
-            echo obf("[UNICAST] ✅ Command queued successfully for client: ") & clientID
-        return true
-    
-    # For non-command messages, send immediately (responses, etc.)
     let connectionIndex = server.clientRegistry[clientID]
     if connectionIndex >= server.connections.len:
         when defined debug:
@@ -1983,147 +1946,3 @@ proc updateClientId*(server: var RelayServer, oldId: string, newId: string): boo
         echo "[REGISTRY] 🔄 === END UPDATE CLIENT ID (SUCCESS) ==="
     
     return true 
-
-# === HYBRID COMMAND QUEUE SYSTEM FOR RELAY CLIENTS ===
-
-# Get total number of queued commands across all clients
-proc getTotalQueuedCommands*(server: RelayServer): int =
-    result = 0
-    for queue in server.commandQueues.values:
-        result += queue.len
-    when defined debug:
-        echo "[QUEUE] 📊 Total queued commands across all clients: " & $result
-
-# Clean up expired commands based on age
-proc cleanupExpiredCommands*(server: var RelayServer) =
-    let now = epochTime().int64
-    var totalCleaned = 0
-    
-    for clientID in server.commandQueues.keys:
-        let originalLen = server.commandQueues[clientID].len
-        
-        # Filter out expired commands manually
-        var filteredQueue: seq[RelayMessage] = @[]
-        for cmd in server.commandQueues[clientID]:
-            if now - cmd.timestamp < MAX_COMMAND_AGE_SECONDS:
-                filteredQueue.add(cmd)
-        server.commandQueues[clientID] = filteredQueue
-        
-        let cleaned = originalLen - server.commandQueues[clientID].len
-        totalCleaned += cleaned
-        
-        if cleaned > 0:
-            when defined debug:
-                echo "[QUEUE] 🧹 Cleaned " & $cleaned & " expired commands for client: '" & clientID & "'"
-    
-    when defined debug:
-        echo "[QUEUE] 🧹 Total expired commands cleaned: " & $totalCleaned
-
-# Enhanced queue command with hybrid limits
-proc queueCommandForClient*(server: var RelayServer, clientID: string, command: RelayMessage) =
-    when defined debug:
-        echo "[QUEUE] 📥 Queueing command for client: '" & clientID & "'"
-        echo "[QUEUE] 📥 Command type: " & $command.msgType
-        echo "[QUEUE] 📥 Command payload length: " & $command.payload.len
-    
-    # Initialize queue if it doesn't exist
-    if not server.commandQueues.hasKey(clientID):
-        server.commandQueues[clientID] = @[]
-        when defined debug:
-            echo "[QUEUE] 📥 Created new queue for client: '" & clientID & "'"
-    
-    # HYBRID STRATEGY 1: Check global limit first
-    let totalQueued = getTotalQueuedCommands(server)
-    if totalQueued >= MAX_TOTAL_QUEUED_COMMANDS:
-        when defined debug:
-            echo "[QUEUE] ⚠️ Global queue limit reached (" & $totalQueued & "/" & $MAX_TOTAL_QUEUED_COMMANDS & ") - cleaning expired commands"
-        cleanupExpiredCommands(server)
-        
-        # Check again after cleanup
-        let totalAfterCleanup = getTotalQueuedCommands(server)
-        if totalAfterCleanup >= MAX_TOTAL_QUEUED_COMMANDS:
-            when defined debug:
-                echo "[QUEUE] ❌ Global queue limit still exceeded after cleanup - dropping command"
-            return
-    
-    # HYBRID STRATEGY 2: Check per-client limit
-    if server.commandQueues[clientID].len >= MAX_COMMANDS_PER_CLIENT:
-        # Remove oldest command (FIFO)
-        server.commandQueues[clientID].delete(0)
-        when defined debug:
-            echo "[QUEUE] ⚠️ Client queue full for '" & clientID & "' - discarded oldest command"
-    
-    # HYBRID STRATEGY 3: Ensure command has timestamp
-    var cmdWithTimestamp = command
-    if cmdWithTimestamp.timestamp == 0:
-        cmdWithTimestamp.timestamp = epochTime().int64
-    
-    # Add command to queue
-    server.commandQueues[clientID].add(cmdWithTimestamp)
-    when defined debug:
-        echo "[QUEUE] 📥 Queue size for '" & clientID & "': " & $server.commandQueues[clientID].len
-        echo "[QUEUE] 📥 Total system queued commands: " & $getTotalQueuedCommands(server)
-
-# Get queued commands for a specific relay client
-proc getQueuedCommandsForClient*(server: var RelayServer, clientID: string): seq[RelayMessage] =
-    result = @[]
-    
-    when defined debug:
-        echo "[QUEUE] 📤 Checking queue for client: '" & clientID & "'"
-    
-    if server.commandQueues.hasKey(clientID):
-        result = server.commandQueues[clientID]
-        # Clear the queue after retrieving commands
-        server.commandQueues[clientID] = @[]
-        when defined debug:
-            echo "[QUEUE] 📤 Retrieved " & $result.len & " commands for client: '" & clientID & "'"
-            echo "[QUEUE] 📤 Queue cleared for client: '" & clientID & "'"
-    else:
-        when defined debug:
-            echo "[QUEUE] 📤 No queue found for client: '" & clientID & "'"
-
-# Check if a client has queued commands
-proc hasQueuedCommands*(server: RelayServer, clientID: string): bool =
-    if server.commandQueues.hasKey(clientID):
-        result = server.commandQueues[clientID].len > 0
-        when defined debug:
-            echo "[QUEUE] 🔍 Client '" & clientID & "' has " & $server.commandQueues[clientID].len & " queued commands"
-    else:
-        result = false
-        when defined debug:
-            echo "[QUEUE] 🔍 Client '" & clientID & "' has no queue"
-
-# Enhanced cleanup with hybrid strategy
-proc cleanupEmptyQueues*(server: var RelayServer) =
-    var emptyQueues: seq[string] = @[]
-    
-    for clientID, queue in server.commandQueues:
-        if queue.len == 0:
-            emptyQueues.add(clientID)
-    
-    for clientID in emptyQueues:
-        server.commandQueues.del(clientID)
-        when defined debug:
-            echo "[QUEUE] 🧹 Cleaned up empty queue for client: '" & clientID & "'"
-
-# Comprehensive queue maintenance (call periodically)
-proc performQueueMaintenance*(server: var RelayServer) =
-    when defined debug:
-        echo "[QUEUE] 🔧 Starting queue maintenance"
-    
-    let beforeTotal = getTotalQueuedCommands(server)
-    
-    # Clean expired commands
-    cleanupExpiredCommands(server)
-    
-    # Clean empty queues
-    cleanupEmptyQueues(server)
-    
-    let afterTotal = getTotalQueuedCommands(server)
-    
-    when defined debug:
-        echo "[QUEUE] 🔧 Queue maintenance completed"
-        echo "[QUEUE] 🔧 Commands before: " & $beforeTotal & ", after: " & $afterTotal
-        echo "[QUEUE] 🔧 Active client queues: " & $server.commandQueues.len
-
-# === END HYBRID COMMAND QUEUE SYSTEM ===

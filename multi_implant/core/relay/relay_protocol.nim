@@ -19,6 +19,14 @@ type
         CONFIRMATION_ACK = "confirmation_ack"
 # Topology message types removed - using distributed chain relationships
 
+    # Queued message structure for storing messages until client is available
+    QueuedMessage* = object
+        message*: RelayMessage
+        timestamp*: int64
+        attempts*: int
+        maxAttempts*: int
+        clientID*: string
+
     RelayMessage* = object
         msgType*: RelayMessageType
         fromID*: string

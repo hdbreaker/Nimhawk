@@ -1400,13 +1400,16 @@ def db_get_nimplant_details(nimplant_guid):
             res["checkin_count"] = checkin_count
             res["data_transferred"] = data_transferred
             
-        return res
+            return res
+        else:
+            # No implant found with this GUID
+            return None
 
     except Exception as e:
         utils.nimplant_print(f"DB error in db_get_nimplant_details: {e}")
         import traceback
         utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
-        return {}
+        return None
 
 # Get the last X lines of console history for a specific implant (/api/nimplants/<guid>/console[/<limit>/<offset>])
 def db_get_nimplant_console(nimplant_guid, limit, offset, order='desc'):

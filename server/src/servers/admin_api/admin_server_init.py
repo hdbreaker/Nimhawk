@@ -1758,14 +1758,15 @@ def admin_server():
 
     @app.errorhandler(Exception)
     def all_exception_handler(error):
-        # Don't handle 404 errors - let them pass through
+        # Handle 404 errors with proper JSON response
         from werkzeug.exceptions import NotFound
         if isinstance(error, NotFound):
-            utils.nimplant_print(f"DEBUG: [ERROR HANDLER] Unhandled exception: {type(error).__name__} - {str(error)}")
-            import traceback
-            utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
-            # Re-raise to let Flask handle it normally
-            raise error
+            utils.nimplant_print(f"DEBUG: [ERROR HANDLER] 404 Not Found: {flask.request.path}")
+            return flask.jsonify({
+                "error": "Not Found",
+                "message": "The requested resource was not found",
+                "path": flask.request.path
+            }), 404
             
         # Improved error logging for other exceptions
         utils.nimplant_print(f"DEBUG: [ERROR HANDLER] Unhandled exception: {type(error).__name__} - {str(error)}")

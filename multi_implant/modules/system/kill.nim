@@ -1,5 +1,5 @@
 import os, strutils
-import ../../core/strenc
+import ../../util/strenc
 
 proc kill*(args: seq[string]): string =
     # Kill command - terminate the implant process

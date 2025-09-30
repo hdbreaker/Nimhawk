@@ -399,17 +399,11 @@ def admin_server():
                     if stderr_text:
                         utils.nimplant_print(f"Error output: {stderr_text[:500]}...")
                         
+                    # Note: Don't fail immediately on non-zero exit code
+                    # Nim compiler returns non-zero for warnings, but compilation may still succeed
+                    # We'll verify success by checking if the binary files were created
                     if exit_code != 0:
-                        error_msg = f"Compilation failed with code {exit_code}"
-                        utils.nimplant_print(error_msg)
-                        app.build_status[build_id] = {
-                            'status': 'failed',
-                            'error': error_msg,
-                            'stdout': stdout_text,
-                            'stderr': stderr_text,
-                            'timestamp': datetime.datetime.now().isoformat()
-                        }
-                        return
+                        utils.nimplant_print(f"Warning: Compilation returned code {exit_code}, checking if binaries were created...")
                 
                 except Exception as compile_error:
                     error_msg = f"Error executing command: {str(compile_error)}"

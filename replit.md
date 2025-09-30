@@ -96,6 +96,11 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
   - `relay_parent_port`: Listening port of the parent relay
   - `relay_listening_port`: Listening port if this implant is a relay server
 - **UI Component**: `NimplantDrawer.tsx` displays relay status with visual indicators and detailed connection information
+- **Security Fix**: C2 URL extraction from RELAY_CHAIN for runtime relay servers
+  - When a relay client (compiled with RELAY_CHAIN) starts a relay server at runtime via `relay <PORT>` command
+  - C2 URL is automatically extracted from the last hop in RELAY_CHAIN
+  - This allows relay clients to become relay servers without having C2 URL compiled in
+  - Resolves "No C2 configured" errors when relays try to forward to C2
 
 ### Multi-Hop Behavior Example (3-Hop Chain)
 

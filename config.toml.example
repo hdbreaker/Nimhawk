@@ -4,20 +4,19 @@
 # Configure the API for the C2 server here. Recommended to keep at 127.0.0.1, change IP to 0.0.0.0 to listen on all interfaces.
 ip = "0.0.0.0"
 # Configure port for the web interface of the C2 server, including API
-port = 9669
+port = 5000
 
 [implants_server]
-# Configure listener type (HTTP or HTTPS)
+# SERVER CONFIGURATION (how the internal server runs):
+# In Replit: Always use "HTTP" - Replit handles SSL termination at the edge
+# Standalone: Use "HTTPS" only if you have your own SSL certificates, if you will host in replit leave this as HTTP
 type = "HTTP"
-# Certificate and key path used for 'HTTPS" listener type
+# Certificate and key path used for standalone HTTPS server
 sslCertPath = ""
 sslKeyPath = ""
-# Configure the hostname for Implant to connect to
-# Leave as "" for IP:PORT-based connections
-hostname = ""
 
-# Configure listener port where implant "team server" will wait for connections, mandatory even if hostname is specified
-port = 80
+# Server listening port (internal - used by server and for IP:PORT connections)
+port = 8080
 # Configure the URI paths used for C2 communications
 registerPath = "/register"
 taskPath = "/task"
@@ -25,8 +24,16 @@ resultPath = "/result"
 reconnectPath = "/reconnect" 
 
 [implant]
-# Public implants_server IP:
-implantCallbackIp = "192.168.100.57"
+# Callback URL or host for implants to connect to
+# 
+# RECOMMENDED: Use full URL with protocol (especially for Replit)
+#   "https://your-repl.replit.dev" - HTTPS to Replit (Replit handles SSL)
+#   "http://192.168.1.100:8080" - HTTP to local server with explicit port
+# 
+# ALTERNATIVE: Host only (uses [implants_server].type for protocol)
+#   "your-repl.replit.dev" - Uses HTTP (from type above) - NOT recommended for Replit
+#   "http://192.168.1.100:8080" - Uses HTTP://IP + port 8080 or HTTPS://url.com
+implantCallbackIp = "https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev"
 # Allow risky commands such as 'execute-assembly', 'powershell', or 'shinject' - operator discretion advised
 riskyMode = true
 # Enable Ekko sleep mask instead of a regular sleep() call

@@ -102,10 +102,28 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
             
             when defined verbose:
                 echo obf("DEBUG: Added X-Next-Hop header for relay chain: ") & RELAY_CHAIN
+                echo obf("DEBUG: doRequest() - verb: ") & verb
                 echo obf("DEBUG: doRequest() - About to request()")
             
+            # Convert verb string to HttpMethod
+            let httpVerb = case verb.toLowerAscii():
+                of "get": HttpGet
+                of "post": HttpPost
+                of "put": HttpPut
+                of "delete": HttpDelete
+                of "head": HttpHead
+                of "patch": HttpPatch
+                else: HttpGet
+            
+            # Build request body for POST/PUT/PATCH
+            var requestBody = ""
+            if verb.toLowerAscii() in ["post", "put", "patch"] and postKey != "" and postValue != "":
+                requestBody = "{\"" & postKey & "\":\"" & postValue & "\"}"
+                when defined verbose:
+                    echo obf("DEBUG: doRequest() - Request body length: ") & $requestBody.len
+            
             # Make request
-            let response = client.request(target, httpMethod = HttpGet, headers = headers)
+            let response = client.request(target, httpMethod = httpVerb, headers = headers, body = requestBody)
             
             when defined verbose:
                 echo obf("DEBUG: doRequest() - request() completed")

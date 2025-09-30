@@ -33,11 +33,10 @@ function createWindow() {
   console.log('app.isPackaged:', app.isPackaged);
   
   if (isDev) {
-    // Development mode: use development server
-    const serverIp = process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP || 'http://localhost';
-    const serverPort = process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT || '3000';
-    const startUrl = `${serverIp}:${serverPort}`;
-    console.log('Loading URL:', startUrl);
+    // Development mode: always load from local Next.js dev server
+    // The .env variables are for API calls from React code, not for where Electron loads HTML
+    const startUrl = 'http://localhost:3000';
+    console.log('Loading URL (Next.js dev server):', startUrl);
     mainWindow.loadURL(startUrl);
   } else {
     // Production mode: use static files

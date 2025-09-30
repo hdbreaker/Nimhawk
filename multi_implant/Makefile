@@ -112,9 +112,10 @@ darwin_intelx64: $(BIN_DIR)
 	@echo "Building Darwin Intel x86_64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	        --cc:clang \
 	        --os:macosx --cpu:amd64 \
-	        --gcc.exe:"/tmp/zig-cc-x86_64-macos.sh" \
-	        --gcc.linkerexe:"/tmp/zig-cc-x86_64-macos.sh" \
+	        --clang.exe:"/tmp/zig-cc-x86_64-macos.sh" \
+	        --clang.linkerexe:"/tmp/zig-cc-x86_64-macos.sh" \
 	        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
 	        -o:$(BIN_DIR)/nimhawk_darwin_intelx64 \
 	        $(MAIN_FILE)
@@ -127,9 +128,10 @@ darwin_arm64: $(BIN_DIR)
 	@echo "Building Darwin Apple Silicon ARM64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) \
+	        --cc:clang \
 	        --os:macosx --cpu:arm64 \
-	        --gcc.exe:"/tmp/zig-cc-arm64-macos.sh" \
-	        --gcc.linkerexe:"/tmp/zig-cc-arm64-macos.sh" \
+	        --clang.exe:"/tmp/zig-cc-arm64-macos.sh" \
+	        --clang.linkerexe:"/tmp/zig-cc-arm64-macos.sh" \
 	        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
 	        $(RELAY_FLAGS) \
 	        -o:$(BIN_DIR)/nimhawk_darwin_arm64 \

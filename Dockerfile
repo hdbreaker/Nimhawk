@@ -1,4 +1,4 @@
-FROM nimlang/nim:1.6.12
+FROM nimlang/nim:2.2.0
 
 LABEL maintainer="Alejandro Parodi (@hdbreaker_)"
 

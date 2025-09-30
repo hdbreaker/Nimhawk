@@ -15,6 +15,53 @@ The system uses a client-server architecture where operators interact with impla
 
 Preferred communication style: Simple, everyday language.
 
+## Quick Setup
+
+### Automated Setup (Recommended)
+
+Run the automated setup script to configure the entire environment:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+This script will:
+- Detect if running in Replit or local environment
+- Install Nim compiler (2.2.4+) and Nimble package manager
+- Install Python dependencies from server/requirements.txt
+- Install Nim dependencies (nimcrypto, parsetoml, puppy)
+- Create config.toml from template if needed
+- Configure Replit-specific settings (domain, ports)
+- Create necessary directories for logs, downloads, uploads
+
+### Manual Setup (Replit)
+
+If you prefer manual setup in Replit:
+
+1. **Python dependencies** are auto-installed via the python-3.11 module
+2. **Nim installation**: Run `curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y`
+3. **Add Nim to PATH**: `export PATH="$HOME/.nimble/bin:$PATH"`
+4. **Install Nim packages**: `nimble install -y nimcrypto parsetoml puppy`
+5. **Update config.toml**: Set `port = 5000` and `implantCallbackIp` to your Replit domain
+
+### Docker Setup
+
+Build and run with Docker:
+
+```bash
+docker build -t nimhawk .
+docker run -p 5000:5000 -p 8080:8080 nimhawk server
+```
+
+### Replit-Specific Configuration
+
+Current Replit environment is configured with:
+- **Admin API**: Port 5000 (public HTTPS on port 443)
+- **Implants Server**: Port 8080 (internal, proxied through Admin API)
+- **Domain**: Auto-detected and configured in config.toml
+- **Workflow**: Backend automatically starts via `.replit` configuration
+
 ## System Architecture
 
 ### Backend Architecture
@@ -26,8 +73,8 @@ Preferred communication style: Simple, everyday language.
 - XOR and AES-CTR encryption for secure communications
 
 **Core Components:**
-1. **Admin API Server** (`server/src/servers/admin_api/`) - Serves the web UI and handles operator authentication/commands on port 9669
-2. **Implants Server** (`server/src/servers/implants_api/`) - Listens for implant callbacks on configurable ports (80/443)
+1. **Admin API Server** (`server/src/servers/admin_api/`) - Serves the web UI and handles operator authentication/commands on port 5000 (Replit) or 9669 (local)
+2. **Implants Server** (`server/src/servers/implants_api/`) - Listens for implant callbacks on configurable ports (8080 internal, proxied through port 5000 in Replit)
 3. **Database Layer** (`server/src/config/db.py`) - SQLite schema with tables for implants, commands, tasks, downloads, workspaces, and users
 
 **Design Decisions:**
@@ -135,10 +182,11 @@ Preferred communication style: Simple, everyday language.
 - **Electron** (32.2.0) - Desktop application packaging
 
 ### Build Tools
-- **Nim** (latest stable) - Implant compilation language
-- **MinGW-w64** - Cross-compilation toolchain
+- **Nim** (2.2.4+) - Implant compilation language
+- **Nimble** (0.18.2+) - Nim package manager
+- **MinGW-w64** - Cross-compilation toolchain (for Windows targets)
 - **Node.js 16+** - Frontend build tooling
-- **Python 3.8+** - Backend runtime
+- **Python 3.11** - Backend runtime (configured for Replit)
 
 ### Development Tools
 - **Docker** - Containerized deployment option
@@ -151,3 +199,5 @@ Preferred communication style: Simple, everyday language.
 - `.xorkey` - Initial encryption key (generated on first run)
 - `package.json` - Single source of truth for version (1.4.0)
 - `nimhawk.db` - SQLite database file (auto-created)
+- `setup.sh` - Automated environment setup script for Replit/Docker/local
+- `.replit` - Replit-specific configuration (workflows, modules, ports)

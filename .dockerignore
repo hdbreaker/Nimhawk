@@ -1,10 +1,68 @@
-.devcontainer
+# Git
 .git
-.github
 .gitignore
+.gitattributes
+.github
+
+# Development
+.devcontainer
+.vscode
+.idea
+*.swp
+*.swo
+
+# Python
+__pycache__
+*.py[cod]
+*.so
+.Python
+venv/
+env/
 .venv
-.xorkey
+*.egg-info
+.pytest_cache/
+
+# Node
+node_modules/
+.npm
+package-lock.json
+server/admin_web_ui/out/
+server/admin_web_ui/.next/
+
+# Build artifacts
 implant/release/*
+multi_implant/bin/*
+*.exe
+*.dll
+*.o
+
+# Nim cache
+nimcache/
+.nimble/
+
+# Database and logs
+*.db
+*.db-journal
+*.log
+server/logs/
+server/downloads/
+server/uploads/
+
+# Security
+.xorkey
+.env
+.env.local
+
+# Replit
+.replit
+replit.nix
+.cache/
+.config/
+.upm/
+
+# Documentation (keep only essentials)
 detection/
 LICENSE
-README.md
+*.md
+!README.md
+!INSTALLATION.md

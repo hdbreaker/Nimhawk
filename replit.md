@@ -150,6 +150,90 @@ Current Replit environment is configured with:
 - Per-implant unique XOR key for session isolation
 - Optional AES-CTR for payload encryption (SOR crypto module)
 
+### HTTP Relay System (New Architecture)
+
+**Overview:**  
+Simple HTTP-over-HTTP relay system for multi-hop agent chains. Relays blindly forward HTTP requests without decrypting the end-to-end encrypted payload between final agents and C2.
+
+**Design Principles:**
+1. **Separation of Concerns**: Routing (X-Next-Hop) vs Topology (X-Relay-GUID and /chain endpoint)
+2. **Minimal Relay Intelligence**: Relays only decrypt routing headers, not agent payloads
+3. **End-to-End Encryption**: Only C2 and final agent share encryption keys
+4. **Multi-Hop Support**: Chains of arbitrary depth (Agent → Relay1 → Relay2 → ... → C2)
+
+**Core Components:**
+
+1. **`multi_implant/core/http_relay.nim`** - HTTP relay server
+   - Listens on configured `RELAY_PORT`
+   - Decrypts `X-Next-Hop` header (XOR + Base64 with INITIAL_XOR_KEY)
+   - Forwards entire HTTP request to next hop
+   - Injects `X-Relay-GUID` header (removes previous to avoid duplicates)
+   - Supports multi-hop by stripping/replacing X-Relay-GUID at each hop
+
+2. **`multi_implant/core/webClientListener.nim`** - Agent HTTP client
+   - Injects `X-Next-Hop` header when `RELAY_CHAIN` is defined at compile time
+   - Header contains encrypted address of next hop (format: "host:port")
+   - Sends all HTTP requests through relay chain transparently
+
+3. **`server/src/servers/implants_api/implants_server_init.py`** - C2 endpoint
+   - Reads `X-Relay-GUID` header during agent registration
+   - Decrypts relay GUID (XOR + Base64 with xor_key)
+   - Stores parent-child relationship in `chain_relationships` table
+   - Supports direct C2 connections (no X-Relay-GUID) and relayed connections
+
+**Compilation Variables:**
+
+- **`RELAY_CHAIN`** (string): Next hop in relay chain  
+  Example: `RELAY_CHAIN=192.168.1.100:8080`  
+  Causes agent to forward all HTTP requests through this relay
+
+- **`RELAY_PORT`** (int): Port to listen on as relay server  
+  Example: `RELAY_PORT=8080`  
+  Starts HTTP relay server on this port
+
+**Build Examples:**
+
+```bash
+# Agent that forwards through relay
+make darwin_arm64 RELAY_CHAIN=192.168.1.100:8080 DEBUG=1
+
+# Relay server that listens on port 8080
+make linux_x64 RELAY_PORT=8080 DEBUG=1
+
+# Multi-hop relay: listens on 8080 AND forwards to another relay
+make linux_x64 RELAY_CHAIN=10.0.0.5:8080 RELAY_PORT=8080 DEBUG=1
+```
+
+**HTTP Headers:**
+
+1. **`X-Next-Hop`** (Routing Layer)
+   - Contains: Encrypted next hop address (format: "host:port")
+   - Encryption: Base64(XOR(address, INITIAL_XOR_KEY))
+   - Usage: Agent injects once, relay consumes and forwards
+   - Scope: Consumed at each hop (not end-to-end)
+
+2. **`X-Relay-GUID`** (Topology Layer)
+   - Contains: Encrypted GUID of the relay server
+   - Encryption: Base64(XOR(guid, INITIAL_XOR_KEY))
+   - Usage: Relay injects its own GUID, stripping previous relay's GUID
+   - Scope: Reaches C2 to establish parent-child relationship
+   - Critical: Each relay MUST strip existing X-Relay-GUID before injecting its own
+
+**Topology Visualization:**
+
+- UI endpoint: `/api/chain-relationships` queries `chain_relationships` table
+- Database stores: (child_guid, parent_guid, role, listening_port)
+- React Flow component renders hierarchical tree in `pages/topology.tsx`
+- Supports nested chains of arbitrary depth
+
+**Security Considerations:**
+
+- INITIAL_XOR_KEY is shared across all components (not per-implant)
+- X-Next-Hop and X-Relay-GUID use weak obfuscation (XOR + Base64)
+- Relays can see plaintext addresses of next hops
+- End-to-end payload encryption (AES-CTR) protects agent commands/results
+- No authentication between relay hops (C2 validates with unique agent keys)
+
 ### Multi-Platform Support
 
 **Implant Compilation:**

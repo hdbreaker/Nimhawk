@@ -192,6 +192,31 @@ def nim_implants_server(xor_key):
                         utils.nimplant_print(f"DEBUG: Saving Implant to database with server GUID: {np_server.guid}")
                         db.db_initialize_nimplant(np, np_server.guid)
                         utils.nimplant_print(f"DEBUG: Implant saved to database")
+                        
+                        # Check for X-Relay-GUID header to establish parent-child relationship
+                        relay_guid_header = flask.request.headers.get("X-Relay-GUID")
+                        if relay_guid_header:
+                            try:
+                                utils.nimplant_print(f"DEBUG: 🔗 X-Relay-GUID header found, decrypting...")
+                                # Decrypt: Base64 decode -> XOR decrypt with INITIAL_XOR_KEY
+                                encrypted_bytes = base64.b64decode(relay_guid_header)
+                                parent_guid = xor_bytes(encrypted_bytes, xor_key).decode('utf-8')
+                                utils.nimplant_print(f"DEBUG: 🔗 Decrypted parent GUID: {parent_guid}")
+                                
+                                # Store chain relationship: child connects through parent relay
+                                # Child's listening_port is 0 (not a relay server itself, unless also configured)
+                                listening_port = 0  # Will be updated later if child also starts relay server
+                                if db.db_store_chain_relationship(np.guid, parent_guid, relay_role, listening_port):
+                                    utils.nimplant_print(f"DEBUG: 🔗 ✅ Chain relationship stored: {np.guid} -> parent: {parent_guid}")
+                                else:
+                                    utils.nimplant_print(f"DEBUG: 🔗 ❌ Failed to store chain relationship")
+                            except Exception as e:
+                                utils.nimplant_print(f"DEBUG: 🔗 ❌ Error processing X-Relay-GUID: {str(e)}")
+                        else:
+                            utils.nimplant_print(f"DEBUG: 🔗 No X-Relay-GUID header - direct C2 connection")
+                            # Store with null parent for direct C2 connection
+                            if relay_role != "STANDARD" or relay_role == "RELAY_SERVER":
+                                db.db_store_chain_relationship(np.guid, None, relay_role, 0)
 
                         notify_user(np)
                         utils.nimplant_print(f"DEBUG: Notification sent")

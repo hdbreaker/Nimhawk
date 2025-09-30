@@ -445,11 +445,7 @@ function ImplantBuilderPage() {
             <Modal
                 opened={buildModalOpen}
                 onClose={handleClose}
-                title={
-                    <Title order={4}>
-                        Build {selectedImplantTypeData?.name} Implant
-                    </Title>
-                }
+                title={`Build ${selectedImplantTypeData?.name || ''} Implant`}
                 size="lg"
                 centered
                 radius="md"

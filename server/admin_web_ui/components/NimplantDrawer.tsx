@@ -1248,7 +1248,7 @@ const NimplantContent = memo(
                             <Text
                               size="sm"
                               fw={500}
-                              style={{ width: 90, flexShrink: 0 }}
+                              style={{ width: 110, flexShrink: 0 }}
                             >
                               Listening:
                             </Text>
@@ -1289,7 +1289,7 @@ const NimplantContent = memo(
                             <Text
                               size="sm"
                               fw={500}
-                              style={{ width: 90, flexShrink: 0 }}
+                              style={{ width: 110, flexShrink: 0 }}
                             >
                               Relay Parent:
                             </Text>

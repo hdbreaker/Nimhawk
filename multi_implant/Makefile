@@ -60,55 +60,55 @@ $(BIN_DIR):
 # Linux x86_64 target
 linux_x64: $(BIN_DIR)
 	@echo "Building Linux x86_64 implant..."
-        $(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
-        --os:linux --cpu:amd64 \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        -o:$(BIN_DIR)/nimhawk_linux_x64 \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	--os:linux --cpu:amd64 \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	-o:$(BIN_DIR)/nimhawk_linux_x64 \
+	$(MAIN_FILE)
 	@echo "✅ Linux x86_64 build complete: $(BIN_DIR)/nimhawk_linux_x64"
 
 # Linux ARM64 target  
 linux_arm64: $(BIN_DIR)
 	@echo "Building Linux ARM64 implant..."
-        $(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
-        --os:linux --cpu:arm64 \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        -o:$(BIN_DIR)/nimhawk_linux_arm64 \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	--os:linux --cpu:arm64 \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	-o:$(BIN_DIR)/nimhawk_linux_arm64 \
+	$(MAIN_FILE)
 	@echo "✅ Linux ARM64 build complete: $(BIN_DIR)/nimhawk_linux_arm64"
 
 # Linux MIPS Little-Endian target
 linux_mipsel: $(BIN_DIR)
 	@echo "Building Linux MIPS Little-Endian implant..."
-        $(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
-        --os:linux --cpu:mips --endian:little \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        -o:$(BIN_DIR)/nimhawk_linux_mipsel \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	--os:linux --cpu:mips --endian:little \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	-o:$(BIN_DIR)/nimhawk_linux_mipsel \
+	$(MAIN_FILE)
 	@echo "✅ Linux MIPS Little-Endian build complete: $(BIN_DIR)/nimhawk_linux_mipsel"
 
 # Linux ARM target
 linux_arm: $(BIN_DIR)
 	@echo "Building Linux ARM implant..."
-        $(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
-        --os:linux --cpu:arm \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        -o:$(BIN_DIR)/nimhawk_linux_arm \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	--os:linux --cpu:arm \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	-o:$(BIN_DIR)/nimhawk_linux_arm \
+	$(MAIN_FILE)
 	@echo "✅ Linux ARM build complete: $(BIN_DIR)/nimhawk_linux_arm"
 
 # Darwin Intel x86_64 target
 darwin_intelx64: $(BIN_DIR)
 	@echo "Building Darwin Intel x86_64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
-        $(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
-        --cc:clang \
-        --os:macosx --cpu:amd64 \
-        --clang.exe:"/tmp/zig-cc-x86_64-macos.sh" \
-        --clang.linkerexe:"/tmp/zig-cc-x86_64-macos.sh" \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        -o:$(BIN_DIR)/nimhawk_darwin_intelx64 \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
+	--cc:clang \
+	--os:macosx --cpu:amd64 \
+	--clang.exe:"/tmp/zig-cc-x86_64-macos.sh" \
+	--clang.linkerexe:"/tmp/zig-cc-x86_64-macos.sh" \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	-o:$(BIN_DIR)/nimhawk_darwin_intelx64 \
+	$(MAIN_FILE)
 	@echo "✅ Darwin Intel x86_64 build complete: $(BIN_DIR)/nimhawk_darwin_intelx64"
 	@echo "🔍 Verifying architecture..."
 	@file $(BIN_DIR)/nimhawk_darwin_intelx64 || true
@@ -117,15 +117,15 @@ darwin_intelx64: $(BIN_DIR)
 darwin_arm64: $(BIN_DIR)
 	@echo "Building Darwin Apple Silicon ARM64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
-        $(NIM) $(NIM_FLAGS) \
-        --cc:clang \
-        --os:macosx --cpu:arm64 \
-        --clang.exe:"/tmp/zig-cc-arm64-macos.sh" \
-        --clang.linkerexe:"/tmp/zig-cc-arm64-macos.sh" \
-        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
-        $(RELAY_FLAGS) \
-        -o:$(BIN_DIR)/nimhawk_darwin_arm64 \
-        $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) \
+	--cc:clang \
+	--os:macosx --cpu:arm64 \
+	--clang.exe:"/tmp/zig-cc-arm64-macos.sh" \
+	--clang.linkerexe:"/tmp/zig-cc-arm64-macos.sh" \
+	-d:INITIAL_XOR_KEY=$(XOR_KEY) \
+	$(RELAY_FLAGS) \
+	-o:$(BIN_DIR)/nimhawk_darwin_arm64 \
+	$(MAIN_FILE)
 	@echo "✅ Darwin Apple Silicon ARM64 build complete: $(BIN_DIR)/nimhawk_darwin_arm64"
 	@echo "🔍 Verifying architecture..."
 	@file $(BIN_DIR)/nimhawk_darwin_arm64 || true
@@ -157,17 +157,17 @@ all: linux_x64 linux_arm64 linux_mipsel linux_arm darwin
 test: $(BIN_DIR)
 	@echo "🧪 Testing compilation for all targets..."
 	@echo "Testing Linux x86_64..."
-        $(NIM) $(NIM_FLAGS) --os:linux --cpu:amd64 --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:linux --cpu:amd64 --compileOnly $(MAIN_FILE)
 	@echo "Testing Linux ARM64..."
-        $(NIM) $(NIM_FLAGS) --os:linux --cpu:arm64 --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:linux --cpu:arm64 --compileOnly $(MAIN_FILE)
 	@echo "Testing Linux MIPS..."
-        $(NIM) $(NIM_FLAGS) --os:linux --cpu:mips --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:linux --cpu:mips --compileOnly $(MAIN_FILE)
 	@echo "Testing Linux ARM..."
-        $(NIM) $(NIM_FLAGS) --os:linux --cpu:arm --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:linux --cpu:arm --compileOnly $(MAIN_FILE)
 	@echo "Testing Darwin Intel x64..."
-        $(NIM) $(NIM_FLAGS) --os:macosx --cpu:amd64 --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:macosx --cpu:amd64 --compileOnly $(MAIN_FILE)
 	@echo "Testing Darwin ARM64..."
-        $(NIM) $(NIM_FLAGS) --os:macosx --cpu:arm64 --compileOnly $(MAIN_FILE)
+	$(NIM) $(NIM_FLAGS) --os:macosx --cpu:arm64 --compileOnly $(MAIN_FILE)
 	@echo "✅ All compilation tests passed!"
 
 # Clean build artifacts

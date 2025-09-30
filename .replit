@@ -4,7 +4,7 @@ expertMode = true
 
 [nix]
 channel = "stable-25_05"
-packages = ["clang", "cmake", "libxml2", "openssl", "patch", "xz"]
+packages = ["clang", "cmake", "libxml2", "openssl", "patch", "xz", "sqlite"]
 
 [workflows]
 runButton = "Project"

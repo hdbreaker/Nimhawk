@@ -958,14 +958,31 @@ def nim_implants_server(xor_key):
                             listening_port = int(port_str)
                             utils.nimplant_print(f"DEBUG: Extracted listening port: {listening_port}")
                             
-                            # Store chain relationship with parent=None (direct C2 connection)
-                            db.db_store_chain_relationship(np.guid, None, new_role, listening_port)
-                            utils.nimplant_print(f"DEBUG: 🔗 Stored chain relationship: {np.guid} (role={new_role}, port={listening_port}, parent=None)")
+                            # Check if relationship already exists to preserve parent
+                            existing_rel = db.con.execute(
+                                "SELECT parent_guid FROM relay_chain_relationships WHERE nimplant_guid = ?",
+                                (np.guid,)
+                            ).fetchone()
+                            
+                            if existing_rel:
+                                # Preserve existing parent, only update role and port
+                                existing_parent = existing_rel[0]
+                                db.db_store_chain_relationship(np.guid, existing_parent, new_role, listening_port)
+                                utils.nimplant_print(f"DEBUG: 🔗 Updated chain relationship: {np.guid} (role={new_role}, port={listening_port}, parent={existing_parent} PRESERVED)")
+                            else:
+                                # New relay server with no parent (direct C2 connection)
+                                db.db_store_chain_relationship(np.guid, None, new_role, listening_port)
+                                utils.nimplant_print(f"DEBUG: 🔗 Stored new chain relationship: {np.guid} (role={new_role}, port={listening_port}, parent=None)")
                         except (ValueError, IndexError) as e:
                             utils.nimplant_print(f"DEBUG: WARNING - Could not extract port from result: {e}")
-                            # Store with port=0 as fallback
-                            db.db_store_chain_relationship(np.guid, None, new_role, 0)
-                            utils.nimplant_print(f"DEBUG: 🔗 Stored chain relationship with port=0 fallback")
+                            # Store with port=0 as fallback, preserving parent if exists
+                            existing_rel = db.con.execute(
+                                "SELECT parent_guid FROM relay_chain_relationships WHERE nimplant_guid = ?",
+                                (np.guid,)
+                            ).fetchone()
+                            parent_guid = existing_rel[0] if existing_rel else None
+                            db.db_store_chain_relationship(np.guid, parent_guid, new_role, 0)
+                            utils.nimplant_print(f"DEBUG: 🔗 Stored chain relationship with port=0 fallback (parent={parent_guid})")
                         
                     elif "Relay server stopped" in result_data or "Failed to start relay" in result_data:
                         # Get current relay role to determine transition

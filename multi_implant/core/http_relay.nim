@@ -4,7 +4,7 @@
     Only the C2 and final agent share encryption keys
 ]#
 
-import net, nativesockets, strutils, times, base64
+import net, nativesockets, strutils, times, base64, os
 import ../util/crypto
 import ../config/configParser
 
@@ -229,6 +229,9 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         
         when defined debug:
             echo "[RELAY] 📡 Waiting for request data... (15s timeout)"
+        
+        # Give the client a moment to send data (puppy buffering issue)
+        sleep(100)  # 100ms delay to allow client to flush buffers
         
         # Try to receive data with extended timeout
         let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 15000)

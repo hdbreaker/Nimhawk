@@ -1,0 +1,50 @@
+
+
+[RELAY] 🔌 GET /register from 192.168.0.5
+[RELAY] 🔓 Decrypted X-Next-Hop: 192.168.0.5:9999
+[RELAY] 📨 Client sent hop chain: 192.168.0.5:9999
+[RELAY] 🔍 First hop: 192.168.0.5:9999
+[RELAY] 📭 No remaining hops after pop
+[RELAY] 🎯 No parent chain, forwarding to C2
+[RELAY] 🎯 Forwarding to C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/register
+[RELAY] 📤 Sending request to: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/register
+[RELAY] 📤 Method: GET
+[RELAY] 📥 Response: 200 (49 bytes)
+[RELAY] 🔌 POST /register from 192.168.0.5
+[RELAY] 🔓 Decrypted X-Next-Hop: 192.168.0.5:9999
+[RELAY] 📨 Client sent hop chain: 192.168.0.5:9999
+[RELAY] 🔍 First hop: 192.168.0.5:9999
+[RELAY] 📭 No remaining hops after pop
+[RELAY] 🎯 No parent chain, forwarding to C2
+[RELAY] 🎯 Forwarding to C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/register
+[RELAY] 📤 Sending request to: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/register
+[RELAY] 📤 Method: POST
+[RELAY] 📦 Request body length: 247
+[RELAY] 📥 Response: 200 (16 bytes)
+[RELAY] 🔌 POST /chain from 192.168.0.5
+[RELAY] 🔓 Decrypted X-Next-Hop: 192.168.0.5:9999
+[RELAY] 📨 Client sent hop chain: 192.168.0.5:9999
+[RELAY] 🔍 First hop: 192.168.0.5:9999
+[RELAY] 📭 No remaining hops after pop
+[RELAY] 🎯 No parent chain, forwarding to C2
+[RELAY] 🎯 Forwarding to C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/chain
+[RELAY] 📤 Sending request to: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/chain
+[RELAY] 📤 Method: POST
+[RELAY] 📦 Request body length: 771
+[RELAY] 📥 Response: 500 (152 bytes)
+[RELAY] 🔌 GET /task from 192.168.0.5
+[RELAY] 🔓 Decrypted X-Next-Hop: 192.168.0.5:9999
+[RELAY] 📨 Client sent hop chain: 192.168.0.5:9999
+[RELAY] 🔍 First hop: 192.168.0.5:9999
+[RELAY] 📭 No remaining hops after pop
+[RELAY] 🎯 No parent chain, forwarding to C2
+[RELAY] 🎯 Forwarding to C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/task
+[RELAY] 📤 Sending request to: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/task
+[RELAY] 📤 Method: GET
+[RELAY] 📥 Response: 200 (16 bytes)
+[DEBUG] 🌐 HTTP Handler: Woke up from sleep, continuing loop
+
+┌─ 🌐 END HTTP HANDLER CYCLE
+├─ 💤 Slept for 10000ms - continuing loop
+└─────────────────────────────────────────────────────────
+

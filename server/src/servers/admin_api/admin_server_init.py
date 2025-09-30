@@ -358,8 +358,12 @@ def admin_server():
                 try:
                     # Add Nim to PATH for compilation
                     env = os.environ.copy()
-                    nim_bin_path = os.path.expanduser("~/.nimble/bin")
-                    env['PATH'] = f"{nim_bin_path}:{env.get('PATH', '')}"
+                    # Add both choosenim and nimble to PATH
+                    nim_choosenim_path = os.path.expanduser("~/.choosenim/toolchains/nim-2.2.4/bin")
+                    nimble_bin_path = os.path.expanduser("~/.nimble/bin")
+                    env['PATH'] = f"{nim_choosenim_path}:{nimble_bin_path}:{env.get('PATH', '')}"
+                    
+                    utils.nimplant_print(f"DEBUG: Updated PATH for compilation: {env['PATH'][:200]}")
                     
                     process = subprocess.Popen(
                         cmd,

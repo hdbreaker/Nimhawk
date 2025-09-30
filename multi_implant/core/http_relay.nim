@@ -210,15 +210,23 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         echo "[RELAY] 🔌 New connection"
     
     try:
+        # Set socket to non-blocking mode with timeout
+        client.setSockOpt(OptReuseAddr, true)
+        
         # Read request
         var requestData = ""
         var buffer = newString(RELAY_BUFFER_SIZE)
         
         while true:
-            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE)
+            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 5000)
             if bytesRead <= 0:
+                when defined debug:
+                    echo "[RELAY] 📭 Connection closed or timeout"
                 break
             requestData.add(buffer[0..<bytesRead])
+            
+            when defined debug:
+                echo "[RELAY] 📥 Received " & $bytesRead & " bytes"
             
             # Check if we've received the complete request
             if "\r\n\r\n" in requestData:

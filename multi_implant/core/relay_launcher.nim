@@ -121,3 +121,14 @@ proc getRelayServerPort*(): int =
         return RELAY_PORT
     else:
         return 0
+
+# Check if relay server is currently listening (runtime status)
+proc isRelayListening*(): bool =
+    return g_relayServerStarted
+
+# Get the current relay port if listening (runtime port, may differ from compile-time RELAY_PORT)
+proc getCurrentRelayPort*(): int =
+    if g_relayServerStarted:
+        return g_relayServerPort
+    else:
+        return 0

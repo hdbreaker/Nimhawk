@@ -738,6 +738,11 @@ proc httpHandler() {.async.} =
     
     # MAIN POLLING LOOP - This is what was missing!
     var httpCycleCount = 0
+    
+    # Relay state tracking for change detection
+    var lastRelayAlive = false
+    var lastRelayPort = 0
+    
     while true:
         try:
             httpCycleCount += 1
@@ -767,6 +772,50 @@ proc httpHandler() {.async.} =
                     echo "[DEBUG] 🌐 HTTP Handler: ✅ Relay registration forwarded to C2"
             
             g_relayRegistrations = @[]  # Clear processed registrations
+            
+            # 1.5. Check relay server health and detect state changes
+            let currentRelayAlive = relay_launcher.isRelayListening()
+            let currentRelayPort = relay_launcher.getCurrentRelayPort()
+            
+            # Detect state change (OFF→ON, ON→OFF, or port change)
+            if currentRelayAlive != lastRelayAlive or (currentRelayAlive and currentRelayPort != lastRelayPort):
+                when defined debug:
+                    if not lastRelayAlive and currentRelayAlive:
+                        echo "[DEBUG] 🔔 HTTP Handler: RELAY STATE CHANGE - OFF → ON (port " & $currentRelayPort & ")"
+                    elif lastRelayAlive and not currentRelayAlive:
+                        echo "[DEBUG] 🔔 HTTP Handler: RELAY STATE CHANGE - ON → OFF"
+                    elif currentRelayPort != lastRelayPort:
+                        echo "[DEBUG] 🔔 HTTP Handler: RELAY PORT CHANGE - " & $lastRelayPort & " → " & $currentRelayPort
+                
+                # Update state
+                lastRelayAlive = currentRelayAlive
+                lastRelayPort = currentRelayPort
+                
+                # Determine role and port for ChainInfo update
+                let relayRole = if currentRelayAlive: "RELAY_SERVER" else: "STANDARD"
+                let relayPort = if currentRelayAlive: currentRelayPort else: 0
+                
+                # Send immediate ChainInfo update when relay state changes
+                if not inRelayMode and listener.initialized and listener.registered:
+                    webClientListener.postChainInfo(listener, listener.id, "", relayRole, relayPort)
+                    
+                    when defined debug:
+                        echo "[DEBUG] 🔔 HTTP Handler: Sent immediate ChainInfo update (role=" & relayRole & ", port=" & $relayPort & ")"
+            else:
+                # Reaffirm relay status every 30 check-ins for self-healing
+                if httpCycleCount mod 30 == 0 and currentRelayAlive:
+                    when defined debug:
+                        echo "[DEBUG] 🔄 HTTP Handler: Reaffirming relay status (cycle " & $httpCycleCount & ")"
+                    
+                    let relayRole = "RELAY_SERVER"
+                    let relayPort = currentRelayPort
+                    
+                    # Send reaffirmation update
+                    if not inRelayMode and listener.initialized and listener.registered:
+                        webClientListener.postChainInfo(listener, listener.id, "", relayRole, relayPort)
+                        
+                        when defined debug:
+                            echo "[DEBUG] 🔄 HTTP Handler: Sent reaffirmation update (port=" & $relayPort & ")"
             
             # HTTP Relay System: Legacy relay server polling code commented out
             # The HTTP relay system doesn't use g_relayServer - it uses startHttpRelayServer() from http_relay.nim

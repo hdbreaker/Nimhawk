@@ -42,7 +42,7 @@ class NimplantServer(Server):
         self.management_port = config["admin_api"]["port"]
         self.listener_type = config["implants_server"]["type"]
         self.server_ip = config["admin_api"]["ip"]
-        self.listener_host = config["implants_server"]["hostname"]
+        self.listener_host = config["implants_server"].get("hostname", "")
         self.listener_port = config["implants_server"]["port"]
         self.register_path = config["implants_server"]["registerPath"]
         self.reconnect_path = config["implants_server"]["reconnectPath"]

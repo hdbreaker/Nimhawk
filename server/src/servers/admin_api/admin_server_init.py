@@ -1382,8 +1382,8 @@ def admin_server():
             # Add relay chain information (parent, role, and listening port)
             from src.config.db import con
             relay_info = con.execute(
-                """SELECT rcr.parent_guid, rcr.role, rcr.listening_port,
-                          n.ipAddrInt as parent_ip, n.ipAddrExt as parent_ext_ip,
+                """SELECT rcr.parent_guid, rcr.parent_addr, rcr.role, rcr.listening_port,
+                          n.ipAddrInt as parent_ip_fallback, n.ipAddrExt as parent_ext_ip,
                           parent_rcr.listening_port as parent_listening_port
                    FROM relay_chain_relationships rcr
                    LEFT JOIN nimplant n ON rcr.parent_guid = n.guid
@@ -1395,9 +1395,24 @@ def admin_server():
             if relay_info:
                 nimplant_info['relay_role'] = relay_info['role']
                 nimplant_info['relay_parent'] = relay_info['parent_guid']
-                nimplant_info['relay_parent_ip'] = relay_info['parent_ip']
+                
+                # Use parent_addr if available, otherwise extract from parent's IP
+                if relay_info['parent_addr']:
+                    # Parse parent_addr (format: "IP:PORT")
+                    try:
+                        parts = relay_info['parent_addr'].split(':')
+                        nimplant_info['relay_parent_ip'] = parts[0]
+                        nimplant_info['relay_parent_port'] = int(parts[1]) if len(parts) > 1 else relay_info['parent_listening_port']
+                    except (ValueError, IndexError):
+                        # Fallback to parent's ipAddrInt if parsing fails
+                        nimplant_info['relay_parent_ip'] = relay_info['parent_ip_fallback']
+                        nimplant_info['relay_parent_port'] = relay_info['parent_listening_port']
+                else:
+                    # Fallback: use parent's ipAddrInt from database
+                    nimplant_info['relay_parent_ip'] = relay_info['parent_ip_fallback']
+                    nimplant_info['relay_parent_port'] = relay_info['parent_listening_port']
+                
                 nimplant_info['relay_parent_ext_ip'] = relay_info['parent_ext_ip']
-                nimplant_info['relay_parent_port'] = relay_info['parent_listening_port']
                 nimplant_info['relay_listening_port'] = relay_info['listening_port']
             else:
                 # If not in relay_chain_relationships, use the relay_role from nimplants table (if exists)

@@ -33,6 +33,109 @@ def db_file_exists():
 #   BASIC FUNCTIONALITY (Nimhawk)
 #
 
+def run_migrations():
+    """Run database migrations - safe to run multiple times"""
+    try:
+        # Migrate users table to add admin column if it doesn't exist
+        try:
+            con.execute("ALTER TABLE users ADD COLUMN admin BOOLEAN DEFAULT 0")
+            con.commit()
+            utils.nimplant_print("Database migrated - admin column added to users", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+            
+        # Migrate nimplant_history to add is_checkin column if it doesn't exist
+        try:
+            con.execute("ALTER TABLE nimplant_history ADD COLUMN is_checkin BOOLEAN DEFAULT 0")
+            con.commit()
+            utils.nimplant_print("Database migrated - is_checkin column added to nimplant_history", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        # Migrate nimplant table to add workspace_uuid if it doesn't exist
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN workspace_uuid TEXT")
+            con.execute("ALTER TABLE nimplant ADD FOREIGN KEY (workspace_uuid) REFERENCES workspaces(workspace_uuid)")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added workspace_uuid column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+        
+        # Migrate relay_chain_relationships to add parent_addr if it doesn't exist
+        try:
+            con.execute("ALTER TABLE relay_chain_relationships ADD COLUMN parent_addr TEXT")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added parent_addr column to relay_chain_relationships table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        # Migrate nimplant table to add relay_role if it doesn't exist
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN relay_role TEXT DEFAULT 'STANDARD'")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added relay_role column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        # Migrate nimplant table to add relay topology columns if they don't exist
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN is_relay_server BOOLEAN DEFAULT 0")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added is_relay_server column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN relay_server_port INTEGER")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added relay_server_port column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN upstream_relay_host TEXT")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added upstream_relay_host column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN upstream_relay_port INTEGER")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added upstream_relay_port column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN relay_chain TEXT")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added relay_chain column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+
+        try:
+            con.execute("ALTER TABLE nimplant ADD COLUMN downstream_clients TEXT")
+            con.commit()
+            utils.nimplant_print("Database migrated - Added downstream_clients column to nimplant table", skip_db_log=True)
+        except sqlite3.OperationalError:
+            # Column already exists, no problem
+            pass
+            
+    except Exception as e:
+        utils.nimplant_print(f"Error running migrations: {e}", skip_db_log=True)
+        import traceback
+        utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
+
 def initialize_database():
     global db_initialized
     try:
@@ -45,6 +148,8 @@ def initialize_database():
                     # Database exists and has tables, no need to reinitialize schema
                     utils.nimplant_print("Database already exists and has tables, skipping schema initialization", skip_db_log=True)
                     db_initialized = True
+                    # Run migrations for existing database
+                    run_migrations()
                     # Still initialize default users if needed
                     initialize_default_users()
                     return
@@ -163,47 +268,6 @@ def initialize_database():
         except sqlite3.OperationalError:
             # Column already exists, no problem
             pass
-            
-        # Migrate nimplant_history to add is_checkin column if it doesn't exist
-        try:
-            con.execute("ALTER TABLE nimplant_history ADD COLUMN is_checkin BOOLEAN DEFAULT 0")
-            con.commit()
-            utils.nimplant_print("Database migrated - is_checkin column added to nimplant_history", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-            
-        # Check if the file_hash_mapping table already exists
-        try:
-            # Check if the file_hash_mapping table already exists
-            table_exists = con.execute(
-                """SELECT count(*) FROM sqlite_master 
-                   WHERE type='table' AND name='file_hash_mapping'"""
-            ).fetchone()[0]
-            
-            if not table_exists:
-                # Create the table if it doesn't exist
-                con.execute(
-                    """
-                CREATE TABLE IF NOT EXISTS file_hash_mapping
-                (file_hash TEXT PRIMARY KEY, original_filename TEXT, file_path TEXT, upload_timestamp TEXT)
-                """
-                )
-                utils.nimplant_print("Created file_hash_mapping table for mapping file hashes", skip_db_log=True)
-            else:
-                utils.nimplant_print("The file_hash_mapping table already exists", skip_db_log=True)
-        except sqlite3.OperationalError as e:
-            utils.nimplant_print(f"Error checking file_hash_mapping table: {e}", skip_db_log=True)
-
-        # Migrate nimplant table to add workspace_uuid if it doesn't exist
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN workspace_uuid TEXT")
-            con.execute("ALTER TABLE nimplant ADD FOREIGN KEY (workspace_uuid) REFERENCES workspaces(workspace_uuid)")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added workspace_uuid column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
 
         # Create the relay topology table
         con.execute(
@@ -220,77 +284,11 @@ def initialize_database():
             """
         CREATE TABLE IF NOT EXISTS relay_chain_relationships
         (id INTEGER PRIMARY KEY AUTOINCREMENT, nimplant_guid TEXT UNIQUE,
-        parent_guid TEXT, role TEXT, listening_port INTEGER, last_update TEXT,
+        parent_guid TEXT, parent_addr TEXT, role TEXT, listening_port INTEGER, last_update TEXT,
         FOREIGN KEY (nimplant_guid) REFERENCES nimplant(guid),
         FOREIGN KEY (parent_guid) REFERENCES nimplant(guid))
         """
         )
-
-        # Migrate nimplant table to add relay_role if it doesn't exist
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN relay_role TEXT DEFAULT 'STANDARD'")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added relay_role column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        # Migrate nimplant table to add relay topology columns if they don't exist
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN is_relay_server BOOLEAN DEFAULT 0")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added is_relay_server column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN relay_server_port INTEGER")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added relay_server_port column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN upstream_relay_host TEXT")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added upstream_relay_host column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN upstream_relay_port INTEGER")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added upstream_relay_port column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN relay_chain TEXT")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added relay_chain column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN downstream_clients TEXT")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added downstream_clients column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
-
-        try:
-            con.execute("ALTER TABLE nimplant ADD COLUMN relay_topology_updated TEXT")
-            con.commit()
-            utils.nimplant_print("Database migrated - Added relay_topology_updated column to nimplant table", skip_db_log=True)
-        except sqlite3.OperationalError:
-            # Column already exists, no problem
-            pass
 
         # Commit all table creations
         con.commit()
@@ -298,6 +296,9 @@ def initialize_database():
         # Mark database as initialized
         db_initialized = True
         utils.nimplant_print("Database schema initialized successfully", skip_db_log=True)
+
+        # Run migrations (safe to run on new or existing database)
+        run_migrations()
 
         # Initialize default user if configured
         initialize_default_users()
@@ -1844,8 +1845,16 @@ def db_get_nimplant_by_guid(nimplant_guid):
         utils.nimplant_print(f"Traceback: {traceback.format_exc()}", skip_db_log=True)
         return None
 
-def db_store_chain_relationship(nimplant_guid, parent_guid, role, listening_port):
-    """Store or update chain relationship information for distributed topology"""
+def db_store_chain_relationship(nimplant_guid, parent_guid, role, listening_port, parent_addr=None):
+    """Store or update chain relationship information for distributed topology
+    
+    Args:
+        nimplant_guid: GUID of the nimplant
+        parent_guid: GUID of the parent relay
+        role: Role of this nimplant (RELAY_CLIENT, RELAY_SERVER, STANDARD)
+        listening_port: Port this nimplant is listening on (if relay server)
+        parent_addr: Real IP:port of the parent relay from RELAY_CHAIN (e.g., "192.168.0.5:2222")
+    """
     try:
         # Ensure database is initialized
         if not ensure_db_initialized():
@@ -1865,19 +1874,19 @@ def db_store_chain_relationship(nimplant_guid, parent_guid, role, listening_port
             # Update existing relationship
             con.execute(
                 """UPDATE relay_chain_relationships 
-                   SET parent_guid = ?, role = ?, listening_port = ?, last_update = ? 
+                   SET parent_guid = ?, parent_addr = ?, role = ?, listening_port = ?, last_update = ? 
                    WHERE nimplant_guid = ?""",
-                (parent_guid, role, listening_port, timestamp, nimplant_guid)
+                (parent_guid, parent_addr, role, listening_port, timestamp, nimplant_guid)
             )
-            utils.nimplant_print(f"🔗 Updated chain relationship for {nimplant_guid}: parent={parent_guid}, role={role}, port={listening_port}", skip_db_log=True)
+            utils.nimplant_print(f"🔗 Updated chain relationship for {nimplant_guid}: parent={parent_guid} ({parent_addr}), role={role}, port={listening_port}", skip_db_log=True)
         else:
             # Insert new relationship
             con.execute(
-                """INSERT INTO relay_chain_relationships (nimplant_guid, parent_guid, role, listening_port, last_update)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (nimplant_guid, parent_guid, role, listening_port, timestamp)
+                """INSERT INTO relay_chain_relationships (nimplant_guid, parent_guid, parent_addr, role, listening_port, last_update)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (nimplant_guid, parent_guid, parent_addr, role, listening_port, timestamp)
             )
-            utils.nimplant_print(f"🔗 Stored new chain relationship for {nimplant_guid}: parent={parent_guid}, role={role}, port={listening_port}", skip_db_log=True)
+            utils.nimplant_print(f"🔗 Stored new chain relationship for {nimplant_guid}: parent={parent_guid} ({parent_addr}), role={role}, port={listening_port}", skip_db_log=True)
         
         con.commit()
         return True

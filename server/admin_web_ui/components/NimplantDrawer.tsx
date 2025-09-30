@@ -985,47 +985,63 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                 {(nimplantInfo?.relay_role || nimplantInfo?.relay_parent || nimplantInfo?.relay_listening_port) && (
                   <Paper shadow="xs" radius="md" p="md" style={{ border: '1px solid #E9ECEF' }}>
                     <Text fw={600} size="sm" mb="md">Relay Information</Text>
-                    <Stack gap="sm">
-                      {/* Relay Server Status */}
-                      <Group gap="xs" align="center">
-                        <Box
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            backgroundColor: nimplantInfo?.relay_listening_port ? '#51cf66' : '#dee2e6',
-                          }}
-                        />
-                        <Text size="sm" fw={500} style={{ minWidth: 100 }}>Relay Server:</Text>
-                        <Text size="sm" c="dimmed">
-                          {nimplantInfo?.relay_listening_port ? 'ON' : 'OFF'}
-                        </Text>
-                        {nimplantInfo?.relay_listening_port && (
-                          <Text size="sm" fw={500} style={{ fontFamily: 'monospace', marginLeft: 'auto' }}>
-                            {nimplantInfo?.ipAddrInt || 'Unknown'}:{nimplantInfo?.relay_listening_port}
+                    <Stack gap="xs">
+                      {/* Relay Server Row */}
+                      <Group justify="space-between" wrap="nowrap">
+                        <Group gap="xs" wrap="nowrap">
+                          <Box
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: nimplantInfo?.relay_listening_port ? '#51cf66' : '#868e96',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Text size="sm" fw={500} style={{ width: 90, flexShrink: 0 }}>
+                            Listening:
                           </Text>
-                        )}
+                        </Group>
+                        <Text 
+                          size="sm" 
+                          fw={500} 
+                          style={{ fontFamily: 'monospace', textAlign: 'right' }}
+                          c={nimplantInfo?.relay_listening_port ? 'dark' : 'dimmed'}
+                        >
+                          {nimplantInfo?.relay_listening_port 
+                            ? `${nimplantInfo?.ipAddrInt || 'Unknown'}:${nimplantInfo?.relay_listening_port}`
+                            : 'OFF'
+                          }
+                        </Text>
                       </Group>
 
-                      {/* Relay Client Status */}
-                      <Group gap="xs" align="center">
-                        <Box
-                          style={{
-                            width: 10,
-                            height: 10,
-                            borderRadius: '50%',
-                            backgroundColor: nimplantInfo?.relay_parent ? '#51cf66' : '#dee2e6',
-                          }}
-                        />
-                        <Text size="sm" fw={500} style={{ minWidth: 100 }}>Relay Client:</Text>
-                        <Text size="sm" c="dimmed">
-                          {nimplantInfo?.relay_parent ? 'ON' : 'OFF'}
-                        </Text>
-                        {nimplantInfo?.relay_parent && (
-                          <Text size="sm" fw={500} style={{ fontFamily: 'monospace', marginLeft: 'auto' }}>
-                            parent: {nimplantInfo?.relay_parent_ip || 'Unknown'}:{nimplantInfo?.relay_parent_port || '?'} ({nimplantInfo?.relay_parent.substring(0, 8)})
+                      {/* Relay Client Row */}
+                      <Group justify="space-between" wrap="nowrap">
+                        <Group gap="xs" wrap="nowrap">
+                          <Box
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: nimplantInfo?.relay_parent ? '#51cf66' : '#868e96',
+                              flexShrink: 0,
+                            }}
+                          />
+                          <Text size="sm" fw={500} style={{ width: 90, flexShrink: 0 }}>
+                            Parent:
                           </Text>
-                        )}
+                        </Group>
+                        <Text 
+                          size="sm" 
+                          fw={500} 
+                          style={{ fontFamily: 'monospace', textAlign: 'right' }}
+                          c={nimplantInfo?.relay_parent ? 'dark' : 'dimmed'}
+                        >
+                          {nimplantInfo?.relay_parent 
+                            ? `${nimplantInfo?.relay_parent_ip || 'Unknown'}:${nimplantInfo?.relay_parent_port || '?'} (${nimplantInfo?.relay_parent.substring(0, 8)})`
+                            : 'OFF'
+                          }
+                        </Text>
                       </Group>
                     </Stack>
                   </Paper>

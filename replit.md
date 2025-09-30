@@ -86,20 +86,24 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
 - **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
 - **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
 - **Verified**: Successful compilation of Darwin ARM64 binary (99827 lines)
-- **Enhanced UI**: Added "Relay Information" section to implant dashboard (Network tab) with ON/OFF status indicators
-  - Relay Server: Shows status with green/gray dot, displays IP:PORT when ON
-  - Relay Client: Shows status with green/gray dot, displays parent IP:PORT (ID) when ON
-- **API Enhancement**: `/api/nimplants/<guid>` endpoint now includes comprehensive relay information:
-  - `relay_role`: Role of the implant (RELAY_SERVER, RELAY_CLIENT, or STANDARD)
-  - `relay_parent`: GUID of the parent relay
-  - `relay_parent_ip`: Internal IP of the parent relay
-  - `relay_parent_port`: Listening port of the parent relay
-  - `relay_listening_port`: Listening port if this implant is a relay server
-- **UI Component**: `NimplantDrawer.tsx` displays relay status with visual indicators and detailed connection information
+- **Enhanced UI**: Redesigned "Relay Information" section with improved layout and alignment
+  - Two clean rows: "Listening" (relay server status) and "Parent" (relay client status)
+  - Status indicators (green=ON, gray=OFF) with fixed-width labels (90px)
+  - Monospace values aligned to the right for better readability
+  - Listening row shows: `ipAddrInt:listening_port` when ON, "OFF" when not listening
+  - Parent row shows: `relay_parent_ip:relay_parent_port (parent_guid)` when connected, "OFF" when direct C2
+- **Database Enhancement**: Added `parent_addr` column to `relay_chain_relationships` table
+  - Stores real IP:port of parent relay from RELAY_CHAIN (e.g., "192.168.0.5:2222")
+  - Migration runs automatically on startup for existing databases
+  - Resolves issue where parent IPs showed as 127.0.0.1 instead of actual relay IP
+- **API Enhancement**: `/api/nimplants/<guid>` endpoint now correctly extracts relay parent information:
+  - Parses `parent_addr` (IP:port) from database if available
+  - Falls back to parent's `ipAddrInt` and `listening_port` for legacy data
+  - Returns `relay_parent_ip` and `relay_parent_port` separately for UI display
 - **Security Fix**: C2 URL extraction from RELAY_CHAIN for runtime relay servers
   - When a relay client (compiled with RELAY_CHAIN) starts a relay server at runtime via `relay <PORT>` command
-  - C2 URL is automatically extracted from the last hop in RELAY_CHAIN
-  - This allows relay clients to become relay servers without having C2 URL compiled in
+  - Parent chain is extracted correctly (everything after the first hop)
+  - Relay clients only know their parent chain, not the full C2 URL (security through segmentation)
   - Resolves "No C2 configured" errors when relays try to forward to C2
 
 ### Multi-Hop Behavior Example (3-Hop Chain)

@@ -35,15 +35,14 @@ XOR_KEY := $(shell cat ../.xorkey 2>/dev/null || echo 459457925)
 # New HTTP relay configuration (optional)
 RELAY_FLAGS :=
 ifdef RELAY_CHAIN
-	RELAY_FLAGS += -d:RELAY_CHAIN:\"$(RELAY_CHAIN)\"
-	RELAY_FLAGS += -d:RELAY_CHAIN_TARGET:\"$(RELAY_CHAIN)\"
-	$(info 🔗 Relay chain: $(RELAY_CHAIN))
-	$(info 🔗 First hop target: $(shell echo $(RELAY_CHAIN) | cut -d',' -f1))
+    RELAY_FLAGS += -d:RELAY_CHAIN='$(RELAY_CHAIN)'
+    $(info 🔗 Relay chain: $(RELAY_CHAIN))
+    $(info 🔗 First hop target: $(shell echo '$(RELAY_CHAIN)' | cut -d',' -f1))
 endif
 
 ifdef RELAY_PORT
-	RELAY_FLAGS += -d:RELAY_PORT:$(RELAY_PORT)
-	$(info 🔗 Relay server listening on port: $(RELAY_PORT))
+    RELAY_FLAGS += -d:RELAY_PORT:$(RELAY_PORT)
+    $(info 🔗 Relay server listening on port: $(RELAY_PORT))
 endif
 
 # Check if config file exists

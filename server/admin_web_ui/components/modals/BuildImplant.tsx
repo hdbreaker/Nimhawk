@@ -44,7 +44,7 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
             >
                 <Stack>
                     <Text size="sm" color="dimmed" ta="center">
-                        We've upgraded the implant builder with new features and better organization!
+                        We&apos;ve upgraded the implant builder with new features and better organization!
                     </Text>
 
                     <Group justify="center" my="md">

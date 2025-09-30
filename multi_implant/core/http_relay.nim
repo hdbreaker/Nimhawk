@@ -210,6 +210,17 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         echo "[RELAY] 🔌 New connection"
     
     try:
+        # Configure socket for immediate data transmission (disable Nagle)
+        client.setSockOpt(OptNoDelay, true)
+        
+        when defined debug:
+            # Get peer info for debugging
+            try:
+                let (peerAddr, peerPort) = client.getPeerAddr()
+                echo "[RELAY] 🔗 Connected from: " & peerAddr & ":" & $peerPort
+            except:
+                echo "[RELAY] ⚠️  Could not get peer address"
+        
         # Read request with timeout
         var requestData = ""
         var buffer = newString(RELAY_BUFFER_SIZE)
@@ -217,12 +228,60 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         var headersComplete = false
         
         when defined debug:
-            echo "[RELAY] 📡 Waiting for request data..."
+            echo "[RELAY] 📡 Waiting for request data... (15s timeout)"
         
-        # Read with shorter timeout for each recv to avoid blocking
+        # Try to receive data with extended timeout
+        let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 15000)
+        
+        when defined debug:
+            echo "[RELAY] 📊 First recv result: bytesRead=" & $bytesRead
+        
+        if bytesRead <= 0:
+            when defined debug:
+                echo "[RELAY] ❌ No data received on first recv (timeout or closed)"
+            client.close()
+            return
+        
+        requestData.add(buffer[0..<bytesRead])
+        when defined debug:
+            echo "[RELAY] 📥 Received " & $bytesRead & " bytes"
+            echo "[RELAY] 📄 First 100 chars: " & requestData[0..<(if requestData.len > 100: 100 else: requestData.len)]
+        
+        # Continue reading if needed
         while true:
-            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 5000)
-            if bytesRead <= 0:
+            # Check if we've received complete headers
+            if not headersComplete and "\r\n\r\n" in requestData:
+                headersComplete = true
+                when defined debug:
+                    echo "[RELAY] ✅ Headers complete"
+                
+                # Check for body
+                if "Content-Length:" in requestData:
+                    let lines = requestData.split("\r\n")
+                    for line in lines:
+                        if line.toLower().startsWith("content-length:"):
+                            let value = line.split(":")[1].strip()
+                            expectedBodySize = parseInt(value)
+                            when defined debug:
+                                echo "[RELAY] 📦 Expected body size: " & $expectedBodySize & " bytes"
+                            break
+                else:
+                    when defined debug:
+                        echo "[RELAY] ✅ No Content-Length, request complete"
+                    break
+            
+            # If we need more data, try to read
+            if headersComplete and expectedBodySize > 0:
+                let headerEnd = requestData.find("\r\n\r\n")
+                let bodySize = requestData.len - headerEnd - 4
+                when defined debug:
+                    echo "[RELAY] 📦 Body progress: " & $bodySize & "/" & $expectedBodySize & " bytes"
+                if bodySize >= expectedBodySize:
+                    break
+            
+            # Try to read more data
+            let moreBytes = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 5000)
+            if moreBytes <= 0:
                 when defined debug:
                     echo "[RELAY] 📭 Connection closed or no more data (bytesRead=" & $bytesRead & ")"
                 # If we have headers, this is OK (GET requests have no body)

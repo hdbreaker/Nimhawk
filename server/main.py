@@ -2,10 +2,11 @@ import os
 import sys
 from src.start_servers.start import start_servers
 
-# Add Nim to PATH for implant compilation
+# Add Nim and Zig to PATH for implant compilation
 nimble_bin = os.path.expanduser("~/.nimble/bin")
+zig_bin = "/tmp/zig-linux-x86_64-0.13.0"
 if os.path.exists(nimble_bin) and nimble_bin not in os.environ.get("PATH", ""):
-    os.environ["PATH"] = f"{nimble_bin}:{os.environ.get('PATH', '')}"
+    os.environ["PATH"] = f"{nimble_bin}:{zig_bin}:{os.environ.get('PATH', '')}"
 
 
 def get_xor_key(force_new=False):

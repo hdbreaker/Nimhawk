@@ -22,12 +22,13 @@ proc debugKeyDecoding(keyStr: string, keyBytes: string, xorKey: int): void =
             echo obf("  [") & $i & obf("]: 0x") & keyBytes[i].byte.toHex()
         echo obf("DEBUG: Attempting XOR with INITIAL_XOR_KEY: ") & $xorKey
 
-# Encrypt next hop for X-Next-Hop header (XOR + Base64)
-proc encryptNextHop(nextHop: string): string =
-    let xored = xorString(nextHop, $INITIAL_XOR_KEY)
+# Encrypt next hop chain for X-Next-Hop header (XOR + Base64)
+# Supports comma-separated list of hops: "hop1:port1,hop2:port2,hop3:port3"
+proc encryptNextHop(hopChain: string): string =
+    let xored = xorString(hopChain, INITIAL_XOR_KEY)
     result = base64.encode(xored)
     when defined verbose:
-        echo obf("DEBUG: Encrypted next hop: ") & nextHop & obf(" -> ") & result
+        echo obf("DEBUG: Encrypted hop chain: ") & hopChain & obf(" -> ") & result
 
 # Define the object with listener properties
 const INITIAL_XOR_KEY {.intdefine.}: int = 459457925

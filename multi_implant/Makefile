@@ -208,8 +208,8 @@ help:
 	@echo ""
 	@echo "Examples:"
 	@echo "  make darwin_arm64 DEBUG=1"
-	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:5000 DEBUG=1
-	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:5000 DEBUG=1
+	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:8080,c2-server.com:5000 DEBUG=1
+	@echo "  make darwin_arm64 RELAY_CHAIN=192.168.1.100:8080,c2-server.com:5000 DEBUG=1
 
 # Default target
 .DEFAULT_GOAL := help

@@ -183,9 +183,10 @@ Simple HTTP-over-HTTP relay system for multi-hop agent chains. Relays blindly fo
 
 **Compilation Variables:**
 
-- **`RELAY_CHAIN`** (string): Next hop in relay chain  
-  Example: `RELAY_CHAIN=192.168.1.100:8080`  
-  Causes agent to forward all HTTP requests through this relay
+- **`RELAY_CHAIN`** (string): Comma-separated list of relay hops  
+  Single hop: `RELAY_CHAIN=relay1.com:8080`  
+  Multi-hop: `RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000`  
+  Causes agent to forward all HTTP requests through relay chain
 
 - **`RELAY_PORT`** (int): Port to listen on as relay server  
   Example: `RELAY_PORT=8080`  
@@ -194,23 +195,27 @@ Simple HTTP-over-HTTP relay system for multi-hop agent chains. Relays blindly fo
 **Build Examples:**
 
 ```bash
-# Agent that forwards through relay
-make darwin_arm64 RELAY_CHAIN=192.168.1.100:8080 DEBUG=1
+# Agent that forwards through single relay to C2
+make darwin_arm64 RELAY_CHAIN=relay1.com:8080,c2-server.com:5000 DEBUG=1
 
-# Relay server that listens on port 8080
+# Agent that forwards through 2 relays to C2 (3-hop chain)
+make darwin_arm64 RELAY_CHAIN=relay1.com:8080,relay2.com:8080,c2-server.com:5000 DEBUG=1
+
+# Relay server (listens on 8080, doesn't forward)
 make linux_x64 RELAY_PORT=8080 DEBUG=1
 
-# Multi-hop relay: listens on 8080 AND forwards to another relay
-make linux_x64 RELAY_CHAIN=10.0.0.5:8080 RELAY_PORT=8080 DEBUG=1
+# Multi-hop relay: listens on 8080 AND forwards through another relay
+make linux_x64 RELAY_CHAIN=relay2.com:8080,c2-server.com:5000 RELAY_PORT=8080 DEBUG=1
 ```
 
 **HTTP Headers:**
 
 1. **`X-Next-Hop`** (Routing Layer)
-   - Contains: Encrypted next hop address (format: "host:port")
-   - Encryption: Base64(XOR(address, INITIAL_XOR_KEY))
-   - Usage: Agent injects once, relay consumes and forwards
-   - Scope: Consumed at each hop (not end-to-end)
+   - Contains: Encrypted comma-separated list of hops (format: "host1:port1,host2:port2,...")
+   - Encryption: Base64(XOR(hop_chain, INITIAL_XOR_KEY))
+   - Usage: Agent injects full chain, each relay pops first hop and re-encrypts remainder
+   - Scope: Consumed and updated at each hop (remaining chain forwarded)
+   - Last hop: Final relay before C2 omits X-Next-Hop header entirely
 
 2. **`X-Relay-GUID`** (Topology Layer)
    - Contains: Encrypted GUID of the relay server
@@ -219,12 +224,19 @@ make linux_x64 RELAY_CHAIN=10.0.0.5:8080 RELAY_PORT=8080 DEBUG=1
    - Scope: Reaches C2 to establish parent-child relationship
    - Critical: Each relay MUST strip existing X-Relay-GUID before injecting its own
 
+**Multi-Hop Example Flow (3-hop chain):**
+
+1. **Agent** sends request with `X-Next-Hop: enc("relay1:8080,relay2:8080,c2:5000")`
+2. **Relay1** decrypts → pops "relay1:8080" → forwards to relay1:8080 with `X-Next-Hop: enc("relay2:8080,c2:5000")` + `X-Relay-GUID: enc(relay1_guid)`
+3. **Relay2** decrypts → pops "relay2:8080" → forwards to relay2:8080 with `X-Next-Hop: enc("c2:5000")` + `X-Relay-GUID: enc(relay2_guid)` (strips relay1's GUID)
+4. **C2** receives request with `X-Relay-GUID: enc(relay2_guid)` → stores agent's parent as relay2
+
 **Topology Visualization:**
 
 - UI endpoint: `/api/chain-relationships` queries `chain_relationships` table
 - Database stores: (child_guid, parent_guid, role, listening_port)
 - React Flow component renders hierarchical tree in `pages/topology.tsx`
-- Supports nested chains of arbitrary depth
+- Supports nested chains of arbitrary depth (tested up to 10 hops)
 
 **Security Considerations:**
 

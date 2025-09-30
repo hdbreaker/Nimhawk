@@ -25,6 +25,7 @@ type
         body*: string
 
 # Parse X-Next-Hop header (encrypted with INITIAL_XOR_KEY)
+# Returns the full hop chain as comma-separated string
 proc decryptNextHop*(encrypted: string): string =
     try:
         # Base64 decode
@@ -32,11 +33,39 @@ proc decryptNextHop*(encrypted: string): string =
         # XOR decrypt with INITIAL_XOR_KEY
         result = xorString(decoded, INITIAL_XOR_KEY)
         when defined debug:
-            echo "[RELAY] 🔓 Decrypted X-Next-Hop: " & result
+            echo "[RELAY] 🔓 Decrypted X-Next-Hop chain: " & result
     except:
         when defined debug:
             echo "[RELAY] ❌ Failed to decrypt X-Next-Hop"
         result = ""
+
+# Encrypt next hop chain for X-Next-Hop header (XOR + Base64)
+proc encryptNextHop*(hopChain: string): string =
+    let xored = xorString(hopChain, INITIAL_XOR_KEY)
+    result = base64.encode(xored)
+    when defined debug:
+        echo "[RELAY] 🔐 Encrypted X-Next-Hop chain: " & hopChain & " -> " & result
+
+# Pop first hop from comma-separated chain and return (nextHop, remainingChain)
+proc popNextHop*(hopChain: string): (string, string) =
+    let hops = hopChain.split(",")
+    if hops.len == 0:
+        return ("", "")
+    
+    let nextHop = hops[0].strip()
+    
+    # Remaining hops (if any)
+    var remaining = ""
+    if hops.len > 1:
+        for i in 1..<hops.len:
+            if remaining != "":
+                remaining.add(",")
+            remaining.add(hops[i].strip())
+    
+    when defined debug:
+        echo "[RELAY] 🔀 Pop hop: next=" & nextHop & ", remaining=" & (if remaining == "": "NONE (last hop)" else: remaining)
+    
+    return (nextHop, remaining)
 
 # Parse HTTP request from raw data
 proc parseHttpRequest(data: string): HttpRequest =
@@ -74,8 +103,8 @@ proc encryptRelayGuid(guid: string): string =
     when defined debug:
         echo "[RELAY] 🔐 Encrypted relay GUID: " & guid & " -> " & result
 
-# Forward HTTP request to next hop
-proc forwardRequest(nextHop: string, req: HttpRequest, relayGuid: string = ""): string =
+# Forward HTTP request to next hop with remaining hop chain
+proc forwardRequest(nextHop: string, remainingHops: string, req: HttpRequest, relayGuid: string = ""): string =
     when defined debug:
         echo "[RELAY] 🔀 Forwarding to: " & nextHop
         echo "[RELAY] 🔀 Method: " & req.`method` & " Path: " & req.path
@@ -99,13 +128,17 @@ proc forwardRequest(nextHop: string, req: HttpRequest, relayGuid: string = ""): 
         # Build HTTP request
         var request = req.`method` & " " & req.path & " HTTP/1.1\r\n"
         
-        # Add original headers (skip X-Relay-GUID to avoid duplicates in multi-hop)
+        # Add original headers (skip X-Relay-GUID and X-Next-Hop - we'll handle these specially)
         for (key, value) in req.headers:
-            if key.toLower() != "x-relay-guid":
+            let keyLower = key.toLower()
+            if keyLower != "x-relay-guid" and keyLower != "x-next-hop":
                 request.add(key & ": " & value & "\r\n")
-            else:
+            elif keyLower == "x-relay-guid":
                 when defined debug:
                     echo "[RELAY] 🗑️ Removed existing X-Relay-GUID header (multi-hop cleanup)"
+            elif keyLower == "x-next-hop":
+                when defined debug:
+                    echo "[RELAY] 🗑️ Removed existing X-Next-Hop header (will re-inject if more hops remain)"
         
         # Inject THIS relay's GUID (replacing any previous one)
         if relayGuid != "":
@@ -113,6 +146,16 @@ proc forwardRequest(nextHop: string, req: HttpRequest, relayGuid: string = ""): 
             request.add("X-Relay-GUID: " & encryptedGuid & "\r\n")
             when defined debug:
                 echo "[RELAY] 🏷️ Injected X-Relay-GUID: " & relayGuid
+        
+        # Re-inject X-Next-Hop with remaining hops (if any)
+        if remainingHops != "":
+            let encryptedRemainingHops = encryptNextHop(remainingHops)
+            request.add("X-Next-Hop: " & encryptedRemainingHops & "\r\n")
+            when defined debug:
+                echo "[RELAY] 🔀 Re-injected X-Next-Hop with remaining chain: " & remainingHops
+        else:
+            when defined debug:
+                echo "[RELAY] ✅ Last hop in chain - no X-Next-Hop header added"
         
         # Add blank line and body
         request.add("\r\n")
@@ -193,14 +236,14 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         # Parse request
         let req = parseHttpRequest(requestData)
         
-        # Extract X-Next-Hop header
-        var nextHop = ""
+        # Extract X-Next-Hop header (contains comma-separated hop chain)
+        var hopChain = ""
         for (key, value) in req.headers:
             if key.toLower() == "x-next-hop":
-                nextHop = decryptNextHop(value)
+                hopChain = decryptNextHop(value)
                 break
         
-        if nextHop == "":
+        if hopChain == "":
             when defined debug:
                 echo "[RELAY] ❌ No X-Next-Hop header found"
             let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
@@ -208,8 +251,19 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
             client.close()
             return
         
-        # Forward request with relay GUID
-        let response = forwardRequest(nextHop, req, relayGuid)
+        # Pop first hop from chain
+        let (nextHop, remainingHops) = popNextHop(hopChain)
+        
+        if nextHop == "":
+            when defined debug:
+                echo "[RELAY] ❌ Empty hop chain after decryption"
+            let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+            client.send(response)
+            client.close()
+            return
+        
+        # Forward request with relay GUID and remaining hops
+        let response = forwardRequest(nextHop, remainingHops, req, relayGuid)
         
         if response != "":
             client.send(response)

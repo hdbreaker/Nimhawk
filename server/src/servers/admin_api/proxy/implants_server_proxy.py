@@ -159,6 +159,7 @@ class ImplantsServerProxy:
             config["implants_server"]["taskPath"],
             config["implants_server"]["resultPath"],
             config["implants_server"]["reconnectPath"],
+            "/chain",
         ]
         
         # Check if route starts with any proxy route

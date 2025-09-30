@@ -192,7 +192,11 @@ function ImplantBuilderPage() {
     const handleDownload = () => {
         if (buildResult && buildResult.download_url) {
             const token = localStorage.getItem('auth_token');
-            const downloadUrl = `${buildResult.download_url}?token=${token}`;
+            // Ensure we use the full server URL, not a relative path
+            const downloadPath = buildResult.download_url.startsWith('http') 
+                ? buildResult.download_url 
+                : `${SERVER_BASE_URL}${buildResult.download_url}`;
+            const downloadUrl = `${downloadPath}?token=${token}`;
             window.open(downloadUrl, '_blank');
         }
     };

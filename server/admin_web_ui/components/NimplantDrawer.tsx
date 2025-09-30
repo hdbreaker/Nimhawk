@@ -1265,7 +1265,7 @@ const NimplantContent = memo(
                               }
                             >
                               {nimplantInfo?.relay_listening_port
-                                ? `${nimplantInfo?.ipAddrInt || "Unknown"}:${nimplantInfo?.relay_listening_port} (${nimplantInfo?.nimplantGuid?.substring(0, 8)})`
+                                ? `${nimplantInfo?.ipAddrInt || "Unknown"}:${nimplantInfo?.relay_listening_port} (${nimplantInfo?.guid?.substring(0, 8)})`
                                 : "OFF"}
                             </Text>
                           </Grid.Col>

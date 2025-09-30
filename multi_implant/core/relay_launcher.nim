@@ -3,7 +3,7 @@
     Starts the HTTP relay server if RELAY_PORT is defined at compile time
 ]#
 
-import asyncdispatch, threadpool
+import asyncdispatch, threadpool, strutils
 import http_relay
 
 # Check if RELAY_PORT is defined at compile time

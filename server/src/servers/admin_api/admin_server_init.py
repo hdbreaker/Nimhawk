@@ -340,11 +340,17 @@ def admin_server():
                 
                 # Use subprocess.Popen for better output control and to avoid encoding errors
                 try:
+                    # Add Nim to PATH for compilation
+                    env = os.environ.copy()
+                    nim_bin_path = os.path.expanduser("~/.nimble/bin")
+                    env['PATH'] = f"{nim_bin_path}:{env.get('PATH', '')}"
+                    
                     process = subprocess.Popen(
                         cmd,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
-                        text=False  # Use binary mode to avoid encoding problems
+                        text=False,  # Use binary mode to avoid encoding problems
+                        env=env  # Use modified environment with Nim in PATH
                     )
                     
                     # Update status

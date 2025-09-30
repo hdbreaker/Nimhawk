@@ -1379,6 +1379,26 @@ def admin_server():
                 # If it doesn't have workspace_uuid, use Default
                 nimplant_info['workspace_name'] = "Default"
             
+            # Add relay chain information (parent, role, and listening port)
+            from src.config.db import con
+            relay_info = con.execute(
+                """SELECT parent_guid, role, listening_port 
+                   FROM relay_chain_relationships 
+                   WHERE nimplant_guid = ?""",
+                (guid,)
+            ).fetchone()
+            
+            if relay_info:
+                nimplant_info['relay_role'] = relay_info['role']
+                nimplant_info['relay_parent'] = relay_info['parent_guid']
+                nimplant_info['relay_listening_port'] = relay_info['listening_port']
+            else:
+                # If not in relay_chain_relationships, use the relay_role from nimplants table (if exists)
+                if 'relay_role' not in nimplant_info or not nimplant_info['relay_role']:
+                    nimplant_info['relay_role'] = 'STANDARD'
+                nimplant_info['relay_parent'] = None
+                nimplant_info['relay_listening_port'] = None
+            
             utils.nimplant_print(f"DEBUG: get_nimplant - Returning implant info successfully", skip_db_log=True)
             return flask.jsonify(nimplant_info)
         except Exception as e:

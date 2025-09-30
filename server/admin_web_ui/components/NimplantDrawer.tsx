@@ -59,6 +59,9 @@ interface NimplantInfo {
   disconnected?: boolean;
   workspace_name?: string;
   workspace_uuid?: string;
+  relay_role?: string;
+  relay_parent?: string | null;
+  relay_listening_port?: number | null;
 }
 
 interface NimplantDrawerProps {
@@ -974,6 +977,54 @@ const NimplantContent = memo(({ guid, onClose, opened, onKilled }: { guid: strin
                     </Grid.Col>
                   </Grid>
                 </Paper>
+                
+                {/* Relay Information Section - Only show if relay_role exists or relay info present */}
+                {(nimplantInfo?.relay_role || nimplantInfo?.relay_parent || nimplantInfo?.relay_listening_port) && (
+                  <Paper shadow="xs" radius="md" p="md" style={{ border: '1px solid #E9ECEF' }}>
+                    <Text fw={600} size="sm" mb="md">Relay Information</Text>
+                    <Grid>
+                      <Grid.Col span={6}>
+                        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Relay Role</Text>
+                        {infoResult.isLoading ? (
+                          <Loader size="xs" />
+                        ) : (
+                          <Badge 
+                            color={
+                              nimplantInfo?.relay_role === 'RELAY_SERVER' ? 'green' :
+                              nimplantInfo?.relay_role === 'RELAY_CLIENT' ? 'blue' : 'gray'
+                            }
+                            variant="filled" 
+                            size="md"
+                            style={{ 
+                              fontWeight: 700,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {nimplantInfo?.relay_role || 'STANDARD'}
+                          </Badge>
+                        )}
+                      </Grid.Col>
+                      
+                      {nimplantInfo?.relay_parent && (
+                        <Grid.Col span={6}>
+                          <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Relay Parent</Text>
+                          <Text fw={500} style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                            {infoResult.isLoading ? <Loader size="xs" /> : nimplantInfo.relay_parent}
+                          </Text>
+                        </Grid.Col>
+                      )}
+                      
+                      {nimplantInfo?.relay_listening_port && (
+                        <Grid.Col span={6}>
+                          <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Listening Port</Text>
+                          <Text fw={500} style={{ fontFamily: 'monospace' }}>
+                            {infoResult.isLoading ? <Loader size="xs" /> : nimplantInfo.relay_listening_port}
+                          </Text>
+                        </Grid.Col>
+                      )}
+                    </Grid>
+                  </Paper>
+                )}
                 
                 <Paper shadow="xs" radius="md" p="md" style={{ border: '1px solid #E9ECEF' }}>
                   <Text fw={600} size="sm" mb="md">Implant communication</Text>

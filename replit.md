@@ -86,6 +86,9 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
 - **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
 - **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
 - **Verified**: Successful compilation of Darwin ARM64 binary (99827 lines)
+- **Enhanced UI**: Added "Relay Information" section to implant dashboard (Network tab) showing relay role, parent GUID, and listening port
+- **API Enhancement**: `/api/nimplants/<guid>` endpoint now includes `relay_parent` and `relay_listening_port` fields from relay_chain_relationships table
+- **UI Component**: `NimplantDrawer.tsx` now displays relay information dynamically based on implant role and relay chain membership
 
 ### Multi-Hop Behavior Example (3-Hop Chain)
 

@@ -1714,9 +1714,17 @@ def admin_server():
 
     @app.errorhandler(Exception)
     def all_exception_handler(error):
-        # Improved error logging
-        utils.nimplant_print(f"ERROR in route {flask.request.path}: {str(error)}")
-        utils.nimplant_print(f"Error type: {type(error).__name__}")
+        # Don't handle 404 errors - let them pass through
+        from werkzeug.exceptions import NotFound
+        if isinstance(error, NotFound):
+            utils.nimplant_print(f"DEBUG: [ERROR HANDLER] Unhandled exception: {type(error).__name__} - {str(error)}")
+            import traceback
+            utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
+            # Re-raise to let Flask handle it normally
+            raise error
+            
+        # Improved error logging for other exceptions
+        utils.nimplant_print(f"DEBUG: [ERROR HANDLER] Unhandled exception: {type(error).__name__} - {str(error)}")
         import traceback
         utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
         
@@ -1782,6 +1790,56 @@ def admin_server():
         utils.nimplant_print(f"ERROR: Failed to setup Implants Server proxy: {e}")
         import traceback
         utils.nimplant_print(f"Traceback: {traceback.format_exc()}")
+
+    # Serve frontend static files from admin_web_ui/out directory
+    frontend_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "admin_web_ui", "out"))
+    utils.nimplant_print(f"DEBUG: Frontend directory: {frontend_dir}")
+    utils.nimplant_print(f"DEBUG: Frontend exists: {os.path.exists(frontend_dir)}")
+    
+    if os.path.exists(frontend_dir):
+        # Serve _next static files (CSS, JS, etc)
+        @app.route('/_next/<path:filename>')
+        def serve_next_static(filename):
+            return flask.send_from_directory(os.path.join(frontend_dir, '_next'), filename)
+        
+        # Serve static assets (images, etc)
+        @app.route('/<path:filename>')
+        def serve_static_file(filename):
+            # Skip API routes and implant routes
+            if filename.startswith('api/') or filename.startswith('register') or \
+               filename.startswith('task') or filename.startswith('result') or \
+               filename.startswith('reconnect') or filename.startswith('chain'):
+                return flask.abort(404)
+            
+            # Try to serve the file from the out directory
+            file_path = os.path.join(frontend_dir, filename)
+            if os.path.exists(file_path) and os.path.isfile(file_path):
+                return flask.send_from_directory(frontend_dir, filename)
+            
+            # If it's a directory path, try to serve index.html from that directory
+            if os.path.exists(file_path) and os.path.isdir(file_path):
+                index_file = os.path.join(file_path, 'index.html')
+                if os.path.exists(index_file):
+                    return flask.send_file(index_file)
+            
+            # For SPA routing, serve index.html for any unmatched routes
+            index_path = os.path.join(frontend_dir, 'index.html')
+            if os.path.exists(index_path):
+                return flask.send_file(index_path)
+            
+            return flask.abort(404)
+        
+        # Root route - serve index.html
+        @app.route('/')
+        def serve_root():
+            index_path = os.path.join(frontend_dir, 'index.html')
+            if os.path.exists(index_path):
+                return flask.send_file(index_path)
+            return flask.jsonify({"error": "Frontend not found"}), 404
+        
+        utils.nimplant_print(f"✅ Frontend static files configured from: {frontend_dir}")
+    else:
+        utils.nimplant_print(f"⚠️ WARNING: Frontend directory not found at {frontend_dir}")
 
     # Print all registered routes for debugging
     utils.nimplant_print(f"DEBUG: All registered routes in admin_server:")

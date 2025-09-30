@@ -571,7 +571,7 @@ proc httpHandler() {.async.} =
     
     # Load configuration into listener
     listener.listenerType = CONFIG.getOrDefault("listenerType", "HTTP")
-    listener.listenerHost = CONFIG.getOrDefault("hostname", "")
+    listener.listenerHost = ""  # No longer used, logic moved to doRequest
     listener.implantCallbackIp = CONFIG.getOrDefault("implantCallbackIp", "127.0.0.1")
     listener.listenerPort = CONFIG.getOrDefault("listenerPort", "80")
     listener.registerPath = CONFIG.getOrDefault("listenerRegPath", "/register")

@@ -25,7 +25,6 @@ proc parseConfig*(): Table[string, string] =
     
     # Decode the configuration at RUNtime and parse the TOML to store it in a basic table
     var tomlConfig = parsetoml.parseString(xorByteSeqToString(embeddedConf, INITIAL_XOR_KEY))
-    config[obf("hostname")]         = tomlConfig[obf("implants_server")][obf("hostname")].getStr()
     config[obf("listenerType")]     = tomlConfig[obf("implants_server")][obf("type")].getStr()
     config[obf("listenerPort")]     = $tomlConfig[obf("implants_server")][obf("port")].getInt()
     config[obf("listenerRegPath")]  = tomlConfig[obf("implants_server")][obf("registerPath")].getStr()

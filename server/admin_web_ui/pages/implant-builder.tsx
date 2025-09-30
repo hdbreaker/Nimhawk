@@ -46,6 +46,7 @@ import {
 import { notifications } from '@mantine/notifications';
 import MainLayout from "../components/MainLayout";
 import { getBuildOptions, buildImplant } from "../modules/nimplant";
+import { SERVER_BASE_URL } from "../config";
 
 interface ImplantType {
     id: string;
@@ -106,7 +107,7 @@ function ImplantBuilderPage() {
             try {
                 const token = localStorage.getItem('auth_token');
                 
-                const response = await fetch(`/api/build/status/${buildId}`, {
+                const response = await fetch(`${SERVER_BASE_URL}/api/build/status/${buildId}`, {
                     headers: {
                         'Content-Type': 'application/json',
                         ...(token ? { 'Authorization': `Bearer ${token}` } : {})

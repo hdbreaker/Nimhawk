@@ -214,8 +214,8 @@ def nim_implants_server(xor_key):
                                 utils.nimplant_print(f"DEBUG: 🔗 ❌ Error processing X-Relay-GUID: {str(e)}")
                         else:
                             utils.nimplant_print(f"DEBUG: 🔗 No X-Relay-GUID header - direct C2 connection")
-                            # Store with null parent for direct C2 connection
-                            if relay_role != "STANDARD" or relay_role == "RELAY_SERVER":
+                            # Store with null parent ONLY if this is a relay server (not standard agent)
+                            if relay_role == "RELAY_SERVER":
                                 db.db_store_chain_relationship(np.guid, None, relay_role, 0)
 
                         notify_user(np)

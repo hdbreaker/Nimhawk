@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Menu, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const isDev = process.env.NODE_ENV === 'development';
 
 // Keep a global reference of the window object
@@ -33,7 +34,7 @@ function createWindow() {
   
   if (isDev) {
     // Development mode: use development server
-    const startUrl = 'http://localhost:3000';
+    const startUrl = process.env.START_URL || 'http://localhost:3000';
     console.log('Loading URL:', startUrl);
     mainWindow.loadURL(startUrl);
   } else {

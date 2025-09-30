@@ -68,8 +68,8 @@ interface BuildOptions {
 
 interface RelayConfig {
     enabled: boolean;
-    address: string;
-    port: string;
+    chain: string;           // RELAY_CHAIN: "relay1:8080,relay2:8080,c2:5000"
+    listen_port: string;     // RELAY_PORT: "8080" (optional, for relay servers)
     fast_mode: boolean;
 }
 
@@ -87,8 +87,8 @@ function ImplantBuilderPage() {
     // Relay configuration
     const [relayConfig, setRelayConfig] = useState<RelayConfig>({
         enabled: false,
-        address: "",
-        port: "9999",
+        chain: "",              // e.g., "relay1.com:8080,c2.server.com:5000"
+        listen_port: "",        // e.g., "8080" (empty if not a relay server)
         fast_mode: false
     });
     
@@ -213,8 +213,8 @@ function ImplantBuilderPage() {
         setWorkspace("");
         setRelayConfig({
             enabled: false,
-            address: "",
-            port: "9999",
+            chain: "",
+            listen_port: "",
             fast_mode: false
         });
     };
@@ -531,22 +531,23 @@ function ImplantBuilderPage() {
                                 
                                 {relayConfig.enabled && (
                                     <Stack gap="sm" pl="md">
-                                        <Group grow>
-                                            <TextInput
-                                                label="Relay Server Address"
-                                                placeholder="192.168.1.100"
-                                                value={relayConfig.address}
-                                                onChange={(e) => setRelayConfig(prev => ({ ...prev, address: e.currentTarget.value }))}
-                                                disabled={isBuilding || buildResult !== null}
-                                            />
-                                            <TextInput
-                                                label="Relay Server Port"
-                                                placeholder="9999"
-                                                value={relayConfig.port}
-                                                onChange={(e) => setRelayConfig(prev => ({ ...prev, port: e.currentTarget.value }))}
-                                                disabled={isBuilding || buildResult !== null}
-                                            />
-                                        </Group>
+                                        <TextInput
+                                            label="Relay Chain"
+                                            placeholder="relay1.com:8080,relay2.com:8080,c2.server.com:5000"
+                                            value={relayConfig.chain}
+                                            onChange={(e) => setRelayConfig(prev => ({ ...prev, chain: e.currentTarget.value }))}
+                                            disabled={isBuilding || buildResult !== null}
+                                            description="Comma-separated list of relay hops ending with C2 server"
+                                        />
+                                        
+                                        <TextInput
+                                            label="Listen Port (Optional)"
+                                            placeholder="8080"
+                                            value={relayConfig.listen_port}
+                                            onChange={(e) => setRelayConfig(prev => ({ ...prev, listen_port: e.currentTarget.value }))}
+                                            disabled={isBuilding || buildResult !== null}
+                                            description="Port to listen on if this implant acts as a relay server (leave empty for client-only)"
+                                        />
                                         
                                         <Checkbox
                                             checked={relayConfig.fast_mode}
@@ -554,7 +555,7 @@ function ImplantBuilderPage() {
                                             label={
                                                 <Group>
                                                     <FaRocket size={14} />
-                                                    <Text size="sm">Fast Mode (0.5-1s intervals)</Text>
+                                                    <Text size="sm">Fast Mode (1-2s intervals)</Text>
                                                 </Group>
                                             }
                                             description="Enable faster communication intervals for relay clients"

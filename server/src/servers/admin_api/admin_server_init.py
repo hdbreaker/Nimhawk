@@ -1386,7 +1386,7 @@ def admin_server():
                           n.ipAddrInt as parent_ip, n.ipAddrExt as parent_ext_ip,
                           parent_rcr.listening_port as parent_listening_port
                    FROM relay_chain_relationships rcr
-                   LEFT JOIN nimplants n ON rcr.parent_guid = n.guid
+                   LEFT JOIN nimplant n ON rcr.parent_guid = n.guid
                    LEFT JOIN relay_chain_relationships parent_rcr ON parent_rcr.nimplant_guid = rcr.parent_guid
                    WHERE rcr.nimplant_guid = ?""",
                 (guid,)

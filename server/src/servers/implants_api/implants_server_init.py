@@ -378,6 +378,44 @@ def nim_implants_server(xor_key):
                     )
                     np.ip_external = current_external_ip
 
+                # Process X-Relay-GUID header to establish/update parent-child relationship
+                relay_guid_header = flask.request.headers.get("X-Relay-GUID")
+                if relay_guid_header:
+                    try:
+                        utils.nimplant_print(f"DEBUG: 🔗 Check-in: X-Relay-GUID header found: {relay_guid_header}")
+                        
+                        # Split by comma to get all relay GUIDs in the chain
+                        encrypted_guids = relay_guid_header.split(',')
+                        utils.nimplant_print(f"DEBUG: 🔗 Check-in: Found {len(encrypted_guids)} relay GUIDs in chain")
+                        
+                        # Decrypt first GUID (immediate parent)
+                        encrypted_bytes = base64.b64decode(encrypted_guids[0].strip())
+                        first_relay_guid = xor_bytes(encrypted_bytes, xor_key).decode('utf-8')
+                        utils.nimplant_print(f"DEBUG: 🔗 Check-in: Immediate parent: {first_relay_guid}")
+                        
+                        # Get current relay role
+                        relay_role = db.db_get_nimplant_relay_role(np.guid) or "STANDARD"
+                        
+                        # Check if relationship already exists
+                        existing_rel = db.con.execute(
+                            "SELECT parent_guid FROM relay_chain_relationships WHERE nimplant_guid = ?",
+                            (np.guid,)
+                        ).fetchone()
+                        
+                        if not existing_rel:
+                            # Store new relationship
+                            if db.db_store_chain_relationship(np.guid, first_relay_guid, relay_role, 0):
+                                utils.nimplant_print(f"DEBUG: 🔗 ✅ Check-in: Stored new relationship {np.guid} -> parent: {first_relay_guid}")
+                            else:
+                                utils.nimplant_print(f"DEBUG: 🔗 ❌ Check-in: Failed to store relationship for {np.guid}")
+                        else:
+                            utils.nimplant_print(f"DEBUG: 🔗 Check-in: Relationship already exists for {np.guid}, skipping")
+                            
+                    except Exception as e:
+                        utils.nimplant_print(f"DEBUG: 🔗 ERROR processing X-Relay-GUID during check-in: {str(e)}")
+                        import traceback
+                        utils.nimplant_print(f"DEBUG: 🔗 Traceback: {traceback.format_exc()}")
+
                 # Verify if there are pending "kill" commands
                 pending_tasks_count = len(np.pending_tasks) if np.pending_tasks else 0
                 utils.nimplant_print(f"DEBUG: Pending tasks found: {pending_tasks_count}")

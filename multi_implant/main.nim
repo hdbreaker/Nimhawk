@@ -1481,7 +1481,19 @@ proc httpHandler() {.async.} =
                             echo "[RELAY] 🆔 Using implant GUID: " & listener.id
                         
                         # Build C2 URL from listener config
-                        let c2Url = toLowerAscii(listener.listenerType) & "://" & listener.listenerHost & ":" & listener.listenerPort
+                        # Use implantCallbackIp since listenerHost is deprecated
+                        var c2Host = listener.implantCallbackIp
+                        # Remove protocol if present (implantCallbackIp may have it)
+                        if c2Host.startsWith("http://"):
+                            c2Host = c2Host[7..^1]
+                        elif c2Host.startsWith("https://"):
+                            c2Host = c2Host[8..^1]
+                        
+                        # Remove port if present in host
+                        if ":" in c2Host:
+                            c2Host = c2Host.split(":")[0]
+                        
+                        let c2Url = toLowerAscii(listener.listenerType) & "://" & c2Host & ":" & listener.listenerPort
                         when defined debug:
                             echo "[RELAY] 🎯 C2 URL: " & c2Url
                         

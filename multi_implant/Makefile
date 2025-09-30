@@ -6,6 +6,9 @@ MAIN_FILE := main.nim
 BIN_DIR := bin
 CONFIG_FILE := ../config.toml
 
+# Zig for cross-compilation (if available)
+ZIG_PATH := /tmp/zig-linux-x86_64-0.13.0/zig
+
 # Nim compiler settings
 NIM := nim c
 NIM_FLAGS := -d:release -d:puppyLibcurl
@@ -110,14 +113,14 @@ darwin_intelx64: $(BIN_DIR)
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
 	        --os:macosx --cpu:amd64 \
-	        --passC:"-target x86_64-apple-macos11.0" \
-	        --passL:"-target x86_64-apple-macos11.0" \
+	        --gcc.exe:"/tmp/zig-cc-x86_64-macos.sh" \
+	        --gcc.linkerexe:"/tmp/zig-cc-x86_64-macos.sh" \
 	        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
 	        -o:$(BIN_DIR)/nimhawk_darwin_intelx64 \
 	        $(MAIN_FILE)
 	@echo "✅ Darwin Intel x86_64 build complete: $(BIN_DIR)/nimhawk_darwin_intelx64"
 	@echo "🔍 Verifying architecture..."
-	@file $(BIN_DIR)/nimhawk_darwin_intelx64
+	@file $(BIN_DIR)/nimhawk_darwin_intelx64 || true
 
 # Darwin Apple Silicon ARM64 target
 darwin_arm64: $(BIN_DIR)
@@ -125,15 +128,15 @@ darwin_arm64: $(BIN_DIR)
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) \
 	        --os:macosx --cpu:arm64 \
-	        --passC:"-target arm64-apple-macos11.0" \
-	        --passL:"-target arm64-apple-macos11.0" \
+	        --gcc.exe:"/tmp/zig-cc-arm64-macos.sh" \
+	        --gcc.linkerexe:"/tmp/zig-cc-arm64-macos.sh" \
 	        -d:INITIAL_XOR_KEY=$(XOR_KEY) \
 	        $(RELAY_FLAGS) \
 	        -o:$(BIN_DIR)/nimhawk_darwin_arm64 \
 	        $(MAIN_FILE)
 	@echo "✅ Darwin Apple Silicon ARM64 build complete: $(BIN_DIR)/nimhawk_darwin_arm64"
 	@echo "🔍 Verifying architecture..."
-	@file $(BIN_DIR)/nimhawk_darwin_arm64
+	@file $(BIN_DIR)/nimhawk_darwin_arm64 || true
 
 # Darwin (macOS) - Build both architectures
 darwin: darwin_intelx64 darwin_arm64

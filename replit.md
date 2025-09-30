@@ -84,6 +84,7 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
 - **Removed**: ~1500 lines of legacy relay protocol code from multi_implant/main.nim
 - **Unified**: RELAY_CHAIN define now controls both target selection and X-Next-Hop header injection
 - **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
+- **Enhanced Relay Health Reporting**: Implants now report listening_port status on **every check-in** instead of every 30 check-ins for immediate UI updates (September 30, 2025)
 - **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
 - **Verified**: Successful compilation of Darwin ARM64 binary (102,452 lines)
 - **Enhanced UI**: Redesigned "Relay Information" section with improved layout and alignment

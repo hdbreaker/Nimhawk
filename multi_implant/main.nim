@@ -802,20 +802,22 @@ proc httpHandler() {.async.} =
                     when defined debug:
                         echo "[DEBUG] 🔔 HTTP Handler: Sent immediate ChainInfo update (role=" & relayRole & ", port=" & $relayPort & ")"
             else:
-                # Reaffirm relay status every 30 check-ins for self-healing
-                if httpCycleCount mod 30 == 0 and currentRelayAlive:
+                # Report relay status on every check-in for immediate updates
+                if currentRelayAlive:
                     when defined debug:
-                        echo "[DEBUG] 🔄 HTTP Handler: Reaffirming relay status (cycle " & $httpCycleCount & ")"
+                        if httpCycleCount mod 10 == 0:  # Log every 10 check-ins to reduce spam
+                            echo "[DEBUG] 🔄 HTTP Handler: Reporting relay status (cycle " & $httpCycleCount & ")"
                     
                     let relayRole = "RELAY_SERVER"
                     let relayPort = currentRelayPort
                     
-                    # Send reaffirmation update
+                    # Send status update on every check-in
                     if not inRelayMode and listener.initialized and listener.registered:
                         webClientListener.postChainInfo(listener, listener.id, "", relayRole, relayPort)
                         
                         when defined debug:
-                            echo "[DEBUG] 🔄 HTTP Handler: Sent reaffirmation update (port=" & $relayPort & ")"
+                            if httpCycleCount mod 10 == 0:  # Log every 10 check-ins to reduce spam
+                                echo "[DEBUG] 🔄 HTTP Handler: Sent relay status update (port=" & $relayPort & ")"
             
             # HTTP Relay System: Legacy relay server polling code commented out
             # The HTTP relay system doesn't use g_relayServer - it uses startHttpRelayServer() from http_relay.nim

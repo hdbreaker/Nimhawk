@@ -210,44 +210,69 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         echo "[RELAY] 🔌 New connection"
     
     try:
-        # Read request with longer timeout (30 seconds)
+        # Read request with timeout
         var requestData = ""
         var buffer = newString(RELAY_BUFFER_SIZE)
+        var expectedBodySize = 0
+        var headersComplete = false
         
         when defined debug:
             echo "[RELAY] 📡 Waiting for request data..."
         
+        # Read with shorter timeout for each recv to avoid blocking
         while true:
-            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 30000)
+            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 5000)
             if bytesRead <= 0:
                 when defined debug:
-                    echo "[RELAY] 📭 Connection closed or timeout (bytesRead=" & $bytesRead & ")"
-                break
+                    echo "[RELAY] 📭 Connection closed or no more data (bytesRead=" & $bytesRead & ")"
+                # If we have headers, this is OK (GET requests have no body)
+                if headersComplete:
+                    when defined debug:
+                        echo "[RELAY] ✅ Request complete (headers only, no body)"
+                    break
+                else:
+                    when defined debug:
+                        echo "[RELAY] ❌ Timeout before receiving complete headers"
+                    client.close()
+                    return
+            
             requestData.add(buffer[0..<bytesRead])
             
             when defined debug:
                 echo "[RELAY] 📥 Received " & $bytesRead & " bytes (total: " & $requestData.len & ")"
             
-            # Check if we've received the complete request
-            if "\r\n\r\n" in requestData:
-                # We have headers, check if there's a body
+            # Check if we've received the complete headers
+            if not headersComplete and "\r\n\r\n" in requestData:
+                headersComplete = true
+                when defined debug:
+                    echo "[RELAY] ✅ Headers complete"
+                
+                # Check if there's a body by looking for Content-Length
                 if "Content-Length:" in requestData:
-                    # Parse content length (simplified)
                     let lines = requestData.split("\r\n")
-                    var contentLength = 0
                     for line in lines:
                         if line.toLower().startsWith("content-length:"):
                             let value = line.split(":")[1].strip()
-                            contentLength = parseInt(value)
+                            expectedBodySize = parseInt(value)
+                            when defined debug:
+                                echo "[RELAY] 📦 Expected body size: " & $expectedBodySize & " bytes"
                             break
-                    
-                    # Check if we have the complete body
-                    let headerEnd = requestData.find("\r\n\r\n")
-                    let bodySize = requestData.len - headerEnd - 4
-                    if bodySize >= contentLength:
-                        break
                 else:
-                    break  # No body expected
+                    # No Content-Length header = no body (GET request)
+                    when defined debug:
+                        echo "[RELAY] ✅ No Content-Length, request complete"
+                    break
+            
+            # If headers are complete and we have a body, check if we received it all
+            if headersComplete and expectedBodySize > 0:
+                let headerEnd = requestData.find("\r\n\r\n")
+                let bodySize = requestData.len - headerEnd - 4
+                when defined debug:
+                    echo "[RELAY] 📦 Body progress: " & $bodySize & "/" & $expectedBodySize & " bytes"
+                if bodySize >= expectedBodySize:
+                    when defined debug:
+                        echo "[RELAY] ✅ Complete body received"
+                    break
         
         when defined debug:
             echo "[RELAY] 📦 Parsing HTTP request (" & $requestData.len & " bytes)"

@@ -1382,21 +1382,31 @@ def admin_server():
             # Add relay chain information (parent, role, and listening port)
             from src.config.db import con
             relay_info = con.execute(
-                """SELECT parent_guid, role, listening_port 
-                   FROM relay_chain_relationships 
-                   WHERE nimplant_guid = ?""",
+                """SELECT rcr.parent_guid, rcr.role, rcr.listening_port,
+                          n.ipAddrInt as parent_ip, n.ipAddrExt as parent_ext_ip,
+                          parent_rcr.listening_port as parent_listening_port
+                   FROM relay_chain_relationships rcr
+                   LEFT JOIN nimplants n ON rcr.parent_guid = n.guid
+                   LEFT JOIN relay_chain_relationships parent_rcr ON parent_rcr.nimplant_guid = rcr.parent_guid
+                   WHERE rcr.nimplant_guid = ?""",
                 (guid,)
             ).fetchone()
             
             if relay_info:
                 nimplant_info['relay_role'] = relay_info['role']
                 nimplant_info['relay_parent'] = relay_info['parent_guid']
+                nimplant_info['relay_parent_ip'] = relay_info['parent_ip']
+                nimplant_info['relay_parent_ext_ip'] = relay_info['parent_ext_ip']
+                nimplant_info['relay_parent_port'] = relay_info['parent_listening_port']
                 nimplant_info['relay_listening_port'] = relay_info['listening_port']
             else:
                 # If not in relay_chain_relationships, use the relay_role from nimplants table (if exists)
                 if 'relay_role' not in nimplant_info or not nimplant_info['relay_role']:
                     nimplant_info['relay_role'] = 'STANDARD'
                 nimplant_info['relay_parent'] = None
+                nimplant_info['relay_parent_ip'] = None
+                nimplant_info['relay_parent_ext_ip'] = None
+                nimplant_info['relay_parent_port'] = None
                 nimplant_info['relay_listening_port'] = None
             
             utils.nimplant_print(f"DEBUG: get_nimplant - Returning implant info successfully", skip_db_log=True)

@@ -85,7 +85,7 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
 - **Unified**: RELAY_CHAIN define now controls both target selection and X-Next-Hop header injection
 - **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
 - **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
-- **Verified**: Successful compilation of Darwin ARM64 binary (99827 lines)
+- **Verified**: Successful compilation of Darwin ARM64 binary (102,443 lines)
 - **Enhanced UI**: Redesigned "Relay Information" section with improved layout and alignment
   - Two clean rows: "Listening" (relay server status) and "Parent" (relay client status)
   - Status indicators (green=ON, gray=OFF) with fixed-width labels (90px)
@@ -100,11 +100,14 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
   - Parses `parent_addr` (IP:port) from database if available
   - Falls back to parent's `ipAddrInt` and `listening_port` for legacy data
   - Returns `relay_parent_ip` and `relay_parent_port` separately for UI display
+  - Fixed: SQL query now correctly retrieves implant's own `listening_port` (not parent's port)
+  - Resolves bug where hybrid client+server implants showed "Listening OFF" instead of "ON IP:PORT"
 - **Security Fix**: C2 URL extraction from RELAY_CHAIN for runtime relay servers
   - When a relay client (compiled with RELAY_CHAIN) starts a relay server at runtime via `relay <PORT>` command
   - Parent chain is extracted correctly (everything after the first hop)
   - Relay clients only know their parent chain, not the full C2 URL (security through segmentation)
   - Resolves "No C2 configured" errors when relays try to forward to C2
+- **Compilation Fix**: Added missing `strutils` import to `relay_launcher.nim` to fix `split()` function error
 
 ### Multi-Hop Behavior Example (3-Hop Chain)
 

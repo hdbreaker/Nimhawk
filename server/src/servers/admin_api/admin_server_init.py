@@ -1382,7 +1382,8 @@ def admin_server():
             # Add relay chain information (parent, role, and listening port)
             from src.config.db import con
             relay_info = con.execute(
-                """SELECT rcr.parent_guid, rcr.parent_addr, rcr.role, rcr.listening_port,
+                """SELECT rcr.parent_guid, rcr.parent_addr, rcr.role, 
+                          rcr.listening_port as listening_port,
                           n.ipAddrInt as parent_ip_fallback, n.ipAddrExt as parent_ext_ip,
                           parent_rcr.listening_port as parent_listening_port
                    FROM relay_chain_relationships rcr

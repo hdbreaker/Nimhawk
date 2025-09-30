@@ -34,7 +34,9 @@ function createWindow() {
   
   if (isDev) {
     // Development mode: use development server
-    const startUrl = process.env.START_URL || 'http://localhost:3000';
+    const serverIp = process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_IP || 'http://localhost';
+    const serverPort = process.env.NEXT_PUBLIC_NIMHAWK_ADMIN_SERVER_PORT || '3000';
+    const startUrl = `${serverIp}:${serverPort}`;
     console.log('Loading URL:', startUrl);
     mainWindow.loadURL(startUrl);
   } else {

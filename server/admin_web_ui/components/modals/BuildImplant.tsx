@@ -28,7 +28,7 @@ function BuildImplantModal({ modalOpen, setModalOpen }: IProps) {
             <Modal
                 opened={modalOpen}
                 onClose={handleClose}
-                title={<Title order={4}>Build Implants</Title>}
+                title="Build Implants"
                 centered
                 size="md"
                 radius="md"

@@ -210,23 +210,23 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
         echo "[RELAY] 🔌 New connection"
     
     try:
-        # Set socket to non-blocking mode with timeout
-        client.setSockOpt(OptReuseAddr, true)
-        
-        # Read request
+        # Read request with longer timeout (30 seconds)
         var requestData = ""
         var buffer = newString(RELAY_BUFFER_SIZE)
         
+        when defined debug:
+            echo "[RELAY] 📡 Waiting for request data..."
+        
         while true:
-            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 5000)
+            let bytesRead = client.recv(buffer, RELAY_BUFFER_SIZE, timeout = 30000)
             if bytesRead <= 0:
                 when defined debug:
-                    echo "[RELAY] 📭 Connection closed or timeout"
+                    echo "[RELAY] 📭 Connection closed or timeout (bytesRead=" & $bytesRead & ")"
                 break
             requestData.add(buffer[0..<bytesRead])
             
             when defined debug:
-                echo "[RELAY] 📥 Received " & $bytesRead & " bytes"
+                echo "[RELAY] 📥 Received " & $bytesRead & " bytes (total: " & $requestData.len & ")"
             
             # Check if we've received the complete request
             if "\r\n\r\n" in requestData:
@@ -249,20 +249,32 @@ proc handleRelayConnection(client: Socket, relayGuid: string = "") =
                 else:
                     break  # No body expected
         
+        when defined debug:
+            echo "[RELAY] 📦 Parsing HTTP request (" & $requestData.len & " bytes)"
+        
         # Parse request
         let req = parseHttpRequest(requestData)
+        
+        when defined debug:
+            echo "[RELAY] 📋 Request: " & req.`method` & " " & req.path
+            echo "[RELAY] 📋 Headers count: " & $req.headers.len
         
         # Extract X-Next-Hop header (contains comma-separated hop chain)
         var hopChain = ""
         for (key, value) in req.headers:
             if key.toLower() == "x-next-hop":
                 hopChain = decryptNextHop(value)
+                when defined debug:
+                    echo "[RELAY] 🔓 Found X-Next-Hop header, decrypted chain: " & hopChain
                 break
         
         if hopChain == "":
             when defined debug:
-                echo "[RELAY] ❌ No X-Next-Hop header found"
-            let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\n\r\n"
+                echo "[RELAY] ❌ No X-Next-Hop header found in request"
+                echo "[RELAY] ❌ Available headers:"
+                for (key, value) in req.headers:
+                    echo "[RELAY]   - " & key & ": " & value
+            let response = "HTTP/1.1 400 Bad Request\r\nContent-Length: 22\r\n\r\nMissing X-Next-Hop\r\n"
             client.send(response)
             client.close()
             return

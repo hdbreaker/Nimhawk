@@ -85,7 +85,7 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
 - **Unified**: RELAY_CHAIN define now controls both target selection and X-Next-Hop header injection
 - **Deprecated**: RELAY_CHAIN_TARGET removed (use RELAY_CHAIN only)
 - **Simplified**: httpHandler uses only HTTP relay system (no dual-mode logic)
-- **Verified**: Successful compilation of Darwin ARM64 binary (102,443 lines)
+- **Verified**: Successful compilation of Darwin ARM64 binary (102,452 lines)
 - **Enhanced UI**: Redesigned "Relay Information" section with improved layout and alignment
   - Two clean rows: "Listening" (relay server status) and "Parent" (relay client status)
   - Status indicators (green=ON, gray=OFF) with fixed-width labels (90px)
@@ -108,6 +108,12 @@ Implants support Windows x64, macOS (ARM64, x64), and Linux (x64, ARM, ARM64, MI
   - Relay clients only know their parent chain, not the full C2 URL (security through segmentation)
   - Resolves "No C2 configured" errors when relays try to forward to C2
 - **Compilation Fix**: Added missing `strutils` import to `relay_launcher.nim` to fix `split()` function error
+- **Registration Enhancement**: Implants now report compile-time listening port during registration
+  - Added `listeningPort` parameter to `postRegisterRequest()` and `postRelayRegisterRequest()` in webClientListener.nim
+  - Implants send "L" field in registration JSON payload with listening port value (0 if not relay server)
+  - Backend reads "L" field during registration and stores in relay_chain_relationships table
+  - Fixes hybrid implants (compiled with RELAY_CHAIN + RELAY_PORT) showing "Listening OFF" in UI
+  - Compile-time relay servers now display correct "Listening ON IP:PORT" status immediately after registration
 
 ### Multi-Hop Behavior Example (3-Hop Chain)
 

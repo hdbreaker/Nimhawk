@@ -4,7 +4,7 @@
 # Configuration
 MAIN_FILE := main.nim
 BIN_DIR := bin
-CONFIG_FILE := ../../config.toml
+CONFIG_FILE := ../config.toml
 
 # Nim compiler settings
 NIM := nim c
@@ -64,8 +64,17 @@ endif
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
 
+# Copy config.toml from parent directory
+config.toml:
+	@if [ -f $(CONFIG_FILE) ]; then \
+		cp $(CONFIG_FILE) ./config.toml; \
+		echo "📋 Copied config.toml from $(CONFIG_FILE)"; \
+	else \
+		echo "⚠️  Warning: $(CONFIG_FILE) not found, skipping copy"; \
+	fi
+
 # Linux x86_64 target
-linux_x64: $(BIN_DIR)
+linux_x64: $(BIN_DIR) config.toml
 	@echo "Building Linux x86_64 implant..."
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
 		--os:linux --cpu:amd64 \
@@ -75,7 +84,7 @@ linux_x64: $(BIN_DIR)
 	@echo "✅ Linux x86_64 build complete: $(BIN_DIR)/nimhawk_linux_x64"
 
 # Linux ARM64 target  
-linux_arm64: $(BIN_DIR)
+linux_arm64: $(BIN_DIR) config.toml
 	@echo "Building Linux ARM64 implant..."
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
 		--os:linux --cpu:arm64 \
@@ -85,7 +94,7 @@ linux_arm64: $(BIN_DIR)
 	@echo "✅ Linux ARM64 build complete: $(BIN_DIR)/nimhawk_linux_arm64"
 
 # Linux MIPS Little-Endian target
-linux_mipsel: $(BIN_DIR)
+linux_mipsel: $(BIN_DIR) config.toml
 	@echo "Building Linux MIPS Little-Endian implant..."
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
 		--os:linux --cpu:mips --endian:little \
@@ -95,7 +104,7 @@ linux_mipsel: $(BIN_DIR)
 	@echo "✅ Linux MIPS Little-Endian build complete: $(BIN_DIR)/nimhawk_linux_mipsel"
 
 # Linux ARM target
-linux_arm: $(BIN_DIR)
+linux_arm: $(BIN_DIR) config.toml
 	@echo "Building Linux ARM implant..."
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
 		--os:linux --cpu:arm \
@@ -105,7 +114,7 @@ linux_arm: $(BIN_DIR)
 	@echo "✅ Linux ARM build complete: $(BIN_DIR)/nimhawk_linux_arm"
 
 # Darwin Intel x86_64 target
-darwin_intelx64: $(BIN_DIR)
+darwin_intelx64: $(BIN_DIR) config.toml
 	@echo "Building Darwin Intel x86_64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) $(RELAY_FLAGS) \
@@ -120,7 +129,7 @@ darwin_intelx64: $(BIN_DIR)
 	@file $(BIN_DIR)/nimhawk_darwin_intelx64
 
 # Darwin Apple Silicon ARM64 target
-darwin_arm64: $(BIN_DIR)
+darwin_arm64: $(BIN_DIR) config.toml
 	@echo "Building Darwin Apple Silicon ARM64 implant..."
 	@echo "🔑 Using XOR_KEY: $(XOR_KEY)"
 	$(NIM) $(NIM_FLAGS) \
@@ -159,7 +168,7 @@ all: linux_x64 linux_arm64 linux_mipsel linux_arm darwin
 	@echo "  - nimhawk_darwin_arm64    (macOS Apple Silicon ARM64)"
 
 # Test compilation (syntax check only)
-test: $(BIN_DIR)
+test: $(BIN_DIR) config.toml
 	@echo "🧪 Testing compilation for all targets..."
 	@echo "Testing Linux x86_64..."
 	$(NIM) $(NIM_FLAGS) --os:linux --cpu:amd64 --compileOnly $(MAIN_FILE)
@@ -221,4 +230,4 @@ help:
 .DEFAULT_GOAL := help
 
 # Declare phony targets
-.PHONY: all linux_x64 linux_arm64 linux_mipsel linux_arm darwin darwin_intelx64 darwin_arm64 test clean help 
+.PHONY: all linux_x64 linux_arm64 linux_mipsel linux_arm darwin darwin_intelx64 darwin_arm64 test clean help config.toml 

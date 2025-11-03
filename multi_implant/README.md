@@ -64,7 +64,7 @@ multi_implant/
 ├── bin/                    # Compiled binaries (created during build)
 │
 ├── config/
-│   └── configParser.nim    # Configuration parser
+│   └── config_parser.nim    # Configuration parser
 │
 ├── core/
 │   ├── webClientListener.nim  # HTTP C2 communication
